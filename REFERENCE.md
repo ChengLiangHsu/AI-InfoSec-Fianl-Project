@@ -1,1 +1,2 @@
 - [AIHero](https://www.aihero.dev/)
+- [VitePress](https://vitepress.dev/)
