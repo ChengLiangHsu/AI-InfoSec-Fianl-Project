@@ -1,3 +1,6 @@
+import os
+from dotenv import load_dotenv
+load_dotenv()
 from dataclasses import dataclass, field
 
 import datasets
@@ -12,7 +15,7 @@ class AnalystAgentDeps:
     output: dict[str, pd.DataFrame] = field(default_factory=dict[str, pd.DataFrame])
 
     def store(self, value: pd.DataFrame) -> str:
-        """Store the output in deps and return the reference such as Out[1] to be used by the LLM."""
+        """儲存分析結果並回傳一個變數名稱，如Out[1]，讓LLM可以繼續使用此變數"""
         ref = f"Out[{len(self.output) + 1}]"
         self.output[ref] = value
         return ref
@@ -20,15 +23,16 @@ class AnalystAgentDeps:
     def get(self, ref: str) -> pd.DataFrame:
         if ref not in self.output:
             raise ModelRetry(
-                f"Error: {ref} is not a valid variable reference. Check the previous messages and try again."
+                f"錯誤：{ref}不是一個有效的變數名稱。請檢查之前的訊息並重試。"
             )
         return self.output[ref]
 
 
+model = os.getenv("PYDANTIC_AI_MODEL", "google:gemini-3.7-flash")
 analyst_agent = Agent(
-    "openai:gpt-5.2",
+    model,
     deps_type=AnalystAgentDeps,
-    instructions="You are a data analyst and your job is to analyze the data according to the user request.",
+    instructions="你是資料分析師，你的工作是根據使用者需求分析資料。",
 )
 
 
@@ -38,12 +42,12 @@ def load_dataset(
     path: str,
     split: str = "train",
 ) -> str:
-    """Load the `split` of dataset `dataset_name` from huggingface.
+    """載入 huggingface 的資料集，並將結果儲存起來。
 
     Args:
         ctx: Pydantic AI agent RunContext
-        path: name of the dataset in the form of `<user_name>/<dataset_name>`
-        split: load the split of the dataset (default: "train")
+        path: 資料集的名稱，格式為 `<user_name>/<dataset_name>`
+        split: 資料集的分支，預設為 "train"
     """
     # begin load data from hf
     builder = datasets.load_dataset_builder(path)  # pyright: ignore[reportUnknownMemberType]
@@ -75,25 +79,25 @@ def load_dataset(
 
 @analyst_agent.tool
 def run_duckdb(ctx: RunContext[AnalystAgentDeps], dataset: str, sql: str) -> str:
-    """Run DuckDB SQL query on the DataFrame.
+    """在 DataFrame 上執行 DuckDB SQL 查詢。
 
-    Note that the virtual table name used in DuckDB SQL must be `dataset`.
+    注意：在 DuckDB SQL 中使用的虛擬表格名稱必須是 `dataset`。
 
     Args:
         ctx: Pydantic AI agent RunContext
-        dataset: reference string to the DataFrame
-        sql: the query to be executed using DuckDB
+        dataset: DataFrame 的參考字串
+        sql: 要用 DuckDB 執行的查詢
     """
     data = ctx.deps.get(dataset)
     result = duckdb.query_df(df=data, virtual_table_name="dataset", sql_query=sql)
     # pass the result as ref (because DuckDB SQL can select many rows, creating another huge dataframe)
     ref = ctx.deps.store(result.df())
-    return f"Executed SQL, result is `{ref}`"
+    return f"執行 SQL 完畢，結果儲存於 `{ref}`"
 
 
 @analyst_agent.tool
 def display(ctx: RunContext[AnalystAgentDeps], name: str) -> str:
-    """Display at most 5 rows of the dataframe."""
+    """顯示 DataFrame 的前 5 列"""
     dataset = ctx.deps.get(name)
     return dataset.head().to_string()  # pyright: ignore[reportUnknownMemberType]
 
@@ -101,7 +105,7 @@ def display(ctx: RunContext[AnalystAgentDeps], name: str) -> str:
 if __name__ == "__main__":
     deps = AnalystAgentDeps()
     result = analyst_agent.run_sync(
-        user_prompt="Count how many negative comments are there in the dataset `cornell-movie-review-data/rotten_tomatoes`",
+        user_prompt="計算資料集 `cornell-movie-review-data/rotten_tomatoes` 中有多少負面評論",
         deps=deps,
     )
     print(result.output)
