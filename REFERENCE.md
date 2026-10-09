@@ -4,3 +4,8 @@
 - [興大 iLearning](https://lms2020.nchu.edu.tw/)
 - [農業知識入口網](https://kmweb.moa.gov.tw/)
 - [農藥資訊服務網](https://pesticide.aphia.gov.tw/information/)
+- [Youtube：原来写一个 AI Agent 这么简单](https://www.youtube.com/watch?v=OAE1EWP8dIQ)
+- [Pydantic AI](https://pydantic.dev/docs/ai/overview/)
+- [Pydantic AI：建構語音 AI Agent](https://pydantic.dev/docs/ai/overview/#:~:text=Put%20the%20same%20agent%20on%20a%20live%20voice%20session)
+- [uv](https://docs.astral.sh/uv/)
+- [uv：對專案進行格式化](https://docs.astral.sh/uv/reference/cli/#uv-tree)
