@@ -6,6 +6,8 @@ Run with:
 """
 
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 import logfire
 from pydantic import BaseModel
@@ -20,14 +22,14 @@ logfire.instrument_pydantic_ai()
 class MyModel(BaseModel):
     city: str
     country: str
+    weather: str
 
 
-# model = os.getenv('PYDANTIC_AI_MODEL', 'openai:gpt-5.2')
-model = "gemini:2.5-flash"
+model = os.getenv('PYDANTIC_AI_MODEL', 'google:gemini-3.7-flash')
 print(f'Using model: {model}')
 agent = Agent(model, output_type=MyModel)
 
 if __name__ == '__main__':
-    result = agent.run_sync('The windy city in the US of A.')
+    result = agent.run_sync('請輸出台中市的天氣')
     print(result.output)
     print(result.usage)

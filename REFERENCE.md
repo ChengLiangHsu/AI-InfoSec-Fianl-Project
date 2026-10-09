@@ -11,3 +11,4 @@
 - [uv](https://docs.astral.sh/uv/)
 - [uv：對專案進行格式化](https://docs.astral.sh/uv/reference/cli/#uv-tree)
 - [Google AI Studio](https://aistudio.google.com/)
+- [Pydantic AI：配置 Google Gemini 模型](https://pydantic.dev/docs/ai/models/google/#api-key-gemini-api)
