@@ -1,9 +1,14 @@
-"""Small but complete example of using Pydantic AI to build a support agent for a bank.
+"""使用 Pydantic AI 建立銀行客服代理程式的完整範例。
 
-Run with:
+執行方式：
 
-    uv run -m pydantic_ai_examples.bank_support
+    uv run examples/bank_support.py
 """
+
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 import sqlite3
 from dataclasses import dataclass
@@ -15,7 +20,7 @@ from pydantic_ai import Agent, RunContext
 
 @dataclass
 class DatabaseConn:
-    """A wrapper over the SQLite connection."""
+    """SQLite 連線的包裝類別。"""
 
     sqlite_conn: sqlite3.Connection
 
@@ -32,7 +37,7 @@ class DatabaseConn:
         if row:
             return row[0]
         else:
-            raise ValueError("Customer not found")
+            raise ValueError("找不到客戶")
 
 
 @dataclass
@@ -43,21 +48,21 @@ class SupportDependencies:
 
 class SupportOutput(BaseModel):
     support_advice: str
-    """Advice returned to the customer"""
+    """回覆給客戶的支援建議。"""
     block_card: bool
-    """Whether to block their card or not"""
+    """是否要封鎖客戶的卡。"""
     risk: int
-    """Risk level of query"""
+    """查詢的風險等級。"""
 
 
+model = os.getenv("PYDANTIC_AI_MODEL", "google:gemini-3.7-flash")
 support_agent = Agent(
-    "openai:gpt-5.2",
+    model,
     deps_type=SupportDependencies,
     output_type=SupportOutput,
     instructions=(
-        "You are a support agent in our bank, give the "
-        "customer support and judge the risk level of their query. "
-        "Reply using the customer's name."
+        "你是我銀行的客服代理程式，請給予客戶支援並判斷他們查詢的風險等級。 "
+        "請使用客戶的名字回覆。"
     ),
 )
 
@@ -65,12 +70,12 @@ support_agent = Agent(
 @support_agent.instructions
 async def add_customer_name(ctx: RunContext[SupportDependencies]) -> str:
     customer_name = await ctx.deps.db.customer_name(id=ctx.deps.customer_id)
-    return f"The customer's name is {customer_name!r}"
+    return f"客戶的名字是 {customer_name!r}"
 
 
 @support_agent.tool
 async def customer_balance(ctx: RunContext[SupportDependencies]) -> str:
-    """Returns the customer's current account balance."""
+    """返回客戶目前帳戶餘額。"""
     balance = await ctx.deps.db.customer_balance(
         id=ctx.deps.customer_id,
     )
@@ -88,14 +93,14 @@ if __name__ == "__main__":
         con.commit()
 
         deps = SupportDependencies(customer_id=123, db=DatabaseConn(sqlite_conn=con))
-        result = support_agent.run_sync("What is my balance?", deps=deps)
+        result = support_agent.run_sync("我的餘額是多少?", deps=deps)
         print(result.output)
         """
-        support_advice='Hello John, your current account balance, including pending transactions, is $123.45.' block_card=False risk=1
+        support_advice='哈摟 John，你的帳戶餘額是 $123.45。' block_card=False risk=1
         """
 
-        result = support_agent.run_sync("I just lost my card!", deps=deps)
+        result = support_agent.run_sync("我剛把卡弄不見了!", deps=deps)
         print(result.output)
         """
-        support_advice="I'm sorry to hear that, John. We are temporarily blocking your card to prevent unauthorized transactions." block_card=True risk=8
+        support_advice="真遺憾聽到這件事, John。我們將暫時封鎖您的卡以防止未經授權的交易。" block_card=True risk=8
         """
