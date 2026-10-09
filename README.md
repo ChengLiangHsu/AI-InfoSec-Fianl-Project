@@ -10,16 +10,16 @@
 
 ## 提案章節目錄
 
-| 章節 | 檔案名稱 | 核心內容摘要 |
-| :--- | :--- | :--- |
-| **00. 概述** | [00_overview.md](docs/00_overview.md) | 專題定位、成員分工（Domain Lead / System Lead）、可用真實資料集（4RL、Concil 等） |
-| **01. 摘要** | [01_abstract.md](docs/01_abstract.md) | 提案摘要（依 Motivation, Challenge, Solution, Method, Evaluation, Findings 結構） |
-| **02. 緒論** | [02_introduction.md](docs/02_introduction.md) | 研究背景、田間試驗核心痛點、現有做法限制、創新點與 5 大預期貢獻 |
-| **03. 文獻** | [03_related_work.md](docs/03_related_work.md) | 農業 VLM/Agent、分割模型、UAV 植生指標、領域規範文獻及 14 篇重點論文彙整表 |
-| **04. 深入** | [04_deep_research.md](docs/04_deep_research.md) | 5 個核心思維模式（UTC 優先等）、3 大專業爭論、10 個深度技術與領域理解問答 |
-| **05. 設計** | [05_proposed_scheme.md](docs/05_proposed_scheme.md) | 系統架構（Mermaid 圖）、執行流程圖、演算法虛擬碼（Algorithm 1）與可行性分析 |
-| **06. 規劃** | [06_execution_plan.md](docs/06_execution_plan.md) | 兩人分工表、15 週開發里程碑與 GitHub / `DESIGN.md` 目錄結構規範 |
-| **07. 文獻** | [07_references.md](docs/07_references.md) | 正文引用之 22 篇文獻出處與待補充之領域規範（TACTRI / EPPO） |
+| 章節 | 內容摘要 |
+| :--- | :--- |
+| [00. 概述](docs/00_overview.md) | 專題定位、成員分工、真實試驗資料集 |
+| [01. 摘要](docs/01_abstract.md) | 研究動機、痛點、解法與預期成效 |
+| [02. 緒論](docs/02_introduction.md) | 田間試驗背景、現有限制、五大預期貢獻 |
+| [03. 相關文獻](docs/03_related_work.md) | 農業 VLM/Agent、植生指標與規範文獻整理 |
+| [04. 深度探討](docs/04_deep_research.md) | 核心思維模式、關鍵爭論與技術 Q&A |
+| [05. 系統設計](docs/05_proposed_scheme.md) | 系統架構圖、執行流程與演算法虛擬碼 |
+| [06. 執行規劃](docs/06_execution_plan.md) | 15 週開發里程碑、分工與專案結構規範 |
+| [07. 參考文獻](docs/07_references.md) | 22 篇論文文獻與 TACTRI / EPPO 法規標準 |
 
 ---
 
@@ -27,3 +27,4 @@
 
 * [TODO.md](TODO.md)：專案待辦事項與里程碑查核點
 * [REFERENCE.md](REFERENCE.md)：外部文獻與標準規範備忘錄
+* [REQUIREMENT.md](REQUIREMENT.md)：作業要求與規範
