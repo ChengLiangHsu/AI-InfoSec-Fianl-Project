@@ -56,11 +56,11 @@ async def _run_interactive_turn(
         token.cancel()
 
     # A custom `Application` doesn't get `PromptSession`'s Ctrl-C handling, so bind it here too.
-    bindings.add('escape')(cancel_turn)
-    bindings.add('c-c')(cancel_turn)
+    bindings.add("escape")(cancel_turn)
+    bindings.add("c-c")(cancel_turn)
 
     control = FormattedTextControl(
-        lambda: FormattedText([('class:answer', f'Agent: {"".join(chunks)}')])
+        lambda: FormattedText([("class:answer", f"Agent: {''.join(chunks)}")])
     )
     application: Application[None] = Application(
         layout=Layout(Window(control)),
@@ -82,21 +82,21 @@ async def _run_interactive_turn(
     await application.run_async()
     messages, was_cancelled = await turn_task
     if was_cancelled:
-        print('⏹ cancelled')
+        print("⏹ cancelled")
     return messages
 
 
 async def main() -> None:
-    agent = Agent('openai:gpt-5-mini')
+    agent = Agent("openai:gpt-5-mini")
     session: PromptSession[str] = PromptSession()
     history: list[ModelMessage] = []
 
     print(
-        'Chat with Pydantic AI. Press Esc or Ctrl-C to cancel a response; Ctrl-C or Ctrl-D at the prompt to exit.'
+        "Chat with Pydantic AI. Press Esc or Ctrl-C to cancel a response; Ctrl-C or Ctrl-D at the prompt to exit."
     )
     while True:
         try:
-            prompt = await session.prompt_async('\nYou: ')
+            prompt = await session.prompt_async("\nYou: ")
         except (EOFError, KeyboardInterrupt):
             print()
             break
@@ -108,9 +108,9 @@ async def main() -> None:
         history = await _run_interactive_turn(agent, prompt, history)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # 'if-token-present' means nothing will be sent (and the example will work) if you don't have logfire configured.
     # Configured here rather than at module level so importing `stream_turn` (e.g. from the docs) doesn't instrument.
-    logfire.configure(send_to_logfire='if-token-present')
+    logfire.configure(send_to_logfire="if-token-present")
     logfire.instrument_pydantic_ai()
     asyncio.run(main())

@@ -32,18 +32,18 @@ from pydantic_ai import (
 from pydantic_ai.realtime import RealtimeSession
 
 # 'if-token-present' means nothing will be sent (and the example will work) if you don't have logfire configured
-logfire.configure(send_to_logfire='if-token-present')
+logfire.configure(send_to_logfire="if-token-present")
 logfire.instrument_pydantic_ai()
 
 agent = Agent(
-    instructions='You are a friendly voice assistant. Keep your replies short and conversational.'
+    instructions="You are a friendly voice assistant. Keep your replies short and conversational."
 )
 
 
 @agent.tool_plain
 def get_weather(city: str) -> str:
     """Look up the current weather in a city."""
-    return f'It is currently 21 degrees and sunny in {city}.'
+    return f"It is currently 21 degrees and sunny in {city}."
 
 
 async def conversation(session: RealtimeSession) -> None:
@@ -52,11 +52,11 @@ async def conversation(session: RealtimeSession) -> None:
     mic = listentome.InputStream(
         samplerate=session.audio_input_sample_rate,
         channels=1,
-        dtype='int16',
+        dtype="int16",
         blocksize=session.audio_input_sample_rate // 10,  # 100 ms per block
     )
     speaker = listentome.OutputStream(
-        samplerate=session.audio_output_sample_rate, channels=1, dtype='int16'
+        samplerate=session.audio_output_sample_rate, channels=1, dtype="int16"
     )
 
     async with mic, speaker, anyio.create_task_group() as tg:
@@ -81,15 +81,15 @@ async def conversation(session: RealtimeSession) -> None:
 
         tg.start_soon(play_audio)
 
-        print('Listening — start talking (Ctrl-C to quit).')
+        print("Listening — start talking (Ctrl-C to quit).")
         async for event in session:
             match event:
                 case PartEndEvent(part=SpeechPart() as part) if part.transcript:
-                    print(f'{part.speaker}: {part.transcript}')
+                    print(f"{part.speaker}: {part.transcript}")
                 case FunctionToolCallEvent(part=call):
-                    print(f'[calling {call.tool_name}]')
+                    print(f"[calling {call.tool_name}]")
                 case FunctionToolResultEvent(part=result):
-                    print(f'[{result.tool_name} returned: {result.content}]')
+                    print(f"[{result.tool_name} returned: {result.content}]")
                 case _:
                     pass
         tg.cancel_scope.cancel()
@@ -101,12 +101,12 @@ async def main():
     # `handle_barge_in=True`, interrupting the model mid-sentence is handled by the
     # session itself: it stops playback of the rest of the reply and truncates the
     # provider's transcript to what was actually heard.
-    realtime = agent.realtime('openai:gpt-realtime')
+    realtime = agent.realtime("openai:gpt-realtime")
     async with realtime.session(handle_barge_in=True) as session:
         await conversation(session)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         anyio.run(main)
     except KeyboardInterrupt:

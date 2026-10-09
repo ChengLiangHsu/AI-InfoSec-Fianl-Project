@@ -34,14 +34,14 @@ from typing_extensions import TypedDict
 
 from pydantic_ai import Agent, ModelHTTPError, RunContext
 
-MODEL = 'openai:gpt-5.2'
+MODEL = "openai:gpt-5.2"
 
 
 # Structured Outputs
 class Specialty(str, Enum):
-    general = 'general'
-    cardiology = 'cardiology'
-    neurology = 'neurology'
+    general = "general"
+    cardiology = "cardiology"
+    neurology = "neurology"
 
 
 class MedicalReport(BaseModel):
@@ -54,10 +54,10 @@ class MedicalReport(BaseModel):
 
 class TreatmentPlan(BaseModel):
     plan_summary: str = Field(
-        description='The structured treatment plan from the senior doctor'
+        description="The structured treatment plan from the senior doctor"
     )
     refer_to_specialist: Specialty | None = Field(
-        description='Specialty to route the patient to for further treatment, if necessary'
+        description="Specialty to route the patient to for further treatment, if necessary"
     )
     follow_up_days: int
 
@@ -142,9 +142,9 @@ senior_doctor_agent = Agent(
 )
 
 SPECIALIST_MAP = {
-    'general': gp_agent,
-    'cardiology': cardiology_agent,
-    'neurology': neurology_agent,
+    "general": gp_agent,
+    "cardiology": cardiology_agent,
+    "neurology": neurology_agent,
 }
 
 # Agent-as-Orchestrator: triage_agent with Delegation Tools
@@ -185,16 +185,16 @@ async def consult_specialist(
 ) -> TriageFinalOutput | str:
     """Consult the appropriate specialist for expert consultation."""
     specialist_agent = SPECIALIST_MAP.get(specialty)
-    print(f'Proceed with specialist - {specialty}')
+    print(f"Proceed with specialist - {specialty}")
     if not specialist_agent:
-        print('Selected specialist does not exists!')
-        return f'No specialist found for {specialty.name}.'
+        print("Selected specialist does not exists!")
+        return f"No specialist found for {specialty.name}."
 
-    result = await specialist_agent.run(f'Consultation: {question}', deps=ctx.deps)
+    result = await specialist_agent.run(f"Consultation: {question}", deps=ctx.deps)
     report: MedicalReport = result.output
 
     return TriageFinalOutput(
-        final_status='resolved_by_specialist',
+        final_status="resolved_by_specialist",
         specialty=specialty,
         final_report=report,
     )
@@ -215,25 +215,25 @@ async def consult_senior_doctor(
         initial_complaint: The patient's original complaint.
     """
     patient = ctx.deps
-    senior_note = f'Reason: {reason_for_escalation}\nComplaint and context:\n{initial_complaint}\nPatient: {patient.patient_id}, age {patient.age}\n'
+    senior_note = f"Reason: {reason_for_escalation}\nComplaint and context:\n{initial_complaint}\nPatient: {patient.patient_id}, age {patient.age}\n"
 
-    print('Direct escalation triggered by Triage LLM.')
+    print("Direct escalation triggered by Triage LLM.")
     treatment_plan = None
     try:
         result = await senior_doctor_agent.run(
-            f'Consultation for: {senior_note}', deps=ctx.deps
+            f"Consultation for: {senior_note}", deps=ctx.deps
         )
         treatment_plan = result.output
     except ModelHTTPError as e:
         # Handle case where LLM fails to provide TreatmentPlan structure
         treatment_plan = TreatmentPlan(
-            plan_summary=f'Consultation failed due to API error: {e.status_code}. Requires manual review.',
+            plan_summary=f"Consultation failed due to API error: {e.status_code}. Requires manual review.",
             refer_to_specialist=None,
             follow_up_days=1,
         )
 
     return TriageFinalOutput(
-        final_status='escalated',
+        final_status="escalated",
         treatment_plan=treatment_plan,
     )
 
@@ -250,29 +250,29 @@ class MedicalTriageSystem:
         self, complaint: str, patient: PatientInfo
     ) -> dict[str, Any]:
         timestamp = datetime.now(tz=timezone.utc).isoformat()
-        print(f'\n[{timestamp}] Processing complaint: {complaint}')
+        print(f"\n[{timestamp}] Processing complaint: {complaint}")
 
         triage_prompt = (
-            f'Patient {patient.patient_id}, age {patient.age}\n'
-            f'Complaint: {complaint}\n'
-            f'Known conditions: {patient.known_conditions}\n'
-            f'If necessary, use your tools to consult specialists or senior doctor.'
+            f"Patient {patient.patient_id}, age {patient.age}\n"
+            f"Complaint: {complaint}\n"
+            f"Known conditions: {patient.known_conditions}\n"
+            f"If necessary, use your tools to consult specialists or senior doctor."
         )
 
         triage_result = await self.triage.run(triage_prompt, deps=patient)
         final_output: TriageFinalOutput = triage_result.output
 
         record: MedicalHistoryRecord = {
-            'timestamp': timestamp,
-            'patient_id': patient.patient_id,
-            'path': final_output.final_status,
-            'specialty': final_output.specialty,
-            'report_summary': final_output.final_report.diagnosis
+            "timestamp": timestamp,
+            "patient_id": patient.patient_id,
+            "path": final_output.final_status,
+            "specialty": final_output.specialty,
+            "report_summary": final_output.final_report.diagnosis
             if final_output.final_report
-            else 'N/A',
-            'treatment_summary': final_output.treatment_plan.plan_summary
+            else "N/A",
+            "treatment_summary": final_output.treatment_plan.plan_summary
             if final_output.treatment_plan
-            else 'N/A',
+            else "N/A",
         }
         self.medical_history.append(record)
 
@@ -284,48 +284,48 @@ async def demo_medical_triage():
 
     test_patients: list[TestPatient] = [
         {
-            'complaint': 'Sudden severe chest pain radiating to left arm and shortness of breath.',
-            'patient': PatientInfo(
-                patient_id='P001', age=64, known_conditions=['hypertension']
+            "complaint": "Sudden severe chest pain radiating to left arm and shortness of breath.",
+            "patient": PatientInfo(
+                patient_id="P001", age=64, known_conditions=["hypertension"]
             ),
         },
         {
-            'complaint': 'Intermittent headaches for 2 weeks, mild nausea, no weakness.',
-            'patient': PatientInfo(patient_id='P002', age=34, known_conditions=[]),
+            "complaint": "Intermittent headaches for 2 weeks, mild nausea, no weakness.",
+            "patient": PatientInfo(patient_id="P002", age=34, known_conditions=[]),
         },
         {
-            'complaint': 'Unresponsive patient, suspected multi-organ failure, unknown history.',
-            'patient': PatientInfo(
-                patient_id='P004',
+            "complaint": "Unresponsive patient, suspected multi-organ failure, unknown history.",
+            "patient": PatientInfo(
+                patient_id="P004",
                 age=85,
-                known_conditions=['heart failure', 'renal failure'],
+                known_conditions=["heart failure", "renal failure"],
             ),
         },
         {
-            'complaint': 'Hard to breath and faint every few minutes.',
-            'patient': PatientInfo(patient_id='P003', age=71, known_conditions=[]),
+            "complaint": "Hard to breath and faint every few minutes.",
+            "patient": PatientInfo(patient_id="P003", age=71, known_conditions=[]),
         },
         {
-            'complaint': "Sudden onset of the worst headache of my life, followed by blurry vision and now I can't feel my left leg. I took aspirin an hour ago.",
-            'patient': PatientInfo(
-                patient_id='P003',
+            "complaint": "Sudden onset of the worst headache of my life, followed by blurry vision and now I can't feel my left leg. I took aspirin an hour ago.",
+            "patient": PatientInfo(
+                patient_id="P003",
                 age=71,
-                known_conditions=['Type 2 Diabetes', 'Chronic Migraines'],
+                known_conditions=["Type 2 Diabetes", "Chronic Migraines"],
             ),
         },
     ]
 
     for entry in test_patients:
-        print(f'Processing patient {entry["patient"].patient_id}')
-        result = await system.handle_patient(entry['complaint'], entry['patient'])
-        print('Result:', result)
+        print(f"Processing patient {entry['patient'].patient_id}")
+        result = await system.handle_patient(entry["complaint"], entry["patient"])
+        print("Result:", result)
 
-    print('\nMEDICAL HISTORY SUMMARY:')
+    print("\nMEDICAL HISTORY SUMMARY:")
     for history in system.medical_history:
         print(
-            f'- {history["timestamp"]} | Patient {history["patient_id"]} | Path: {history["path"]}'
+            f"- {history['timestamp']} | Patient {history['patient_id']} | Path: {history['path']}"
         )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(demo_medical_triage())

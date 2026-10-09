@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 import logfire
@@ -26,7 +27,7 @@ from pydantic import BaseModel
 from pydantic_ai import Agent, RunContext
 
 # 'if-token-present' means nothing will be sent (and the example will work) if you don't have logfire configured
-logfire.configure(send_to_logfire='if-token-present')
+logfire.configure(send_to_logfire="if-token-present")
 logfire.instrument_pydantic_ai()
 
 
@@ -34,11 +35,12 @@ logfire.instrument_pydantic_ai()
 class Deps:
     client: AsyncClient
 
-model = os.getenv('PYDANTIC_AI_MODEL', 'google:gemini-3.7-flash')
+
+model = os.getenv("PYDANTIC_AI_MODEL", "google:gemini-3.7-flash")
 weather_agent = Agent(
     model,
     # '請言簡意賅，用一句話回覆即可。' 對某些模型（如 OpenAI）來說就足夠了，但其他模型（如 Anthropic 和 Gemini）需要更多的指引。
-    instructions='請言簡意賅，用一句話回覆即可。',
+    instructions="請言簡意賅，用一句話回覆即可。",
     deps_type=Deps,
     retries=2,
 )
@@ -59,8 +61,8 @@ async def get_lat_lng(ctx: RunContext[Deps], location_description: str) -> LatLn
     """
     # NOTE: 這裡的隨機回應與地點描述無關。
     r = await ctx.deps.client.get(
-        'https://demo-endpoints.pydantic.workers.dev/latlng',
-        params={'location': location_description},
+        "https://demo-endpoints.pydantic.workers.dev/latlng",
+        params={"location": location_description},
     )
     r.raise_for_status()
     return LatLng.model_validate_json(r.content)
@@ -78,19 +80,19 @@ async def get_weather(ctx: RunContext[Deps], lat: float, lng: float) -> dict[str
     # NOTE: 這裡的隨機回應與經緯度無關。
     temp_response, descr_response = await asyncio.gather(
         ctx.deps.client.get(
-            'https://demo-endpoints.pydantic.workers.dev/number',
-            params={'min': 10, 'max': 30},
+            "https://demo-endpoints.pydantic.workers.dev/number",
+            params={"min": 10, "max": 30},
         ),
         ctx.deps.client.get(
-            'https://demo-endpoints.pydantic.workers.dev/weather',
-            params={'lat': lat, 'lng': lng},
+            "https://demo-endpoints.pydantic.workers.dev/weather",
+            params={"lat": lat, "lng": lng},
         ),
     )
     temp_response.raise_for_status()
     descr_response.raise_for_status()
     return {
-        'temperature': f'{temp_response.text} °C',
-        'description': descr_response.text,
+        "temperature": f"{temp_response.text} °C",
+        "description": descr_response.text,
     }
 
 
@@ -99,10 +101,10 @@ async def main():
         logfire.instrument_httpx(client, capture_all=True)
         deps = Deps(client=client)
         result = await weather_agent.run(
-            '台灣的天氣如何？倫敦的天氣又如何？', deps=deps
+            "台灣的天氣如何？倫敦的天氣又如何？", deps=deps
         )
-        print('Response:', result.output)
+        print("Response:", result.output)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())

@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent, ModelRetry, RunContext, format_as_xml
 
 # 'if-token-present' means nothing will be sent (and the example will work) if you don't have logfire configured
-logfire.configure(send_to_logfire='if-token-present')
+logfire.configure(send_to_logfire="if-token-present")
 logfire.instrument_asyncpg()
 logfire.instrument_pydantic_ai()
 
@@ -52,20 +52,20 @@ CREATE TABLE records (
 """
 SQL_EXAMPLES = [
     {
-        'request': 'show me records where foobar is false',
-        'response': "SELECT * FROM records WHERE attributes->>'foobar' = false",
+        "request": "show me records where foobar is false",
+        "response": "SELECT * FROM records WHERE attributes->>'foobar' = false",
     },
     {
-        'request': 'show me records where attributes include the key "foobar"',
-        'response': "SELECT * FROM records WHERE attributes ? 'foobar'",
+        "request": 'show me records where attributes include the key "foobar"',
+        "response": "SELECT * FROM records WHERE attributes ? 'foobar'",
     },
     {
-        'request': 'show me records from yesterday',
-        'response': "SELECT * FROM records WHERE start_timestamp::date > CURRENT_TIMESTAMP - INTERVAL '1 day'",
+        "request": "show me records from yesterday",
+        "response": "SELECT * FROM records WHERE start_timestamp::date > CURRENT_TIMESTAMP - INTERVAL '1 day'",
     },
     {
-        'request': 'show me error records with the tag "foobar"',
-        'response': "SELECT * FROM records WHERE level = 'error' and 'foobar' = ANY(tags)",
+        "request": 'show me error records with the tag "foobar"',
+        "response": "SELECT * FROM records WHERE level = 'error' and 'foobar' = ANY(tags)",
     },
 ]
 
@@ -80,7 +80,7 @@ class Success(BaseModel):
 
     sql_query: Annotated[str, MinLen(1)]
     explanation: str = Field(
-        '', description='Explanation of the SQL query, as markdown'
+        "", description="Explanation of the SQL query, as markdown"
     )
 
 
@@ -92,7 +92,7 @@ class InvalidRequest(BaseModel):
 
 Response: TypeAlias = Success | InvalidRequest
 agent = Agent[Deps, Response](
-    'google:gemini-3-flash-preview',
+    "google:gemini-3-flash-preview",
     # Pass the union members directly: a `Response` type alias isn't yet accepted as a `TypeForm` value (PEP-747)
     output_type=Success | InvalidRequest,
     deps_type=Deps,
@@ -121,14 +121,14 @@ async def validate_output(ctx: RunContext[Deps], output: Response) -> Response:
         return output
 
     # gemini often adds extraneous backslashes to SQL
-    output.sql_query = output.sql_query.replace('\\', '')
-    if not output.sql_query.upper().startswith('SELECT'):
-        raise ModelRetry('Please create a SELECT query')
+    output.sql_query = output.sql_query.replace("\\", "")
+    if not output.sql_query.upper().startswith("SELECT"):
+        raise ModelRetry("Please create a SELECT query")
 
     try:
-        await ctx.deps.conn.execute(f'EXPLAIN {output.sql_query}')
+        await ctx.deps.conn.execute(f"EXPLAIN {output.sql_query}")
     except asyncpg.exceptions.PostgresError as e:
-        raise ModelRetry(f'Invalid query: {e}') from e
+        raise ModelRetry(f"Invalid query: {e}") from e
     else:
         return output
 
@@ -140,7 +140,7 @@ async def main():
         prompt = sys.argv[1]
 
     async with database_connect(
-        'postgresql://postgres:postgres@localhost:54320', 'pydantic_ai_sql_gen'
+        "postgresql://postgres:postgres@localhost:54320", "pydantic_ai_sql_gen"
     ) as conn:
         deps = Deps(conn)
         result = await agent.run(prompt, deps=deps)
@@ -151,20 +151,20 @@ async def main():
 # pyright: reportUnknownVariableType=false
 @asynccontextmanager
 async def database_connect(server_dsn: str, database: str) -> AsyncGenerator[Any, None]:
-    with logfire.span('check and create DB'):
+    with logfire.span("check and create DB"):
         conn = await asyncpg.connect(server_dsn)
         try:
             db_exists = await conn.fetchval(
-                'SELECT 1 FROM pg_database WHERE datname = $1', database
+                "SELECT 1 FROM pg_database WHERE datname = $1", database
             )
             if not db_exists:
-                await conn.execute(f'CREATE DATABASE {database}')
+                await conn.execute(f"CREATE DATABASE {database}")
         finally:
             await conn.close()
 
-    conn = await asyncpg.connect(f'{server_dsn}/{database}')
+    conn = await asyncpg.connect(f"{server_dsn}/{database}")
     try:
-        with logfire.span('create schema'):
+        with logfire.span("create schema"):
             async with conn.transaction():
                 if not db_exists:
                     await conn.execute(
@@ -176,5 +176,5 @@ async def database_connect(server_dsn: str, database: str) -> AsyncGenerator[Any
         await conn.close()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())

@@ -20,19 +20,19 @@ class DatabaseConn:
     sqlite_conn: sqlite3.Connection
 
     async def customer_name(self, *, id: int) -> str | None:
-        res = cur.execute('SELECT name FROM customers WHERE id=?', (id,))
+        res = cur.execute("SELECT name FROM customers WHERE id=?", (id,))
         row = res.fetchone()
         if row:
             return row[0]
         return None
 
     async def customer_balance(self, *, id: int) -> float:
-        res = cur.execute('SELECT balance FROM customers WHERE id=?', (id,))
+        res = cur.execute("SELECT balance FROM customers WHERE id=?", (id,))
         row = res.fetchone()
         if row:
             return row[0]
         else:
-            raise ValueError('Customer not found')
+            raise ValueError("Customer not found")
 
 
 @dataclass
@@ -51,12 +51,12 @@ class SupportOutput(BaseModel):
 
 
 support_agent = Agent(
-    'openai:gpt-5.2',
+    "openai:gpt-5.2",
     deps_type=SupportDependencies,
     output_type=SupportOutput,
     instructions=(
-        'You are a support agent in our bank, give the '
-        'customer support and judge the risk level of their query. '
+        "You are a support agent in our bank, give the "
+        "customer support and judge the risk level of their query. "
         "Reply using the customer's name."
     ),
 )
@@ -74,13 +74,13 @@ async def customer_balance(ctx: RunContext[SupportDependencies]) -> str:
     balance = await ctx.deps.db.customer_balance(
         id=ctx.deps.customer_id,
     )
-    return f'${balance:.2f}'
+    return f"${balance:.2f}"
 
 
-if __name__ == '__main__':
-    with sqlite3.connect(':memory:') as con:
+if __name__ == "__main__":
+    with sqlite3.connect(":memory:") as con:
         cur = con.cursor()
-        cur.execute('CREATE TABLE customers(id, name, balance)')
+        cur.execute("CREATE TABLE customers(id, name, balance)")
         cur.execute("""
             INSERT INTO customers VALUES
                 (123, 'John', 123.45)
@@ -88,13 +88,13 @@ if __name__ == '__main__':
         con.commit()
 
         deps = SupportDependencies(customer_id=123, db=DatabaseConn(sqlite_conn=con))
-        result = support_agent.run_sync('What is my balance?', deps=deps)
+        result = support_agent.run_sync("What is my balance?", deps=deps)
         print(result.output)
         """
         support_advice='Hello John, your current account balance, including pending transactions, is $123.45.' block_card=False risk=1
         """
 
-        result = support_agent.run_sync('I just lost my card!', deps=deps)
+        result = support_agent.run_sync("I just lost my card!", deps=deps)
         print(result.output)
         """
         support_advice="I'm sorry to hear that, John. We are temporarily blocking your card to prevent unauthorized transactions." block_card=True risk=8

@@ -21,12 +21,12 @@ class Deps:
 
 # Create the agent with proper typing
 roulette_agent = Agent(
-    'groq:llama-3.3-70b-versatile',
+    "groq:llama-3.3-70b-versatile",
     deps_type=Deps,
     retries=3,
     output_type=bool,
     instructions=(
-        'Use the `roulette_wheel` function to determine if the customer has won based on the number they bet on.'
+        "Use the `roulette_wheel` function to determine if the customer has won based on the number they bet on."
     ),
 )
 
@@ -34,14 +34,14 @@ roulette_agent = Agent(
 @roulette_agent.tool
 async def roulette_wheel(
     ctx: RunContext[Deps], square: int
-) -> Literal['winner', 'loser']:
+) -> Literal["winner", "loser"]:
     """Check if the bet square is a winner.
 
     Args:
         ctx: The context containing the winning number.
         square: The number the player bet on.
     """
-    return 'winner' if square == ctx.deps.winning_number else 'loser'
+    return "winner" if square == ctx.deps.winning_number else "loser"
 
 
 async def main():
@@ -51,17 +51,17 @@ async def main():
 
     # Run some example bets using streaming
     async with roulette_agent.run_stream(
-        'Put my money on square eighteen', deps=deps
+        "Put my money on square eighteen", deps=deps
     ) as response:
         result = await response.get_output()
-        print('Bet on 18:', result)
+        print("Bet on 18:", result)
 
     async with roulette_agent.run_stream(
-        'I bet five is the winner', deps=deps
+        "I bet five is the winner", deps=deps
     ) as response:
         result = await response.get_output()
-        print('Bet on 5:', result)
+        print("Bet on 5:", result)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())
