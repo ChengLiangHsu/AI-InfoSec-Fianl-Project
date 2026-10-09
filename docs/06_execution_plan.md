@@ -5,10 +5,11 @@
 | 工作項 | [@Kuonaiwei1126](https://github.com/Kuonaiwei1126) (Domain) | [@ChengLiangHsu](https://github.com/ChengLiangHsu) (AI/System) |
 | :--- | :--- | :--- |
 | **Proposal 文件** | Abstract、Introduction、Related Work 領域半、Deep Research | Related Work AI 半、Architecture、Flowchart、Pseudocode |
+| **PoC 原型 (Walking Skeleton)** | 規劃評估問答 Prompt、試驗對話測試案例 | 實作最小 Planner、FastAPI 聊天平台架設與連通測試 |
 | **資料** | 整理 4RL / Concil 影像、GeoJSON、處理表、人工調查；去識別化 | 資料讀取與 CRS 對齊模組 |
 | **影像工具** | 指標定義、干擾規則、ground truth 對齊、驗證 | 小區切割、分割模型（SAM 2.1 / YOLO-seg）、計數工具封裝為 tools |
 | **領域知識庫** | 撰寫 TACTRI / EPPO / 公式條目、藥害分級 | RAG 建置（chunk、embedding、retriever） |
-| **Agent** | 設計推理規則與例外（UTC、CV、單時點） | Planner、tool calling、證據鏈驗證、報告模板 |
+| **Agent** | 設計推理規則與例外（UTC、CV、單時點） | Planner 整合真實工具、tool calling、證據鏈驗證、報告模板 |
 | **實驗** | 定義 baseline 與 metrics、人工結論對照 | 跑實驗、VLM baseline、統計分析 |
 | **交付** | PPT 動機 / 領域 / 結果 | GitHub、README.md、DESIGN.md、Demo video |
 
@@ -16,10 +17,10 @@
 
 | 週次 | 里程碑 |
 | :--- | :--- |
-| **W1–W2（10月中）** | Proposal 文件 + PPT；GitHub repo 與 `DESIGN.md v0` 建立 |
+| **W1–W2（10月中）** | Proposal 文件 + PPT；GitHub repo 與 `DESIGN.md v0` 建立；**AI 代理最小可行性原型（FastAPI 聊天服務 + 最小 Planner）** |
 | **W3–W5** | 資料整理與去識別化；小區切割 + 指標工具可跑 4RL 全部 24 小區 |
 | **W6–W8** | SAM 2.1 / YOLO-seg 分割；干擾遮罩；指標 vs. ground truth 相關分析 |
-| **W9–W11** | 知識庫 + Planner agent + 工具整合；證據鏈輸出 |
+| **W9–W11** | 知識庫 + Planner agent 整合真實工具；證據鏈輸出 |
 | **W12–W13** | 實驗：baseline 比較、Concil 第二案例；撰寫 Results / Limitations |
 | **W14–W15** | Final PPT（> 20 頁）、YouTube demo（> 10 min）、handover package |
 
@@ -29,6 +30,8 @@
 uav-trial-assessor/
 ├── README.md               # 專題介紹、Installation、How to Run、Demo
 ├── DESIGN.md               # Problem → Requirements → Architecture... → Results
+├── server/                 # FastAPI 伺服器與聊天介面
+│   └── app.py
 ├── data/                   # 去識別化小區級資料、GeoJSON 範例（原始影像另置或抽樣）
 ├── knowledge_base/         # TACTRI / EPPO / 公式 / 生育期 Markdown
 ├── tools/                  # 工具庫

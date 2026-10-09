@@ -4,8 +4,12 @@
 
 ---
 
-## 階段一：Proposal 與文件整備 (Phase 1: Proposal & Docs)
+## 階段一：Proposal、可行性原型與文件整備 (Phase 1: Proposal, PoC & Docs)
 
+- [ ] **AI 代理可行性驗證與對話平台原型 (Walking Skeleton PoC)**
+  - [ ] 實作最小 `agent/planner.py`：建立基礎對話邏輯與 Mock 工具呼叫 (Tool Calling) 介面。
+  - [ ] 架設 FastAPI 對話服務 (`server/app.py`)：提供 `/api/chat` 對話端點與極簡 Web/Swagger 測試介面。
+  - [ ] 驗證端到端連通性：使用者提問 $\rightarrow$ FastAPI $\rightarrow$ Planner $\rightarrow$ 模擬工具回傳 $\rightarrow$ 產出回應閉環。
 - [ ] **文獻補正與驗證**
   - [ ] 補齊 [docs/07_references.md](file:///c:/Users/2024h/Downloads/AI-InfoSec-Fianl-Project/docs/07_references.md) 中標記 `※` 的 9 篇文獻完整作者、出處與年份（如 Ref [3, 5, 6, 7, 9, 11, 14, 15, 17, 19, 21, 22]）。
   - [ ] 取得 TACTRI 水稻害蟲/雜草試驗準則與 EPPO PP 1/152(4) 原始文字檔備用。
@@ -15,7 +19,7 @@
   - [ ] 修正 [README.md:L29](file:///c:/Users/2024h/Downloads/AI-InfoSec-Fianl-Project/README.md#L29) 連結至 `docs/07_references.md`（原 `REFERENCE.md` 斷鏈）。
   - [x] 對齊提案成員名單（[@Kuonaiwei1126](https://github.com/Kuonaiwei1126)、[@ChengLiangHsu](https://github.com/ChengLiangHsu)）與分工。
 - [ ] **Proposal PPT 製作**
-  - [ ] 依 [REQUIREMENT.md:L172](file:///c:/Users/2024h/Downloads/AI-InfoSec-Fianl-Project/REQUIREMENT.md#L172) 製作提案簡報（動機、文獻、Research Gap、架構圖、Flowchart、Pseudocode）。
+  - [ ] 依 [REQUIREMENT.md:L172](file:///c:/Users/2024h/Downloads/AI-InfoSec-Fianl-Project/REQUIREMENT.md#L172) 製作提案簡報（動機、文獻、Research Gap、架構圖、Flowchart、Pseudocode、原型展示）。
 
 ---
 
@@ -46,7 +50,8 @@
 - [ ] 建立檢索器（向量檢索或基於規則的條文檢索），供 Agent 查詢法規依據。
 
 ### 4. 智慧代理人與決策引擎 (`agent/`)
-- [ ] **Planner Agent** (`agent/planner.py`)：
+- [ ] **Planner Agent 整合真實工具** (`agent/planner.py`)：
+  - [ ] 將 Phase 1 之 Mock 工具替換為真實影像分析工具與 RAG 檢索器。
   - [ ] 解析自然語言查詢與試驗設計參數，決定工具呼叫順序 (Tool Calling)。
 - [ ] **例外處理與審查邏輯**：
   - [ ] 實作「UTC 對照組壓力檢核」：壓力不足立即中止並回報試驗無效。

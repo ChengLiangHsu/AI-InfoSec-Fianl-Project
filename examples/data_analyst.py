@@ -109,3 +109,6 @@ if __name__ == "__main__":
         deps=deps,
     )
     print(result.output)
+
+# mkdir postgres-data
+# docker run --rm -e POSTGRES_PASSWORD=postgres -p 54320:5432 -v ./postgres-data:/var/lib/postgresql/data pgvector/pgvector:pg17
