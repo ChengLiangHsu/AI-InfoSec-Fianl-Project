@@ -17,3 +17,4 @@
 - [AI Element Vue](https://www.ai-elements-vue.com/)
 - [shadcn-vue](https://shadcn-vue.com/)
 - [shadcn-vue：安裝於 Vite 框架版本](https://shadcn-vue.com/docs/installation/vite)
+- [The Clean Code Blog：The Clean Architecture](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)

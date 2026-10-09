@@ -3,6 +3,7 @@
 本專題提出**無人機田間試驗評估智慧代理人**：以高解析度（$\text{GSD} < 1\text{ cm/px}$）無人機正射影像為輸入，自動完成試驗小區切割、植生指標計算、雜草/病蟲害傷害偵測，並結合作物保護（Crop Protection, CP）領域知識（試驗設計、藥效計算公式、登記試驗規範）推理出各處理的藥效評估與建議，產出可追溯證據的試驗報告草稿。
 
 * **定位**：AI Agent + Domain Knowledge（植保/田間試驗）+ Data Analytics（影像指標 + 統計）+ Real-World Application（農藥登記試驗報告）。
+* **實作架構**：採 `adapter → usecase → entity` 的 Clean Architecture；adapter 隔離 FastAPI、Pydantic AI、SQLite 與影像工具，usecase 編排流程，entity 保存田間試驗規則。詳見[系統設計](05_proposed_scheme.md#clean-architecture-分層)。
 
 ---
 

@@ -7,9 +7,11 @@
 ## 階段一：Proposal、可行性原型與文件整備 (Phase 1: Proposal, PoC & Docs)
 
 - [ ] **AI 代理可行性驗證與對話平台原型 (Walking Skeleton PoC)**
-  - [ ] 實作最小 `agent/planner.py`：建立基礎對話邏輯與 Mock 工具呼叫 (Tool Calling) 介面。
-  - [ ] 架設 FastAPI 對話服務 (`server/app.py`)：提供 `/api/chat` 對話端點與極簡 Web/Swagger 測試介面。
-  - [ ] 驗證端到端連通性：使用者提問 $\rightarrow$ FastAPI $\rightarrow$ Planner $\rightarrow$ 模擬工具回傳 $\rightarrow$ 產出回應閉環。
+  - [ ] 建立 `src/uav_trial_assessor/{entity,usecase,adapter}` 與 `bootstrap.py` 的最小套件骨架。
+  - [ ] 實作 `src/uav_trial_assessor/usecase/run_agent.py` 與 `src/uav_trial_assessor/usecase/port/agent.py`：建立基礎對話流程與 Agent port。
+  - [ ] 實作 `src/uav_trial_assessor/adapter/agent/pydantic_ai_agent.py`：以 Pydantic AI 串接 Mock 工具呼叫 (Tool Calling)。
+  - [ ] 架設 FastAPI HTTP adapter (`src/uav_trial_assessor/adapter/http/app.py`、`src/uav_trial_assessor/adapter/http/router/chat.py`)：提供 `/api/chat` 對話端點與 Swagger 測試介面。
+  - [ ] 驗證端到端連通性：使用者提問 $\rightarrow$ FastAPI adapter $\rightarrow$ `run_agent` usecase $\rightarrow$ Agent adapter $\rightarrow$ 模擬工具回傳 $\rightarrow$ 產出回應閉環。
 - [ ] **文獻補正與驗證**
   - [ ] 補齊 [docs/07_references.md](file:///c:/Users/2024h/Downloads/AI-InfoSec-Fianl-Project/docs/07_references.md) 中標記 `※` 的 9 篇文獻完整作者、出處與年份（如 Ref [3, 5, 6, 7, 9, 11, 14, 15, 17, 19, 21, 22]）。
   - [ ] 取得 TACTRI 水稻害蟲/雜草試驗準則與 EPPO PP 1/152(4) 原始文字檔備用。
@@ -25,40 +27,41 @@
 
 ## 階段二：核心系統與演算法實作 (Phase 2: Core System Implementation)
 
-### 1. 資料處理模組 (`data/` & `tools/`)
+### 1. 資料處理模組 (`data/` 與 `src/uav_trial_assessor/adapter/analysis/`)
 - [ ] **真實試驗資料去識別化**：整理 4RL (水稻捲葉蟲) 與 Concil (水田雜草) 之正射影像、小區 GeoJSON 與調查表。
-- [ ] **座標與幾何對齊模組** (`tools/geo_align.py`)：
+- [ ] **座標與幾何對齊模組** (`src/uav_trial_assessor/adapter/analysis/geo_align.py`)：
   - [ ] 讀取 GeoTIFF 正射影像與 GeoJSON 小區邊界，對齊座標參考系統 (CRS)。
   - [ ] 檢查地面解析度 $\text{GSD} \le 1\text{ cm/px}$，不符合則發出警示。
-- [ ] **小區切割與邊緣校正** (`tools/plot_segmentation.py`)：
+- [ ] **小區切割與邊緣校正** (`src/uav_trial_assessor/adapter/analysis/plot_segmentation.py`)：
   - [ ] 實現依小區多邊形裁切 GeoTIFF 並保留 $1\text{ m}$ 外緣緩衝區 (`rectify`)。
 
-### 2. 確定性影像分析引擎 (`tools/`)
-- [ ] **干擾遮罩產生器** (`tools/interference_mask.py`)：
+### 2. 確定性影像分析引擎 (`src/uav_trial_assessor/adapter/analysis/`)
+- [ ] **干擾遮罩產生器** (`src/uav_trial_assessor/adapter/analysis/interference_mask.py`)：
   - [ ] 建立青苔、水面反光、深色陰影與鄰區飄移遮罩。
-- [ ] **植生與特徵指標計算** (`tools/indices.py`)：
+- [ ] **植生與特徵指標計算** (`src/uav_trial_assessor/adapter/analysis/vegetation_indices.py`)：
   - [ ] 實作 ExG, VARI, NDRE 與亮度分離演算法。
-- [ ] **目標物分割與計數** (`tools/segment_sam.py` & `tools/count_template.py`)：
+- [ ] **目標物分割與計數** (`src/uav_trial_assessor/adapter/analysis/rasterio_analysis_engine.py`)：
   - [ ] 串接 SAM 2.1 zero-shot 分割推論。
   - [ ] 兩方向模板比對計數（針對育苗箱/特定受害特徵）。
-- [ ] **統計與藥效計算工具** (`tools/stats.py`)：
+- [ ] **領域藥效計算規則** (`src/uav_trial_assessor/entity/assessment.py`)：
   - [ ] 實作 Abbott 與 Henderson-Tilton 防治率公式。
+- [ ] **統計分析 adapter** (`src/uav_trial_assessor/adapter/analysis/statistics.py`)：
   - [ ] 實作單因子/雙因子 ANOVA、Tukey HSD 事後檢定與變異係數 (CV) 檢核。
 
 ### 3. 領域知識庫與 RAG 模組 (`knowledge_base/`)
 - [ ] 整理 TACTRI 登記試驗規範、EPPO 判定門檻為結構化 Markdown/JSON。
-- [ ] 建立檢索器（向量檢索或基於規則的條文檢索），供 Agent 查詢法規依據。
+- [ ] 建立 `src/uav_trial_assessor/adapter/knowledge/vector_retriever.py`（向量檢索或規則檢索），實作 usecase 所需的知識檢索 port。
 
-### 4. 智慧代理人與決策引擎 (`agent/`)
-- [ ] **Planner Agent 整合真實工具** (`agent/planner.py`)：
+### 4. 智慧代理人與決策引擎 (`src/uav_trial_assessor/usecase/` 與 `src/uav_trial_assessor/adapter/agent/`)
+- [ ] **Planner Agent 整合真實工具** (`src/uav_trial_assessor/usecase/run_agent.py`、`src/uav_trial_assessor/adapter/agent/pydantic_ai_agent.py`)：
   - [ ] 將 Phase 1 之 Mock 工具替換為真實影像分析工具與 RAG 檢索器。
   - [ ] 解析自然語言查詢與試驗設計參數，決定工具呼叫順序 (Tool Calling)。
 - [ ] **例外處理與審查邏輯**：
-  - [ ] 實作「UTC 對照組壓力檢核」：壓力不足立即中止並回報試驗無效。
-  - [ ] 實作「CV 變異門檻檢核」：變異過大時標記警告。
-- [ ] **證據鏈驗證機制** (`agent/evidence.py`)：
+  - [ ] 在 `src/uav_trial_assessor/entity/assessment.py` 實作「UTC 對照組壓力檢核」：壓力不足立即中止並回報試驗無效。
+  - [ ] 在 `src/uav_trial_assessor/entity/assessment.py` 實作「CV 變異門檻檢核」：變異過大時標記警告。
+- [ ] **證據鏈驗證機制** (`src/uav_trial_assessor/usecase/verify_evidence.py`)：
   - [ ] 檢查每項候選結論是否皆具備對應之小區 ROI 影像、指標數據與法規條文。
-- [ ] **報告生成器** (`agent/report.py`)：
+- [ ] **報告生成器** (`src/uav_trial_assessor/usecase/generate_report.py`、`src/uav_trial_assessor/adapter/report/docx_renderer.py`)：
   - [ ] 自動彙整推論結果、圖表與統計值，產出 Markdown/DOCX 試驗報告草稿。
 
 ### 5. 資訊安全與資料可信防護模組 (InfoSec & Trustworthy AI)
