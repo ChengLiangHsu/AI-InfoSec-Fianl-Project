@@ -1,3 +1,6 @@
 - [AIHero](https://www.aihero.dev/)
 - [VitePress](https://vitepress.dev/)
+- [DroneDeploy](https://www.dronedeploy.com)
 - [興大 iLearning](https://lms2020.nchu.edu.tw/)
+- [農業知識入口網](https://kmweb.moa.gov.tw/)
+- [農藥資訊服務網](https://pesticide.aphia.gov.tw/information/)
