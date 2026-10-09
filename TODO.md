@@ -13,7 +13,7 @@
   - [ ] 依 [REQUIREMENT.md:L190-191](file:///c:/Users/2024h/Downloads/AI-InfoSec-Fianl-Project/REQUIREMENT.md#L190-191) 建立根目錄 `DESIGN.md`，設定核心說明路徑架構骨架。
 - [ ] **修正專案導引文件**
   - [ ] 修正 [README.md:L29](file:///c:/Users/2024h/Downloads/AI-InfoSec-Fianl-Project/README.md#L29) 連結至 `docs/07_references.md`（原 `REFERENCE.md` 斷鏈）。
-  - [x] 對齊提案成員名單（@Kuonaiwei1126、@ChengLiangHsu）與分工。
+  - [x] 對齊提案成員名單（[@Kuonaiwei1126](https://github.com/Kuonaiwei1126)、[@ChengLiangHsu](https://github.com/ChengLiangHsu)）與分工。
 - [ ] **Proposal PPT 製作**
   - [ ] 依 [REQUIREMENT.md:L172](file:///c:/Users/2024h/Downloads/AI-InfoSec-Fianl-Project/REQUIREMENT.md#L172) 製作提案簡報（動機、文獻、Research Gap、架構圖、Flowchart、Pseudocode）。
 

@@ -10,8 +10,8 @@
 
 | 角色 | 成員背景 | 負責面向 |
 | :--- | :--- | :--- |
-| **Domain Lead（農業/植保）** | @Kuonaiwei1126 - Bayer 產品開發、TACTRI 登記試驗、UAV 遙測 | 試驗資料與 ground truth、領域知識庫、評估指標設計、結果驗證 |
-| **AI/System Lead（資訊）** | @ChengLiangHsu - 資訊背景 | Agent 架構、影像模型（分割/偵測）、Tool/RAG 整合、GitHub、DESIGN.md |
+| **Domain Lead（農業/植保）** | [@Kuonaiwei1126](https://github.com/Kuonaiwei1126) - Bayer 產品開發、TACTRI 登記試驗、UAV 遙測 | 試驗資料與 ground truth、領域知識庫、評估指標設計、結果驗證 |
+| **AI/System Lead（資訊）** | [@ChengLiangHsu](https://github.com/ChengLiangHsu) - 資訊背景 | Agent 架構、影像模型（分割/偵測）、Tool/RAG 整合、GitHub、DESIGN.md |
 
 ### 手上可用的真實資料
 > 皆為實際田間試驗 UAV 正射影像，$\text{GSD } 0.85 \sim 0.9\text{ cm}$
