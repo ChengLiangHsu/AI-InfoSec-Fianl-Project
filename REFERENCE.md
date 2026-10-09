@@ -13,3 +13,7 @@
 - [Google AI Studio](https://aistudio.google.com/)
 - [Pydantic AI：配置 Google Gemini 模型](https://pydantic.dev/docs/ai/models/google/#api-key-gemini-api)
 - [Gradio](https://gradio.app/)
+- [Vue.js](https://vuejs.org/)
+- [AI Element Vue](https://www.ai-elements-vue.com/)
+- [shadcn-vue](https://shadcn-vue.com/)
+- [shadcn-vue：安裝於 Vite 框架版本](https://shadcn-vue.com/docs/installation/vite)

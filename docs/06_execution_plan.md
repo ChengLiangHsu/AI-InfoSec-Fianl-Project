@@ -24,7 +24,7 @@
 | **W12–W13** | 實驗：baseline 比較、Concil 第二案例；撰寫 Results / Limitations |
 | **W14–W15** | Final PPT（> 20 頁）、YouTube demo（> 10 min）、handover package |
 
-### GitHub Repository 建議結構
+### GitHub Repository 結構
 
 ```text
 uav-trial-assessor/
