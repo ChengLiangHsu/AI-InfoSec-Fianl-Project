@@ -52,4 +52,4 @@
 * **Existing Research**: UAV 影像可比目測更精確地評估藥效/藥害 [13, 14, 15]；SAM / YOLO-seg 可分割雜草與植株 [6, 7, 20]；農業 VLM 與 agent 架構已出現 [1, 2, 3]。
 * **Limitations**: 影像研究停在指標與相關分析，不處理試驗設計與規範；分割模型需標註且不可解釋；VLM 對 UAV 尺度與雜草辨識仍弱，且不懂試驗結構；agent 研究集中於單株病害診斷。
 * **Research Gap**: 沒有一個系統同時做到「讀懂試驗設計 $\rightarrow$ 從 $< 1\text{ cm}$ GSD 影像抽取小區級證據 $\rightarrow$ 依藥效規範推理 $\rightarrow$ 輸出可追溯結論」。
-* **Our Project**: UAV Field-Trial Assessor Agent，以工具化的影像分析鏈 + 規範知識庫 + LLM 推理，填補上述缺口，並以兩個真實試驗驗證。
+* **本專案 (Our Project)**：無人機田間試驗評估智慧代理人，以工具化的影像分析鏈 + 規範知識庫 + LLM 推理，填補上述缺口，並以兩個真實試驗驗證。

@@ -72,7 +72,7 @@ flowchart TD
 ### 5.3 Pseudocode
 
 ```python
-Algorithm 1: UAV Field-Trial Assessor Agent
+Algorithm 1: 無人機田間試驗評估智慧代理人
 Input:  User query Q, orthomosaic I (GeoTIFF), plot boundaries P (GeoJSON),
         trial design D (treatments, blocks, DAA), optional ground truth G
 Output: Efficacy assessment report R with evidence chain E

@@ -1,13 +1,6 @@
-# 期末專題提案：UAV Field-Trial Assessor Agent
-
-**日期：** Oct 9, 2026  
-**提案人：** @Leo  
-
----
-
 ## 專題概述
 
-本專題提出 **UAV Field-Trial Assessor Agent（無人機田間試驗評估智慧代理人）**：以高解析度（$\text{GSD} < 1\text{ cm}$）無人機正射影像為輸入，自動完成試驗小區切割、植生指標計算、雜草/病蟲害傷害偵測，並結合作物保護（Crop Protection, CP）領域知識（試驗設計、藥效計算公式、登記試驗規範）推理出各處理的藥效評估與建議，產出可追溯證據的試驗報告草稿。
+本專題提出**無人機田間試驗評估智慧代理人**：以高解析度（$\text{GSD} < 1\text{ cm/px}$）無人機正射影像為輸入，自動完成試驗小區切割、植生指標計算、雜草/病蟲害傷害偵測，並結合作物保護（Crop Protection, CP）領域知識（試驗設計、藥效計算公式、登記試驗規範）推理出各處理的藥效評估與建議，產出可追溯證據的試驗報告草稿。
 
 * **定位**：AI Agent + Domain Knowledge（植保/田間試驗）+ Data Analytics（影像指標 + 統計）+ Real-World Application（農藥登記試驗報告）。
 

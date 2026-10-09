@@ -8,7 +8,7 @@
   **Research gap**：缺少一個能讀懂試驗設計、從高解析度 UAV 影像抽取小區級證據、再依領域規則推理出藥效結論的 Domain AI Agent。
 
 * **C. Cure (Proposed Solution)**  
-  為了解決上述問題，本專題提出 **UAV Field-Trial Assessor Agent**：一個以高解析度 UAV 正射影像為輸入、以作物保護試驗領域知識為推理依據的田間試驗評估智慧代理人。
+  為了解決上述問題，本專題提出**無人機田間試驗評估智慧代理人**：一個以高解析度 UAV 正射影像為輸入、以作物保護試驗領域知識為推理依據的智慧代理人。
 
 * **D. Development (Method)**  
   系統由 Planner Agent 解析使用者查詢與試驗設計檔（GeoJSON 小區界線 + Excel 處理表），呼叫工具鏈：
