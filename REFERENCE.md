@@ -6,6 +6,8 @@
 - [農藥資訊服務網](https://pesticide.aphia.gov.tw/information/)
 - [Youtube：原来写一个 AI Agent 这么简单](https://www.youtube.com/watch?v=OAE1EWP8dIQ)
 - [Pydantic AI](https://pydantic.dev/docs/ai/overview/)
+- [Pydantic AI：官方範例](https://pydantic.dev/docs/ai/examples/setup/)
 - [Pydantic AI：建構語音 AI Agent](https://pydantic.dev/docs/ai/overview/#:~:text=Put%20the%20same%20agent%20on%20a%20live%20voice%20session)
 - [uv](https://docs.astral.sh/uv/)
 - [uv：對專案進行格式化](https://docs.astral.sh/uv/reference/cli/#uv-tree)
+- [Google AI Studio](https://aistudio.google.com/)
