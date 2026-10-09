@@ -13,7 +13,7 @@
   - [ ] 依 [REQUIREMENT.md:L190-191](file:///c:/Users/2024h/Downloads/AI-InfoSec-Fianl-Project/REQUIREMENT.md#L190-191) 建立根目錄 `DESIGN.md`，設定核心說明路徑架構骨架。
 - [ ] **修正專案導引文件**
   - [ ] 修正 [README.md:L29](file:///c:/Users/2024h/Downloads/AI-InfoSec-Fianl-Project/README.md#L29) 連結至 `docs/07_references.md`（原 `REFERENCE.md` 斷鏈）。
-  - [ ] 對齊提案成員名單（郭乃瑋、許承諒）與分工。
+  - [x] 對齊提案成員名單（@Kuonaiwei1126、@ChengLiangHsu）與分工。
 - [ ] **Proposal PPT 製作**
   - [ ] 依 [REQUIREMENT.md:L172](file:///c:/Users/2024h/Downloads/AI-InfoSec-Fianl-Project/REQUIREMENT.md#L172) 製作提案簡報（動機、文獻、Research Gap、架構圖、Flowchart、Pseudocode）。
 
@@ -55,6 +55,17 @@
   - [ ] 檢查每項候選結論是否皆具備對應之小區 ROI 影像、指標數據與法規條文。
 - [ ] **報告生成器** (`agent/report.py`)：
   - [ ] 自動彙整推論結果、圖表與統計值，產出 Markdown/DOCX 試驗報告草稿。
+
+### 5. 資訊安全與資料可信防護模組 (InfoSec & Trustworthy AI)
+> 契合「人工智慧與資訊安全」課程主軸之安全機制與可信 AI 實作
+- [ ] **試驗資料去識別化與營業秘密保護**：
+  - [ ] 實作座標模糊化/平移與敏感代碼（未上市藥劑編號、試驗地敏感 GPS）脫敏保護腳本。
+  - [ ] 確保公開於 GitHub 或測試環境之資料集不洩漏機敏商業資訊。
+- [ ] **影像資料完整性與防偽校驗 (Data Integrity)**：
+  - [ ] 實作 GeoTIFF 原始正射影像與標註檔之雜湊簽章 (SHA-256) 檢驗，防止數據被非授權竄改或污染。
+- [ ] **模型對抗防禦與幻覺攔截 (Security & Anti-Hallucination)**：
+  - [ ] 防禦 Prompt Injection（惡意偽造試驗指令）與異常影像輸入檢測。
+  - [ ] 強制執行「可審查證據鏈繫結」：無對應影像 ROI 與公式數據之結論強制拒絕輸出，確保報告具備不可否認性 (Non-repudiation) 與真實性。
 
 ---
 

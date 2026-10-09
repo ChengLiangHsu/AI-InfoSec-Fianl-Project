@@ -2,7 +2,7 @@
 
 ### 分工表
 
-| 工作項 | 郭乃瑋 (Domain) | 許承諒 (AI/System) |
+| 工作項 | @Kuonaiwei1126 (Domain) | @ChengLiangHsu (AI/System) |
 | :--- | :--- | :--- |
 | **Proposal 文件** | Abstract、Introduction、Related Work 領域半、Deep Research | Related Work AI 半、Architecture、Flowchart、Pseudocode |
 | **資料** | 整理 4RL / Concil 影像、GeoJSON、處理表、人工調查；去識別化 | 資料讀取與 CRS 對齊模組 |
