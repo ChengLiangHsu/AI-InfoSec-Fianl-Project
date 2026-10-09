@@ -1,12 +1,21 @@
 from __future__ import annotations as _annotations
 
+"""
+展示如何將 Weather Agent 封裝成 Gradio 互動式介面。使用者可以直接在瀏覽器中與代理互動，查詢天氣資訊。
+
+執行方式：
+
+    uv run examples/weather_agent_gradio.py
+
+執行後會啟動一個本地 Web 伺服器（通常在 http://localhost:7860），你可以透過瀏覽器打開該頁面進行測試。
+"""
 import json
 
 from httpx import AsyncClient
 from pydantic import BaseModel
 
 from pydantic_ai import ToolCallPart, ToolReturnPart
-from pydantic_ai_examples.weather_agent import Deps, weather_agent
+from weather_agent import Deps, weather_agent
 
 try:
     import gradio as gr

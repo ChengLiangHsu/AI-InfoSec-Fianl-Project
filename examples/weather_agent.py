@@ -1,19 +1,23 @@
-"""Example of Pydantic AI with multiple tools which the LLM needs to call in turn to answer a question.
+"""
+使用 Pydantic AI 處理需要依序調用多個工具來回答問題的場景。
 
-In this case the idea is a "weather" agent — the user can ask for the weather in multiple cities,
-the agent will use the `get_lat_lng` tool to get the latitude and longitude of the locations, then use
-the `get_weather` tool to get the weather.
+在這個範例中，我們建立了一個「天氣」代理（agent）。使用者可以查詢多個城市的的天氣，
+該代理會先使用 `get_lat_lng` 工具取得地點的經緯度，然後再使用 `get_weather` 工具取得實際的天氣資訊。
 
-Run with:
+執行方式：
 
-    uv run -m pydantic_ai_examples.weather_agent
+    uv run examples/weather_agent.py
 """
 
 from __future__ import annotations as _annotations
 
 import asyncio
+import os
 from dataclasses import dataclass
 from typing import Any
+
+from dotenv import load_dotenv
+load_dotenv()
 
 import logfire
 from httpx import AsyncClient
@@ -30,12 +34,11 @@ logfire.instrument_pydantic_ai()
 class Deps:
     client: AsyncClient
 
-
+model = os.getenv('PYDANTIC_AI_MODEL', 'google:gemini-3.7-flash')
 weather_agent = Agent(
-    'openai:gpt-5-mini',
-    # 'Be concise, reply with one sentence.' is enough for some models (like openai) to use
-    # the below tools appropriately, but others like anthropic and gemini require a bit more direction.
-    instructions='Be concise, reply with one sentence.',
+    model,
+    # '請言簡意賅，用一句話回覆即可。' 對某些模型（如 OpenAI）來說就足夠了，但其他模型（如 Anthropic 和 Gemini）需要更多的指引。
+    instructions='請言簡意賅，用一句話回覆即可。',
     deps_type=Deps,
     retries=2,
 )
@@ -48,13 +51,13 @@ class LatLng(BaseModel):
 
 @weather_agent.tool
 async def get_lat_lng(ctx: RunContext[Deps], location_description: str) -> LatLng:
-    """Get the latitude and longitude of a location.
+    """取得地點的經緯度。
 
     Args:
-        ctx: The context.
-        location_description: A description of a location.
+        ctx: 執行上下文
+        location_description: 地點的描述。
     """
-    # NOTE: the response here will be random, and is not related to the location description.
+    # NOTE: 這裡的隨機回應與地點描述無關。
     r = await ctx.deps.client.get(
         'https://demo-endpoints.pydantic.workers.dev/latlng',
         params={'location': location_description},
@@ -65,14 +68,14 @@ async def get_lat_lng(ctx: RunContext[Deps], location_description: str) -> LatLn
 
 @weather_agent.tool
 async def get_weather(ctx: RunContext[Deps], lat: float, lng: float) -> dict[str, Any]:
-    """Get the weather at a location.
+    """取得指定經緯度的天氣資訊。
 
     Args:
-        ctx: The context.
-        lat: Latitude of the location.
-        lng: Longitude of the location.
+        ctx: 執行上下文
+        lat: 緯度
+        lng: 經度
     """
-    # NOTE: the responses here will be random, and are not related to the lat and lng.
+    # NOTE: 這裡的隨機回應與經緯度無關。
     temp_response, descr_response = await asyncio.gather(
         ctx.deps.client.get(
             'https://demo-endpoints.pydantic.workers.dev/number',
@@ -96,7 +99,7 @@ async def main():
         logfire.instrument_httpx(client, capture_all=True)
         deps = Deps(client=client)
         result = await weather_agent.run(
-            'What is the weather like in London and in Wiltshire?', deps=deps
+            '台灣的天氣如何？倫敦的天氣又如何？', deps=deps
         )
         print('Response:', result.output)
 
