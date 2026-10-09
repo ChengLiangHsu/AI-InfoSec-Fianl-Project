@@ -1,15 +1,17 @@
-"""Example demonstrating how to use Pydantic AI to generate SQL queries based on user input.
+"""示範如何使用 Pydantic AI，根據使用者的輸入生成 SQL 查詢。
 
-Run postgres with:
+執行方式：
 
     mkdir postgres-data
     docker run --rm -e POSTGRES_PASSWORD=postgres -p 54320:5432 postgres
 
-Run with:
-
-    uv run -m pydantic_ai_examples.sql_gen "show me logs from yesterday, with level 'error'"
+    uv run examples/sql_gen.py "給我看昨天 level 為 error 的 log"
 """
 
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 import asyncio
 import sys
 from collections.abc import AsyncGenerator
@@ -52,19 +54,19 @@ CREATE TABLE records (
 """
 SQL_EXAMPLES = [
     {
-        "request": "show me records where foobar is false",
+        "request": "給我 foobar 為 false 的記錄",
         "response": "SELECT * FROM records WHERE attributes->>'foobar' = false",
     },
     {
-        "request": 'show me records where attributes include the key "foobar"',
+        "request": '給我包含 "foobar" 鍵的記錄',
         "response": "SELECT * FROM records WHERE attributes ? 'foobar'",
     },
     {
-        "request": "show me records from yesterday",
+        "request": "給我昨天生成的記錄",
         "response": "SELECT * FROM records WHERE start_timestamp::date > CURRENT_TIMESTAMP - INTERVAL '1 day'",
     },
     {
-        "request": 'show me error records with the tag "foobar"',
+        "request": '給我帶有 "foobar" 標籤的錯誤記錄',
         "response": "SELECT * FROM records WHERE level = 'error' and 'foobar' = ANY(tags)",
     },
 ]
@@ -76,23 +78,22 @@ class Deps:
 
 
 class Success(BaseModel):
-    """Response when SQL could be successfully generated."""
+    """成功生成 SQL 的回應。"""
 
     sql_query: Annotated[str, MinLen(1)]
-    explanation: str = Field(
-        "", description="Explanation of the SQL query, as markdown"
-    )
+    explanation: str = Field("", description="SQL 查詢的解釋，以 markdown 格式呈現")
 
 
 class InvalidRequest(BaseModel):
-    """Response the user input didn't include enough information to generate SQL."""
+    """使用者輸入不足以生成 SQL 的回應。"""
 
     error_message: str
 
 
 Response: TypeAlias = Success | InvalidRequest
+model = os.getenv("PYDANTIC_AI_MODEL", "google:gemini-3.7-flash")
 agent = Agent[Deps, Response](
-    "google:gemini-3-flash-preview",
+    model,
     # Pass the union members directly: a `Response` type alias isn't yet accepted as a `TypeForm` value (PEP-747)
     output_type=Success | InvalidRequest,
     deps_type=Deps,
@@ -102,14 +103,13 @@ agent = Agent[Deps, Response](
 @agent.instructions
 async def instructions() -> str:
     return f"""\
-Given the following PostgreSQL table of records, your job is to
-write a SQL query that suits the user's request.
+根據以下 PostgreSQL 的記錄表，您的工作是編寫 SQL 查詢，以滿足使用者的要求。
 
-Database schema:
+資料庫結構：
 
 {DB_SCHEMA}
 
-today's date = {date.today()}
+今天是：{date.today()}
 
 {format_as_xml(SQL_EXAMPLES)}
 """
@@ -123,19 +123,19 @@ async def validate_output(ctx: RunContext[Deps], output: Response) -> Response:
     # gemini often adds extraneous backslashes to SQL
     output.sql_query = output.sql_query.replace("\\", "")
     if not output.sql_query.upper().startswith("SELECT"):
-        raise ModelRetry("Please create a SELECT query")
+        raise ModelRetry("請生成 SELECT 查詢")
 
     try:
         await ctx.deps.conn.execute(f"EXPLAIN {output.sql_query}")
     except asyncpg.exceptions.PostgresError as e:
-        raise ModelRetry(f"Invalid query: {e}") from e
+        raise ModelRetry(f"SQL 查詢無效: {e}") from e
     else:
         return output
 
 
 async def main():
     if len(sys.argv) == 1:
-        prompt = 'show me logs from yesterday, with level "error"'
+        prompt = '顯示給我昨天帶有 "error" 級別的日誌'
     else:
         prompt = sys.argv[1]
 
@@ -164,7 +164,7 @@ async def database_connect(server_dsn: str, database: str) -> AsyncGenerator[Any
 
     conn = await asyncpg.connect(f"{server_dsn}/{database}")
     try:
-        with logfire.span("create schema"):
+        with logfire.span("建立資料表"):
             async with conn.transaction():
                 if not db_exists:
                     await conn.execute(
