@@ -7,11 +7,13 @@
 ## 階段一：Proposal、可行性原型與文件整備 (Phase 1: Proposal, PoC & Docs)
 
 - [ ] **AI 代理可行性驗證與對話平台原型 (Walking Skeleton PoC)**
-  - [ ] 建立 `src/uav_trial_assessor/{entity,usecase,adapter}` 與 `bootstrap.py` 的最小套件骨架。
-  - [ ] 實作 `src/uav_trial_assessor/usecase/run_agent.py` 與 `src/uav_trial_assessor/usecase/port/agent.py`：建立基礎對話流程與 Agent port。
-  - [ ] 實作 `src/uav_trial_assessor/adapter/agent/pydantic_ai_agent.py`：以 Pydantic AI 串接 Mock 工具呼叫 (Tool Calling)。
-  - [ ] 架設 FastAPI HTTP adapter (`src/uav_trial_assessor/adapter/http/app.py`、`src/uav_trial_assessor/adapter/http/router/chat.py`)：提供 `/api/chat` 對話端點與 Swagger 測試介面。
-  - [ ] 驗證端到端連通性：使用者提問 $\rightarrow$ FastAPI adapter $\rightarrow$ `run_agent` usecase $\rightarrow$ Agent adapter $\rightarrow$ 模擬工具回傳 $\rightarrow$ 產出回應閉環。
+  - 決策依據：[docs/walking-skeleton.md](docs/walking-skeleton.md)；詞彙：[GLOSSARY.md](GLOSSARY.md)。
+  - [ ] 後端骨架：`usecase/` 定義 port，`adapter/` 下分 gateway、controller、presenter；取代 `src/main.py` 範本。
+  - [ ] Gemini 設定：`load_dotenv()` 讀取 `GOOGLE_API_KEY`、`GEMINI_MODEL`；`.env` 加入 `.gitignore`；無 key 時用 `TestModel`。
+  - [ ] 一個 Mock 工具 `add_numbers(a, b)`，驗證 Tool Calling。
+  - [ ] `/api/chat` 串流端點（Vercel AI 協定），FastAPI `CORSMiddleware` 只允許 `http://localhost:5173`。
+  - [ ] 前端：一個聊天頁（AI Elements + `ai` 的 `Chat`），取代 `HelloWorld`。
+  - [ ] 驗證：`TestModel` 離線可回應；設 key 後瀏覽器問「3 加 5 是多少」可見工具呼叫與串流回答。
 - [ ] **文獻補正與驗證**
   - [ ] 補齊 [docs/07_references.md](file:///c:/Users/2024h/Downloads/AI-InfoSec-Fianl-Project/docs/07_references.md) 中標記 `※` 的 9 篇文獻完整作者、出處與年份（如 Ref [3, 5, 6, 7, 9, 11, 14, 15, 17, 19, 21, 22]）。
   - [ ] 取得 TACTRI 水稻害蟲/雜草試驗準則與 EPPO PP 1/152(4) 原始文字檔備用。
