@@ -19,3 +19,8 @@
 - [shadcn-vue：安裝於 Vite 框架版本](https://shadcn-vue.com/docs/installation/vite)
 - [The Clean Code Blog：The Clean Architecture](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)
 - [FastAPI](https://fastapi.tiangolo.com/)
+- [Pytest：測試環境移除環境變數](https://docs.pytest.org/en/stable/reference/reference.html#pytest.MonkeyPatch.delenv)
+- [Pytest：利用夾具函式進行依賴注入](https://docs.pytest.org/en/stable/how-to/fixtures.html#requesting-fixtures)
+- [Pytest：在夾具中進行假資料設置](https://docs.pytest.org/en/stable/how-to/monkeypatch.html#:~:text=This%20mock%20can%20be%20shared%20across%20tests%20using%20a%20fixture)
+- [Python：dataclass 預設欄位的可變對象，避免記憶體空間衝突](https://docs.python.org/3/library/dataclasses.html#default-factory-functions)
+- [Python：dataclass 凍結模式](https://docs.python.org/3/library/dataclasses.html#frozen-instances)
