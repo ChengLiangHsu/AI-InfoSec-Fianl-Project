@@ -4,31 +4,28 @@
 
 | 項目 | 結論 |
 | :--- | :--- |
-| 範圍 | 前後端最小 AI Agent 聊天介面，程式碼越少越好；暫不處理田間試驗領域 |
-| 規則 | Agent 只能引用 Tool 的回傳結果，不能自行產生數值 |
+| 範圍 | 前後端最小聊天介面，**不串接 AI**，只驗證能聊天；程式碼越少越好；暫不處理田間試驗領域 |
+| 回應 | 固定一句話的假回應，由假 gateway 產生；一次回傳 JSON，不串流 |
+| 實作順序 | 由內往外：entity → usecase → adapter → CORS → 前端（#2 到 #7） |
+| Entity | `Message`、`Conversation` 為實際的 frozen dataclass（`src/entity/`） |
 | 分層 | port 放 `usecase/`；`adapter/` 下有 gateway（實作 port）、controller（呼叫 usecase）、presenter（回應格式） |
-| 串流 | 加入串流（Vercel AI 協定） |
 | 狀態 | 後端無狀態，前端每次送出完整訊息，不存資料庫 |
-| 模型 | Gemini；`GEMINI_MODEL`（預設 `gemini-2.5-flash`）與 `GOOGLE_API_KEY` 由 `load_dotenv()` 載入；`.env` 加入 `.gitignore`；沒有 key 時用 `TestModel` |
-| 工具 | 一個 `add_numbers(a, b)` |
-| 前端 | 一個聊天頁，AI Elements + `ai` 的 `Chat`，取代 `HelloWorld` |
+| 前端 | 一個聊天頁，AI Elements + `fetch`，取代 `HelloWorld`（不串流，不用 `ai` 的 `Chat`） |
 | CORS | FastAPI `CORSMiddleware`，只允許 `http://localhost:5173` |
 | 現有程式 | `src/main.py` 範本可直接取代 |
+| 測試 | 暫不寫自動化測試，以 `curl` 與瀏覽器手動驗證 |
 
 ## 完成標準
 
-1. 沒設 key 時，用 `TestModel` 讓後端回應 `/api/chat`。
-2. 設了 `GOOGLE_API_KEY` 時，在瀏覽器問「3 加 5 是多少」，畫面顯示工具呼叫與串流回答。
-3. `.env` 沒被 git 追蹤。
+1. 後端啟動後，`POST /api/chat` 回傳假回應。
+2. 瀏覽器可送出問題並看到假回應，可持續追問，重新整理後清空。
 
-不寫自動化測試，除非另外要求。
+## 延後至 #8
 
-## 待決（實作時提醒）
-
-- 是否以 `VercelAIAdapter` 作為 controller 與 presenter 的實作。
-- 若是，`Message` 與 `Conversation` 是否仍需成為實際類別，或只保留為詞彙。
-  - 依據：`.venv\Lib\site-packages\pydantic_ai\ui\vercel_ai\_adapter.py` 存在該 adapter。
+- Gemini（`GEMINI_MODEL`、`GOOGLE_API_KEY`、`load_dotenv()`、`.env` 不被追蹤）、`TestModel`、Tool `add_numbers`、串流（Vercel AI 協定）。
+- 規則：Agent 只能引用 Tool 的回傳結果，不能自行產生數值。
+- 待決：是否使用 `VercelAIAdapter`（尚未決定）。
 
 ## ADR
 
-暫不建立。上述待決項決定後再評估。
+暫不建立。

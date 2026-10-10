@@ -6,14 +6,15 @@
 
 ## 階段一：Proposal、可行性原型與文件整備 (Phase 1: Proposal, PoC & Docs)
 
-- [ ] **AI 代理可行性驗證與對話平台原型 (Walking Skeleton PoC)**
+- [ ] **對話平台原型 (Walking Skeleton，假回應，不串接 AI)**（[#1](https://github.com/ChengLiangHsu/AI-InfoSec-Fianl-Project/issues/1)）
   - 決策依據：[docs/walking-skeleton.md](docs/walking-skeleton.md)；詞彙：[GLOSSARY.md](GLOSSARY.md)。
-  - [ ] 後端骨架：`usecase/` 定義 port，`adapter/` 下分 gateway、controller、presenter；取代 `src/main.py` 範本。
-  - [ ] Gemini 設定：`load_dotenv()` 讀取 `GOOGLE_API_KEY`、`GEMINI_MODEL`；`.env` 加入 `.gitignore`；無 key 時用 `TestModel`。
-  - [ ] 一個 Mock 工具 `add_numbers(a, b)`，驗證 Tool Calling。
-  - [ ] `/api/chat` 串流端點（Vercel AI 協定），FastAPI `CORSMiddleware` 只允許 `http://localhost:5173`。
-  - [ ] 前端：一個聊天頁（AI Elements + `ai` 的 `Chat`），取代 `HelloWorld`。
-  - [ ] 驗證：`TestModel` 離線可回應；設 key 後瀏覽器問「3 加 5 是多少」可見工具呼叫與串流回答。
+  - [ ] #2 Entity：`Message`、`Conversation`（`src/entity/`）。
+  - [ ] #3 Usecase 與 port：`usecase/` 定義 port 與聊天 usecase。
+  - [ ] #4 Gateway：實作 port，回傳固定一句話。
+  - [ ] #5 Controller／Presenter 與 `POST /api/chat`（一次回傳 JSON），取代 `src/main.py` 範本。
+  - [ ] #6 CORS：`CORSMiddleware` 只允許 `http://localhost:5173`。
+  - [ ] #7 前端：一個聊天頁（AI Elements + `fetch`），取代 `HelloWorld`。
+  - [ ] #8 （延後）接上 AI Agent：Gemini、Tool `add_numbers`、串流。
 - [ ] **文獻補正與驗證**
   - [ ] 補齊 [docs/07_references.md](file:///c:/Users/2024h/Downloads/AI-InfoSec-Fianl-Project/docs/07_references.md) 中標記 `※` 的 9 篇文獻完整作者、出處與年份（如 Ref [3, 5, 6, 7, 9, 11, 14, 15, 17, 19, 21, 22]）。
   - [ ] 取得 TACTRI 水稻害蟲/雜草試驗準則與 EPPO PP 1/152(4) 原始文字檔備用。
