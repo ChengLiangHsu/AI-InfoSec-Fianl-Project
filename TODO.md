@@ -11,7 +11,7 @@
   - [ ] #2 Entity：`Message`、`Conversation`（`src/entity/`）。
   - [ ] #3 Usecase 與 port：`usecase/` 定義 port 與聊天 usecase。
   - [ ] #4 Gateway：實作 port，回傳固定一句話。
-  - [ ] #5 Controller／Presenter 與 `POST /api/chat`（一次回傳 JSON），取代 `src/main.py` 範本。
+  - [ ] #5 Controller／Presenter 與 `POST /api/conversation`（一次回傳 JSON），取代 `src/main.py` 範本。
   - [ ] #6 CORS：`CORSMiddleware` 只允許 `http://localhost:5173`。
   - [ ] #7 前端：一個聊天頁（AI Elements + `fetch`），取代 `HelloWorld`。
   - [ ] #8 （延後）接上 AI Agent：Gemini、Tool `add_numbers`、串流。
