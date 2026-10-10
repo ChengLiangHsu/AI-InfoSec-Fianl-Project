@@ -7,7 +7,7 @@ from src.entity.conversation import Conversation
 from src.entity.message import Message
 from src.usecase.conversation import ConversationUsecase
 
-router = APIRouter(prefix="/api/conversation")
+router = APIRouter(prefix="/api/conversation", tags=["對話"])
 usecase = ConversationUsecase(FakeAgentGateway())
 
 
