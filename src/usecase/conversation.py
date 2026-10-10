@@ -1,6 +1,6 @@
 from src.entity.conversation import Conversation
 from src.entity.message import Message
-from src.usecase.port.agent_gateway import AgentGateway
+from src.usecase.port.agent import AgentGateway
 
 
 class ConversationUsecase:
