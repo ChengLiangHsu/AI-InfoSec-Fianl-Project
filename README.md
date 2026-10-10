@@ -29,14 +29,14 @@ adapter → usecase → entity
 
 | 章節 | 內容摘要 |
 | :--- | :--- |
-| [00. 概述](docs/00_overview.md) | 專題定位、成員分工、真實試驗資料集 |
-| [01. 摘要](docs/01_abstract.md) | 研究動機、痛點、解法與預期成效 |
-| [02. 緒論](docs/02_introduction.md) | 田間試驗背景、現有限制、五大預期貢獻 |
-| [03. 相關文獻](docs/03_related_work.md) | 農業 VLM/Agent、植生指標與規範文獻整理 |
-| [04. 深度探討](docs/04_deep_research.md) | 核心思維模式、關鍵爭論與技術 Q&A |
-| [05. 系統設計](docs/05_proposed_scheme.md) | 系統架構圖、執行流程與演算法虛擬碼 |
-| [06. 執行規劃](docs/06_execution_plan.md) | 15 週開發里程碑、分工與專案結構規範 |
-| [07. 參考文獻](docs/07_references.md) | 22 篇論文文獻與 TACTRI / EPPO 法規標準 |
+| [00. 概述](docs/report/00_overview.md) | 專題定位、成員分工、真實試驗資料集 |
+| [01. 摘要](docs/report/01_abstract.md) | 研究動機、痛點、解法與預期成效 |
+| [02. 緒論](docs/report/02_introduction.md) | 田間試驗背景、現有限制、五大預期貢獻 |
+| [03. 相關文獻](docs/report/03_related_work.md) | 農業 VLM/Agent、植生指標與規範文獻整理 |
+| [04. 深度探討](docs/report/04_deep_research.md) | 核心思維模式、關鍵爭論與技術 Q&A |
+| [05. 系統設計](docs/report/05_proposed_scheme.md) | 系統架構圖、執行流程與演算法虛擬碼 |
+| [06. 執行規劃](docs/report/06_execution_plan.md) | 15 週開發里程碑、分工與專案結構規範 |
+| [07. 參考文獻](docs/report/07_references.md) | 22 篇論文文獻與 TACTRI / EPPO 法規標準 |
 
 ---
 
