@@ -1,3 +1,4 @@
+from .ai_model import AIModel
 from .message import (
     Message,
     MessageReasoning,
@@ -9,6 +10,7 @@ from .message import (
 )
 
 __all__ = [
+    "AIModel",
     "Message",
     "MessageVersion",
     "MessageSource",
@@ -17,3 +19,4 @@ __all__ = [
     "Sender",
     "ToolState",
 ]
+

@@ -4,5 +4,5 @@ from typing import Protocol
 from src.entity.message import Message
 
 
-class Agent(Protocol):
+class BaseAgent(Protocol):
     def reply(self, message: Message) -> Message: ...

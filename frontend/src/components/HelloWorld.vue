@@ -264,19 +264,8 @@ function toggleWebSearch() {
 
           <PromptInputFooter>
             <PromptInputTools>
-              <PromptInputActionMenu>
-                <PromptInputActionMenuTrigger />
-                <PromptInputActionMenuContent>
-                  <PromptInputActionAddAttachments />
-                </PromptInputActionMenuContent>
-              </PromptInputActionMenu>
 
               <PromptInputSpeechButton />
-
-              <PromptInputButton :variant="useWebSearch ? 'default' : 'ghost'" @click="toggleWebSearch">
-                <GlobeIcon :size="16" />
-                <span>Search</span>
-              </PromptInputButton>
 
               <ModelSelector v-model:open="modelSelectorOpen">
                 <ModelSelectorTrigger as-child>

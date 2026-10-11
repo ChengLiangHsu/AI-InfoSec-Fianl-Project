@@ -1,10 +1,12 @@
 from uuid import uuid4
 
+
 from src.entity import Message, MessageReasoning, MessageVersion, Sender
-from src.usecase.port.agent import Agent
+
+from src.usecase.port.agent import BaseAgent
 
 
-class FakeAgent(Agent):
+class FakeAgent(BaseAgent):
     def reply(self, message: Message) -> Message:
         return Message(
             key=str(uuid4()),

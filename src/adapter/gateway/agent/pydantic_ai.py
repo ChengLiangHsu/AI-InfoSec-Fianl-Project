@@ -1,0 +1,61 @@
+from uuid import uuid4
+
+
+from pydantic_ai import Agent
+
+from pydantic_ai.usage import UsageLimits
+
+
+from src.entity import Message, MessageVersion, Sender
+
+from src.usecase.port.agent import BaseAgent
+
+from pydantic_ai import (
+    Agent,
+    ModelMessage,
+    ModelMessagesTypeAdapter,
+    ModelRequest,
+    ModelResponse,
+    TextPart,
+    UnexpectedModelBehavior,
+    UserPromptPart,
+)
+
+
+def add_numbers(a: float, b: float) -> float:
+    """將兩個數字相加。"""
+    return a + b
+
+
+class GeminiAgent(BaseAgent):
+    def __init__(self, model: str) -> None:
+
+        self._agent = Agent(
+            model,
+            instructions="你是無人機田間試驗評估助理。不可捏造分析結果。",
+            tools=[add_numbers],
+        )
+
+    def reply(self, message: Message) -> Message:
+
+        prompt = message.versions[-1].content
+
+        result = self._agent.run_sync(
+            prompt,
+            usage_limits=UsageLimits(
+                request_limit=4,
+                tool_calls_limit=2,
+                output_tokens_limit=1000,
+            ),
+        )
+
+        return Message(
+            key=str(uuid4()),
+            from_=Sender.ASSISTANT,
+            versions=(
+                MessageVersion(
+                    id=str(uuid4()),
+                    content=result.output,
+                ),
+            ),
+        )
