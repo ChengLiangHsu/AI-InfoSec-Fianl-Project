@@ -1,9 +1,8 @@
 from uuid import uuid4
+from enum import StrEnum
 
 
 from pydantic_ai import Agent
-
-from pydantic_ai.usage import UsageLimits
 
 
 from src.entity import Message, MessageVersion, Sender
@@ -20,6 +19,7 @@ from pydantic_ai import (
     UnexpectedModelBehavior,
     UserPromptPart,
 )
+from pydantic_ai.usage import UsageLimits
 
 
 def add_numbers(a: float, b: float) -> float:
@@ -27,7 +27,11 @@ def add_numbers(a: float, b: float) -> float:
     return a + b
 
 
-class GeminiAgent(BaseAgent):
+class GoogleGeminiModel(StrEnum):
+    GEMINI_3_7_FLASH = "google:gemini-3.7-flash"
+
+
+class GoogleGeminiAgent(BaseAgent):
     def __init__(self, model: str) -> None:
 
         self._agent = Agent(
@@ -36,12 +40,19 @@ class GeminiAgent(BaseAgent):
             tools=[add_numbers],
         )
 
-    def reply(self, message: Message) -> Message:
-
+    def reply(self, message: Message, context: list[Message] = []) -> Message:
         prompt = message.versions[-1].content
-
+        history: list[ModelMessage] = [
+            (
+                ModelRequest(parts=[UserPromptPart(content=m.versions[-1].content)])
+                if m.from_ == Sender.USER
+                else ModelResponse(parts=[TextPart(content=m.versions[-1].content)])
+            )
+            for m in context
+        ]
         result = self._agent.run_sync(
             prompt,
+            message_history=history,
             usage_limits=UsageLimits(
                 request_limit=4,
                 tool_calls_limit=2,

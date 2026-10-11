@@ -7,7 +7,7 @@ from src.usecase.port.agent import BaseAgent
 
 
 class FakeAgent(BaseAgent):
-    def reply(self, message: Message) -> Message:
+    def reply(self, message: Message, context: list[Message] | None = None) -> Message:
         return Message(
             key=str(uuid4()),
             from_=Sender.ASSISTANT,

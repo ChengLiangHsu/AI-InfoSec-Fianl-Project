@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from enum import StrEnum
 
 
@@ -53,3 +54,5 @@ class Message:
     sources: tuple[MessageSource, ...] | None = None
     reasoning: MessageReasoning | None = None
     tools: tuple[MessageTool, ...] | None = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
