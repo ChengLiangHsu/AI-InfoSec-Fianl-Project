@@ -25,3 +25,4 @@
 - [Python：dataclass 預設欄位的可變對象，避免記憶體空間衝突](https://docs.python.org/3/library/dataclasses.html#default-factory-functions)
 - [Python：dataclass 凍結模式](https://docs.python.org/3/library/dataclasses.html#frozen-instances)
 - [nanoid](https://www.npmjs.com/package/nanoid)
+- [Pydantic：是否允許使用別名填寫](https://pydantic.dev/docs/validation/latest/api/pydantic/config/#pydantic.config.ConfigDict.populate_by_name)

@@ -1,4 +1,4 @@
-from .message import PostMessageInput, PostMessageUsecase, PostMessageOutput
+from .message import AskInput, AskUsecase, AskOutput
 
 
-__all__ = ["PostMessageInput", "PostMessageUsecase", "PostMessageOutput"]
+__all__ = ["AskInput", "AskUsecase", "AskOutput"]

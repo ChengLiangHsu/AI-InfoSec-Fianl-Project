@@ -1,11 +1,17 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
 
-from src.adapter.gateway.fake_agent_gateway import FakeAgentGateway
-from src.adapter.presenter.message_presenter import present_reply
-from src.entity.message import (
+from fastapi import APIRouter, Depends
+
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+from src.adapter.controller.message import AgentController
+
+from src.adapter.gateway.agent.fake import FakeAgent
+
+from src.entity import (
     Message,
     MessageReasoning,
     MessageSource,
@@ -15,32 +21,45 @@ from src.entity.message import (
 )
 
 
-router = APIRouter(prefix="/api/message", tags=["訊息"])
+from src.usecase import AskUsecase
 
 
-def build_controller() -> MessageController:
-    return MessageController(FakeAgentGateway())
+router = APIRouter(prefix="/api/message", tags=["message"])
 
 
-class PostMessageRequest(BaseModel):
+def build_controller() -> AgentController:
+
+    return AgentController(AskUsecase(FakeAgent()))
+
+
+class AskRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     key: str
+
     from_: Sender = Field(alias="from")
+
     versions: list[MessageVersion]
+
     sources: list[MessageSource] | None = None
+
     reasoning: MessageReasoning | None = None
+
     tools: list[MessageTool] | None = None
 
 
-class PostMessageResponse(BaseModel):
+class AskResponse(BaseModel):
     result: bool
+
     data: dict | None = None
 
 
-@router.post("/", response_model=PostMessageResponse)
+@router.post("/", response_model=AskResponse)
 def post_message(
-    request: PostMessageRequest,
-    controller: Annotated[MessageController, Depends(build_controller)],
-) -> PostMessageResponse:
+    request: AskRequest,
+    controller: Annotated[AgentController, Depends(build_controller)],
+) -> dict:
+
     message = Message(
         key=request.key,
         from_=request.from_,
@@ -49,5 +68,5 @@ def post_message(
         reasoning=request.reasoning,
         tools=None if request.tools is None else tuple(request.tools),
     )
-    result = controller.post_message(request)
-    return PostMessageResponse(result=True, data=result)
+
+    return controller.ask(message)
