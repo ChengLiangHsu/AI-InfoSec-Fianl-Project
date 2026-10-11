@@ -422,7 +422,7 @@ function addUserMessage(content: string) {
 
     messages.value = [...messages.value, assistantMessage]
 
-    const response = await axios.get<string>("http://localhost:8000/story/stream");
+    const response = await axios.post<string>("http://localhost:8000/chat/?prompt=" + content);
     // const randomResponse = mockResponses[Math.floor(Math.random() * mockResponses.length)]
     streamResponse(assistantVersionId, response.data)
   }, 500)

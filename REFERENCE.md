@@ -29,3 +29,5 @@
 - [FastAPI：轉發來自 LLM 的輸出](https://fastapi.tiangolo.com/zh-hant/advanced/stream-data/#a-streamingresponse-with-yield)
 - [SQLModel：儲存時間欄位](https://sqlmodel.tiangolo.com/advanced/datetime/#models-with-datetimes)
 - [SQLModel：直接存入本地時間](https://sqlmodel.tiangolo.com/advanced/datetime/#:~:text=local_time:%20NaiveDatetime)
+- [FastAPI：啟動時建立資料表](https://fastapi.tiangolo.com/zh-hant/tutorial/sql-databases/#create-database-tables-on-startup)
+- [FastAPI：使用 JSON 欄位](https://github.com/fastapi/sqlmodel/discussions/696)

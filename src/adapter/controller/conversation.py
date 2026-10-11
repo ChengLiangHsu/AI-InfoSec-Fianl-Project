@@ -22,7 +22,7 @@ class ReadConversationController:
     def handle(self, request: dict | None = None) -> Conversation:
         request = request or {}
         input_ = ReadConversationInput(
-            conversation_id=request.get("conversation_id"),
+            id=request.get("id"),
         )
         output = self._usecase.execute(input_)
         return output.conversation
@@ -35,8 +35,8 @@ class UpdateConversationController:
     def handle(self, request: dict | None = None) -> str:
         request = request or {}
         input_ = UpdateConversationInput(
-            conversation_id=request.get("conversation_id"),
-            data=request.get("data") or {},
+            id=request.get("id"),
+            messages=request.get("messages") or [],
         )
         output = self._usecase.execute(input_)
         return str(output.conversation_id)

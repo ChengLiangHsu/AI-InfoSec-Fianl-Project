@@ -8,4 +8,4 @@ class Conversation:
     id: uuid.UUID
     created_at: datetime
     updated_at: datetime
-    data: dict = field(default_factory=dict)
+    messages: list[dict] = field(default_factory=list)

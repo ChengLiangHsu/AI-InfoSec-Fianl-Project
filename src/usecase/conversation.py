@@ -44,7 +44,7 @@ class CreateConversationUsecase:
 
 @dataclass(frozen=True)
 class ReadConversationInput:
-    conversation_id: UUID
+    id: UUID
 
 
 @dataclass(frozen=True)
@@ -59,18 +59,18 @@ class ReadConversationUsecase:
     def execute(
         self, input_: ReadConversationInput | None = None
     ) -> ReadConversationOutput:
-        conversation = self._repo.load(input_.conversation_id)
+        conversation = self._repo.load(input_.id)
         if conversation is None:
             raise ConversationNotFoundError(
-                f"Conversation not found: {input_.conversation_id}"
+                f"Conversation not found: {input_.id}"
             )
         return ReadConversationOutput(conversation=conversation)
 
 
 @dataclass(frozen=True)
 class UpdateConversationInput:
-    conversation_id: UUID
-    data: dict
+    id: UUID
+    messages: list[dict]
 
 
 @dataclass(frozen=True)
@@ -83,13 +83,13 @@ class UpdateConversationUsecase:
         self._repo = repo
 
     def execute(self, input_: UpdateConversationInput) -> UpdateConversationOutput:
-        if self._repo.load(input_.conversation_id) is None:
+        if self._repo.load(input_.id) is None:
             raise ConversationNotFoundError(
-                f"Conversation not found: {input_.conversation_id}"
+                f"Conversation not found: {input_.id}"
             )
         self._repo.save(
-            id=input_.conversation_id,
-            data=input_.data,
-            updated_at=datetime.now(UTC),
+            id=input_.id,
+            messages=input_.messages,
+            updated_at=datetime.now(),
         )
-        return UpdateConversationOutput(conversation_id=input_.conversation_id)
+        return UpdateConversationOutput(conversation_id=input_.id)
