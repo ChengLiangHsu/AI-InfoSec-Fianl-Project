@@ -24,7 +24,7 @@ from src.entity import (
 from src.usecase import AskUsecase
 
 
-router = APIRouter(prefix="/api/message", tags=["message"])
+router = APIRouter(prefix="/agent", tags=["代理人"])
 
 
 def build_controller() -> AgentController:
@@ -54,11 +54,12 @@ class AskResponse(BaseModel):
     data: dict | None = None
 
 
-@router.post("/", response_model=AskResponse)
-def post_message(
+@router.post("/ask", response_model=AskResponse)
+def ask_agent(
     request: AskRequest,
     controller: Annotated[AgentController, Depends(build_controller)],
 ) -> dict:
+    """詢問代理人"""
 
     message = Message(
         key=request.key,
