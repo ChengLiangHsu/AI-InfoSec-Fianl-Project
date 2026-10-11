@@ -24,3 +24,4 @@
 - [Pytest：在夾具中進行假資料設置](https://docs.pytest.org/en/stable/how-to/monkeypatch.html#:~:text=This%20mock%20can%20be%20shared%20across%20tests%20using%20a%20fixture)
 - [Python：dataclass 預設欄位的可變對象，避免記憶體空間衝突](https://docs.python.org/3/library/dataclasses.html#default-factory-functions)
 - [Python：dataclass 凍結模式](https://docs.python.org/3/library/dataclasses.html#frozen-instances)
+- [nanoid](https://www.npmjs.com/package/nanoid)
