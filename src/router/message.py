@@ -1,4 +1,6 @@
-from fastapi import APIRouter
+from typing import Annotated
+
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from src.adapter.gateway.fake_agent_gateway import FakeAgentGateway
@@ -11,13 +13,16 @@ from src.entity.message import (
     MessageVersion,
     Sender,
 )
-from src.usecase.message import MessageUsecase
+
 
 router = APIRouter(prefix="/api/message", tags=["訊息"])
-usecase = MessageUsecase(FakeAgentGateway())
 
 
-class MessageRequest(BaseModel):
+def build_controller() -> MessageController:
+    return MessageController(FakeAgentGateway())
+
+
+class PostMessageRequest(BaseModel):
     key: str
     from_: Sender = Field(alias="from")
     versions: list[MessageVersion]
@@ -26,8 +31,16 @@ class MessageRequest(BaseModel):
     tools: list[MessageTool] | None = None
 
 
-@router.post("")
-def post_message(request: MessageRequest) -> dict:
+class PostMessageResponse(BaseModel):
+    result: bool
+    data: dict | None = None
+
+
+@router.post("/", response_model=PostMessageResponse)
+def post_message(
+    request: PostMessageRequest,
+    controller: Annotated[MessageController, Depends(build_controller)],
+) -> PostMessageResponse:
     message = Message(
         key=request.key,
         from_=request.from_,
@@ -36,4 +49,5 @@ def post_message(request: MessageRequest) -> dict:
         reasoning=request.reasoning,
         tools=None if request.tools is None else tuple(request.tools),
     )
-    return present_reply(usecase.reply(message))
+    result = controller.post_message(request)
+    return PostMessageResponse(result=True, data=result)

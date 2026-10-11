@@ -1,10 +1,28 @@
+from dataclasses import dataclass
+from typing import List
+
 from src.entity.message import Message
-from src.usecase.port.agent import AgentGateway
+
+from src.usecase.port.agent import Agent
 
 
-class MessageUsecase:
-    def __init__(self, gateway: AgentGateway) -> None:
-        self._gateway = gateway
+@dataclass
+class PostMessageInput:
+    key: str
+    from_: str
+    versions: List[MessageVersion]
 
-    def reply(self, message: Message) -> Message:
-        return self._gateway.reply_to(message)
+
+@dataclass
+class PostMessageOutput:
+    key: str
+    from_: str
+    versions: List[MessageVersion]
+
+
+class PostMessageUsecase:
+    def __init__(self, agent: Agent) -> None:
+        self._agent = agent
+
+    def execute(self, input_: PostMessageInput) -> PostMessageOutput:
+        return self._agent.reply(input_)
