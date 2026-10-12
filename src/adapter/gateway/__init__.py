@@ -1,1 +1,1 @@
-﻿from .repo.conversation import ConversationModel, SQLiteConversationRepository
+from .repo.conversation import ConversationModel, SQLiteConversationRepository

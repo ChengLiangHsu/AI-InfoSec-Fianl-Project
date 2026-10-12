@@ -1,4 +1,11 @@
-from src.usecase.conversation import CreateConversationInput, CreateConversationUsecase, ReadConversationInput, ReadConversationUsecase, UpdateConversationInput, UpdateConversationUsecase
+from src.usecase.conversation import (
+    CreateConversationInput,
+    CreateConversationUsecase,
+    ReadConversationInput,
+    ReadConversationUsecase,
+    UpdateConversationInput,
+    UpdateConversationUsecase,
+)
 from src.entity.conversation import Conversation
 
 

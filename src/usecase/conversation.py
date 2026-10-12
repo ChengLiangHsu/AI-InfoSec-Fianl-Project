@@ -1,4 +1,4 @@
-﻿from dataclasses import dataclass, field
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 from typing import Protocol
@@ -61,9 +61,7 @@ class ReadConversationUsecase:
     ) -> ReadConversationOutput:
         conversation = self._repo.load(input_.id)
         if conversation is None:
-            raise ConversationNotFoundError(
-                f"Conversation not found: {input_.id}"
-            )
+            raise ConversationNotFoundError(f"Conversation not found: {input_.id}")
         return ReadConversationOutput(conversation=conversation)
 
 
@@ -84,9 +82,7 @@ class UpdateConversationUsecase:
 
     def execute(self, input_: UpdateConversationInput) -> UpdateConversationOutput:
         if self._repo.load(input_.id) is None:
-            raise ConversationNotFoundError(
-                f"Conversation not found: {input_.id}"
-            )
+            raise ConversationNotFoundError(f"Conversation not found: {input_.id}")
         self._repo.save(
             id=input_.id,
             messages=input_.messages,

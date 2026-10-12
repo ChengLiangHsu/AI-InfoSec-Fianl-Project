@@ -1,1 +1,5 @@
-from .conversation import CreateConversationController, ReadConversationController, UpdateConversationController
+from .conversation import (
+    CreateConversationController,
+    ReadConversationController,
+    UpdateConversationController,
+)

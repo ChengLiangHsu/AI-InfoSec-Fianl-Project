@@ -31,3 +31,6 @@
 - [SQLModel：直接存入本地時間](https://sqlmodel.tiangolo.com/advanced/datetime/#:~:text=local_time:%20NaiveDatetime)
 - [FastAPI：啟動時建立資料表](https://fastapi.tiangolo.com/zh-hant/tutorial/sql-databases/#create-database-tables-on-startup)
 - [FastAPI：使用 JSON 欄位](https://github.com/fastapi/sqlmodel/discussions/696)
+- [Axios：發送請求到端點](https://axios.rest/pages/getting-started/examples/typescript.html#typing-a-request)
+- [HTTPX：發送非同步請求](https://www.python-httpx.org/async/#Making%20Async%20requests)
+- [Python：非同步程式碼套件](https://docs.python.org/zh-tw/3/library/asyncio.html)

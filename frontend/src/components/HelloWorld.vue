@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input'
 import type { ChatStatus, ToolUIPart } from 'ai'
+import axios from 'axios'
 import { CheckIcon, GlobeIcon } from '@lucide/vue'
-import axios from "axios";
 import { Conversation, ConversationContent, ConversationScrollButton } from '@/components/ai-elements/conversation'
 import {
   Message,
@@ -326,7 +326,7 @@ const models = [
 ]
 
 const suggestions = [
-  'Explain the Vue 3 Composition API with examples.',
+  '台北的天氣如何？',
   'What is the difference between ref() and reactive() in Vue 3?',
   'How does Vue\'s reactivity system work under the hood?',
   'Show me how to migrate an Options API component to the Composition API.',
@@ -360,9 +360,9 @@ function cloneMessages(data: MessageType[]): MessageType[] {
     reasoning: message.reasoning ? { ...message.reasoning } : undefined,
     tools: message.tools
       ? message.tools.map(tool => ({
-        ...tool,
-        parameters: { ...tool.parameters },
-      }))
+          ...tool,
+          parameters: { ...tool.parameters },
+        }))
       : undefined,
   }))
 }
@@ -421,10 +421,11 @@ function addUserMessage(content: string) {
     }
 
     messages.value = [...messages.value, assistantMessage]
-
-    const response = await axios.post<string>("http://localhost:8000/chat/?prompt=" + content);
     // const randomResponse = mockResponses[Math.floor(Math.random() * mockResponses.length)]
-    streamResponse(assistantVersionId, response.data)
+    const realResponse = await axios.post("http://localhost:8000/chat", {
+      prompt: content,
+    })
+    streamResponse(assistantVersionId, realResponse.data)
   }, 500)
 }
 
@@ -460,31 +461,51 @@ function toggleWebSearch() {
   <div class="relative flex size-full flex-col divide-y overflow-hidden">
     <Conversation>
       <ConversationContent>
-        <MessageBranch v-for="message in messages" :key="message.key" :default-branch="0">
+        <MessageBranch
+          v-for="message in messages"
+          :key="message.key"
+          :default-branch="0"
+        >
           <MessageBranchContent>
-            <Message v-for="version in message.versions" :key="`${message.key}-${version.id}`" :from="message.from">
+            <Message
+              v-for="version in message.versions"
+              :key="`${message.key}-${version.id}`"
+              :from="message.from"
+            >
               <div>
                 <Sources v-if="message.sources?.length">
                   <SourcesTrigger :count="message.sources.length" />
                   <SourcesContent>
-                    <Source v-for="source in message.sources" :key="source.href" :href="source.href"
-                      :title="source.title" />
+                    <Source
+                      v-for="source in message.sources"
+                      :key="source.href"
+                      :href="source.href"
+                      :title="source.title"
+                    />
                   </SourcesContent>
                 </Sources>
 
-                <Reasoning v-if="message.reasoning" :duration="message.reasoning.duration">
+                <Reasoning
+                  v-if="message.reasoning"
+                  :duration="message.reasoning.duration"
+                >
                   <ReasoningTrigger />
                   <ReasoningContent :content="message.reasoning.content" />
                 </Reasoning>
 
                 <MessageContent>
-                  <MessageResponse :content="version.content" />
+                  <MessageResponse
+                    :content="version.content"
+                  />
                 </MessageContent>
               </div>
             </Message>
           </MessageBranchContent>
 
-          <MessageBranchSelector v-if="message.versions.length > 1" :from="message.from">
+          <MessageBranchSelector
+            v-if="message.versions.length > 1"
+            :from="message.from"
+          >
             <MessageBranchPrevious />
             <MessageBranchPage />
             <MessageBranchNext />
@@ -496,12 +517,21 @@ function toggleWebSearch() {
 
     <div class="grid shrink-0 gap-4 pt-4">
       <Suggestions class="px-4">
-        <Suggestion v-for="suggestion in suggestions" :key="suggestion" :suggestion="suggestion"
-          @click="handleSuggestionClick" />
+        <Suggestion
+          v-for="suggestion in suggestions"
+          :key="suggestion"
+          :suggestion="suggestion"
+          @click="handleSuggestionClick"
+        />
       </Suggestions>
 
       <div class="w-full px-4 pb-4">
-        <PromptInput class="w-full" multiple global-drop @submit="handleSubmit">
+        <PromptInput
+          class="w-full"
+          multiple
+          global-drop
+          @submit="handleSubmit"
+        >
           <PromptInputHeader>
             <PromptInputAttachmentsDisplay />
           </PromptInputHeader>
@@ -521,7 +551,10 @@ function toggleWebSearch() {
 
               <PromptInputSpeechButton />
 
-              <PromptInputButton :variant="useWebSearch ? 'default' : 'ghost'" @click="toggleWebSearch">
+              <PromptInputButton
+                :variant="useWebSearch ? 'default' : 'ghost'"
+                @click="toggleWebSearch"
+              >
                 <GlobeIcon :size="16" />
                 <span>Search</span>
               </PromptInputButton>
@@ -529,7 +562,10 @@ function toggleWebSearch() {
               <ModelSelector v-model:open="modelSelectorOpen">
                 <ModelSelectorTrigger as-child>
                   <PromptInputButton>
-                    <ModelSelectorLogo v-if="selectedModelData?.chefSlug" :provider="selectedModelData.chefSlug" />
+                    <ModelSelectorLogo
+                      v-if="selectedModelData?.chefSlug"
+                      :provider="selectedModelData.chefSlug"
+                    />
                     <ModelSelectorName v-if="selectedModelData?.name">
                       {{ selectedModelData.name }}
                     </ModelSelectorName>
@@ -541,15 +577,30 @@ function toggleWebSearch() {
                   <ModelSelectorList>
                     <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
 
-                    <ModelSelectorGroup v-for="chef in ['OpenAI', 'Anthropic', 'Google']" :key="chef" :heading="chef">
-                      <ModelSelectorItem v-for="m in models.filter(model => model.chef === chef)" :key="m.id"
-                        :value="m.id" @select="() => handleModelSelect(m.id)">
+                    <ModelSelectorGroup
+                      v-for="chef in ['OpenAI', 'Anthropic', 'Google']"
+                      :key="chef"
+                      :heading="chef"
+                    >
+                      <ModelSelectorItem
+                        v-for="m in models.filter(model => model.chef === chef)"
+                        :key="m.id"
+                        :value="m.id"
+                        @select="() => handleModelSelect(m.id)"
+                      >
                         <ModelSelectorLogo :provider="m.chefSlug" />
                         <ModelSelectorName>{{ m.name }}</ModelSelectorName>
                         <ModelSelectorLogoGroup>
-                          <ModelSelectorLogo v-for="provider in m.providers" :key="provider" :provider="provider" />
+                          <ModelSelectorLogo
+                            v-for="provider in m.providers"
+                            :key="provider"
+                            :provider="provider"
+                          />
                         </ModelSelectorLogoGroup>
-                        <CheckIcon v-if="modelId === m.id" class="ml-auto size-4" />
+                        <CheckIcon
+                          v-if="modelId === m.id"
+                          class="ml-auto size-4"
+                        />
                         <div v-else class="ml-auto size-4" />
                       </ModelSelectorItem>
                     </ModelSelectorGroup>
@@ -558,7 +609,10 @@ function toggleWebSearch() {
               </ModelSelector>
             </PromptInputTools>
 
-            <PromptInputSubmit :disabled="status === 'streaming'" :status="status" />
+            <PromptInputSubmit
+              :disabled="status === 'streaming'"
+              :status="status"
+            />
           </PromptInputFooter>
         </PromptInput>
       </div>

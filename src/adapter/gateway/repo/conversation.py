@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 from datetime import UTC, datetime
 
 from sqlmodel import Field, Session, SQLModel, Column, JSON
@@ -48,4 +48,3 @@ class SQLiteConversationRepository:
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
-

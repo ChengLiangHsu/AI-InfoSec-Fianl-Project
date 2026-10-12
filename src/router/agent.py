@@ -1,4 +1,4 @@
-﻿import os
+import os
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -9,7 +9,11 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent, ModelResponse, TextPart
 
-from src.adapter.controller.conversation import CreateConversationController, ReadConversationController, UpdateConversationController
+from src.adapter.controller.conversation import (
+    CreateConversationController,
+    ReadConversationController,
+    UpdateConversationController,
+)
 from src.adapter.gateway import SQLiteConversationRepository
 from src.usecase.conversation import CreateConversationUsecase, ReadConversationUsecase
 from src.entity import (
@@ -82,6 +86,6 @@ class AskRequest(BaseModel):
 
 #         history.append(result.new_messages_json())
 #         update_conversation_controller.handle(conversation_id=conversation_id, data={"context": history})
-        
+
 #     conversation_id = create_conversation_controller.handle()
 #     return StreamingResponse(stream_messages(conversation_id), media_type="text/plain")

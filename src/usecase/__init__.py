@@ -1,4 +1,4 @@
-﻿from .conversation import (
+from .conversation import (
     ConversationNotFoundError,
     CreateConversationUsecase,
     ReadConversationUsecase,

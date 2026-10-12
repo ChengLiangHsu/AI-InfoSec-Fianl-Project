@@ -28,7 +28,6 @@ def create_db_and_tables():
             session.commit()
 
 
-
 def get_session():
     session = Session(engine)
     try:
