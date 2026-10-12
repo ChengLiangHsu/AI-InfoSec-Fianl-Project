@@ -161,6 +161,7 @@ async def chat(
     conversation = read_conversation_controller.handle({
         "id": "c6ef5aa80d62417dac43ba0066a20474"
     })
+    messages_history = conversation.messages
     async with AsyncClient() as client:
         deps = Deps(client=client)
         result = await weather_agent.run(request.prompt, deps=deps)

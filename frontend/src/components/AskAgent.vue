@@ -46,7 +46,6 @@ import {
 import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-elements/reasoning'
 import { Source, Sources, SourcesContent, SourcesTrigger } from '@/components/ai-elements/sources'
 import { Suggestion, Suggestions } from '@/components/ai-elements/suggestion'
-import { nanoid } from 'nanoid'
 import { computed, ref } from 'vue'
 
 interface MessageVersion {
@@ -81,211 +80,6 @@ interface MessageType {
   reasoning?: MessageReasoning
   tools?: MessageTool[]
 }
-
-const initialMessages: MessageType[] = [
-  {
-    key: nanoid(),
-    from: 'user',
-    versions: [
-      {
-        id: nanoid(),
-        content: 'Can you explain how to use the Vue 3 Composition API effectively?',
-      },
-    ],
-  },
-  {
-    key: nanoid(),
-    from: 'assistant',
-    sources: [
-      {
-        href: 'https://vuejs.org/guide/introduction.html',
-        title: 'Vue 3 Documentation - Introduction',
-      },
-      {
-        href: 'https://vuejs.org/guide/essentials/reactivity-fundamentals.html',
-        title: 'Vue 3 Reactivity Fundamentals',
-      },
-    ],
-    tools: [
-      {
-        name: 'mcp',
-        description: 'Searching Vue 3 documentation',
-        status: 'input-available',
-        parameters: {
-          query: 'Vue 3 Composition API best practices',
-          source: 'vuejs.org',
-        },
-        result: `{
-  "query": "Vue 3 Composition API best practices",
-  "results": [
-    {
-      "title": "Reactivity Fundamentals",
-      "url": "https://vuejs.org/guide/essentials/reactivity-fundamentals.html",
-      "snippet": "Vue's reactivity system is based on tracking reactive state and automatically updating the DOM when that state changes. The core primitives are ref() and reactive()."
-    },
-    {
-      "title": "Composition API: setup()",
-      "url": "https://vuejs.org/guide/essentials/composition-api-setup.html",
-      "snippet": "The setup() hook is the entry point for using the Composition API in components. It runs before the component is created and is where you declare reactive state and logic."
-    },
-    {
-      "title": "Reactivity Core API",
-      "url": "https://vuejs.org/api/reactivity-core.html",
-      "snippet": "The reactivity core APIs provide low-level building blocks like ref(), reactive(), computed(), and watch() for creating and working with reactive state."
-    }
-  ]
-}`,
-        error: undefined,
-      },
-    ],
-    versions: [
-      {
-        id: nanoid(),
-        content: `# Vue 3 Composition API Overview
-
-The Vue 3 Composition API is a powerful way to organize component logic using plain functions and reactive primitives.
-
-## Core Concepts
-
-1. **setup()** is the entry point for using the Composition API in a component.
-2. **ref()** creates a reactive reference for primitive values.
-3. **reactive()** creates a deeply reactive object for structured state.
-4. **computed()** derives values from other reactive state.
-5. **watch() / watchEffect()** run side effects in response to reactive changes.
-
-## Basic Example with ref() and computed()
-
-\`\`\`ts
-import { ref, computed } from 'vue'
-
-export default {
-  setup() {
-    const count = ref(0)
-    const doubled = computed(() => count.value * 2)
-
-    function increment() {
-      count.value++
-    }
-
-    return {
-      count,
-      doubled,
-      increment,
-    }
-  },
-}
-\`\`\`
-
-This component uses the Composition API to declare reactive state and derived values in a single place. Would you like me to dive deeper into a specific function like \`ref\` or \`reactive\`?`,
-      },
-    ],
-  },
-  {
-    key: nanoid(),
-    from: 'user',
-    versions: [
-      {
-        id: nanoid(),
-        content: 'Yes, could you explain ref and reactive in more detail in Vue 3? When should I use one over the other?',
-      },
-      {
-        id: nanoid(),
-        content: 'I\'m particularly interested in understanding the differences between ref() and reactive() in Vue 3. Could you break down when each is most appropriate?',
-      },
-      {
-        id: nanoid(),
-        content: 'Thanks for the overview! Could you dive deeper into the specific use cases where ref() and reactive() make the biggest difference in Vue 3 applications?',
-      },
-    ],
-  },
-  {
-    key: nanoid(),
-    from: 'assistant',
-    reasoning: {
-      content: `The user is asking for a detailed explanation of ref() and reactive() in Vue 3. I should provide a clear and concise explanation of each API's purpose and how they differ.
-
-The ref() API is typically used for primitive values and when you want an explicit .value access.
-
-The reactive() API is typically used for objects and arrays when you want property access to be reactive.
-
-Both are part of Vue's reactivity system, but they serve different ergonomics and use cases.`,
-      duration: 10,
-    },
-    versions: [
-      {
-        id: nanoid(),
-        content: `## ref() vs reactive() in Vue 3
-
-Both APIs create reactive state, but they are optimized for different use cases:
-
-### ref()
-
-\`ref()\` is best for **primitive values** (numbers, strings, booleans) or when you want a single reactive value.
-
-\`\`\`ts
-import { ref } from 'vue'
-
-export default {
-  setup() {
-    const count = ref(0)
-
-    function increment() {
-      count.value++
-    }
-
-    return { count, increment }
-  },
-}
-\`\`\`
-
-- Access the value via \`.value\` in JavaScript.
-- In templates, Vue automatically unwraps refs, so you can use \`{{ count }}\` directly.
-- Useful when you need to pass a single reactive value around.
-
-### reactive()
-
-\`reactive()\` is best for **objects and arrays** where you want property access to be reactive.
-
-\`\`\`ts
-import { reactive } from 'vue'
-
-export default {
-  setup() {
-    const state = reactive({
-      count: 0,
-      user: { name: 'Alice' },
-    })
-
-    function increment() {
-      state.count++
-    }
-
-    return { state, increment }
-  },
-}
-\`\`\`
-
-- You work with properties directly: \`state.count++\`.
-- When destructuring, you should use \`toRefs()\` or \`toRef()\` to preserve reactivity.
-
-### When to use which?
-
-- Use **ref()** when:
-  - You have a single primitive value.
-  - You want to expose a reactive value from a composable.
-  - You need explicit \`.value\` semantics (e.g., for deeply nested or shared state).
-
-- Use **reactive()** when:
-  - You have a state object with multiple related fields.
-  - You want a more \"state-like\" object API (e.g., \`state.count\`, \`state.user.name\`).
-
-### Conclusion
-
-In many real apps you'll mix both: use \`reactive()\` for grouped state and \`ref()\` for individual values that need to be passed around or derived.`,
-      },
-    ],
-  },
-]
 
 const models = [
   {
@@ -326,46 +120,26 @@ const models = [
 ]
 
 const suggestions = [
-  '台北的天氣如何？',
-  'What is the difference between ref() and reactive() in Vue 3?',
-  'How does Vue\'s reactivity system work under the hood?',
-  'Show me how to migrate an Options API component to the Composition API.',
-  'How do computed properties work in Vue 3?',
-  'When should I use watch() vs watchEffect() in Vue 3?',
-  'How do I organize logic using composables in a large Vue 3 app?',
-  'Explain the lifecycle of a Vue 3 component using setup().',
-]
-
-const mockResponses = [
-  'That\'s a great question! Let me help you understand this concept better. The key thing to remember is that proper implementation requires careful consideration of the underlying principles and best practices in the field.',
-  'I\'d be happy to explain this topic in detail. From my understanding, there are several important factors to consider when approaching this problem. Let me break it down step by step for you.',
-  'This is an interesting topic that comes up frequently. The solution typically involves understanding the core concepts and applying them in the right context. Here\'s what I recommend...',
-  'Great choice of topic! This is something that many developers encounter. The approach I\'d suggest is to start with the fundamentals and then build up to more complex scenarios.',
-  'That\'s definitely worth exploring. From what I can see, the best way to handle this is to consider both the theoretical aspects and practical implementation details.',
+  '無人機田間試驗應評估哪些指標？',
+  '如何規劃無人機田間試驗的試驗區與對照組？',
+  '如何評估飛行高度與速度對田間作業效果的影響？',
+  '如何評估無人機噴灑的均勻度與覆蓋率？',
+  '田間試驗應記錄哪些氣象與作物生長資料？',
+  '如何比較無人機與傳統作業的效率及成本？',
+  '如何分析田間試驗結果並提出改善建議？',
+  '請協助整理無人機田間試驗的評估報告架構。',
 ]
 
 const modelId = ref<string>(models[0].id)
 const modelSelectorOpen = ref(false)
 const useWebSearch = ref(false)
 const status = ref<ChatStatus>('ready')
-const messages = ref<MessageType[]>(cloneMessages(initialMessages))
+const messages = ref<MessageType[]>([])
+const requestError = ref('')
+const isBusy = computed(() => status.value === 'submitted' || status.value === 'streaming')
 
 const selectedModelData = computed(() => models.find(m => m.id === modelId.value))
 
-function cloneMessages(data: MessageType[]): MessageType[] {
-  return data.map(message => ({
-    ...message,
-    versions: message.versions.map(version => ({ ...version })),
-    sources: message.sources ? message.sources.map(source => ({ ...source })) : undefined,
-    reasoning: message.reasoning ? { ...message.reasoning } : undefined,
-    tools: message.tools
-      ? message.tools.map(tool => ({
-          ...tool,
-          parameters: { ...tool.parameters },
-        }))
-      : undefined,
-  }))
-}
 
 function updateStreamingContent(versionId: string, content: string) {
   const target = messages.value.find(msg => msg.versions.some(version => version.id === versionId))
@@ -393,6 +167,11 @@ async function streamResponse(versionId: string, content: string) {
 }
 
 function addUserMessage(content: string) {
+  if (isBusy.value)
+    return
+
+  status.value = 'submitted'
+  requestError.value = ''
   const timestamp = Date.now()
   const userMessage: MessageType = {
     key: `user-${timestamp}`,
@@ -421,15 +200,23 @@ function addUserMessage(content: string) {
     }
 
     messages.value = [...messages.value, assistantMessage]
-    // const randomResponse = mockResponses[Math.floor(Math.random() * mockResponses.length)]
-    const realResponse = await axios.post("http://localhost:8000/chat", {
-      prompt: content,
-    })
-    streamResponse(assistantVersionId, realResponse.data)
+    try {
+      const realResponse = await axios.post("http://localhost:8000/chat", {
+        prompt: content,
+      })
+      await streamResponse(assistantVersionId, realResponse.data)
+    }
+    catch {
+      status.value = 'error'
+      requestError.value = '回覆失敗，請稍後再試。'
+    }
   }, 500)
 }
 
 function handleSubmit(message: PromptInputMessage) {
+  if (isBusy.value)
+    return
+
   const text = message.text.trim()
   const hasText = text.length > 0
   const hasAttachments = message.files.length > 0
@@ -437,13 +224,10 @@ function handleSubmit(message: PromptInputMessage) {
   if (!hasText && !hasAttachments)
     return
 
-  status.value = 'submitted'
-
   addUserMessage(hasText ? text : 'Sent with attachments')
 }
 
 function handleSuggestionClick(suggestion: string) {
-  status.value = 'submitted'
   addUserMessage(suggestion)
 }
 
@@ -521,11 +305,15 @@ function toggleWebSearch() {
           v-for="suggestion in suggestions"
           :key="suggestion"
           :suggestion="suggestion"
+          :disabled="isBusy"
           @click="handleSuggestionClick"
         />
       </Suggestions>
 
       <div class="w-full px-4 pb-4">
+        <p v-if="requestError" role="alert" class="mb-2 text-sm text-destructive">
+          {{ requestError }}
+        </p>
         <PromptInput
           class="w-full"
           multiple
@@ -537,11 +325,11 @@ function toggleWebSearch() {
           </PromptInputHeader>
 
           <PromptInputBody>
-            <PromptInputTextarea />
+            <PromptInputTextarea :disabled="isBusy" />
           </PromptInputBody>
 
-          <PromptInputFooter>
-            <PromptInputTools>
+          <PromptInputFooter class="flex-wrap">
+            <PromptInputTools class="min-w-0 flex-wrap">
               <PromptInputActionMenu>
                 <PromptInputActionMenuTrigger />
                 <PromptInputActionMenuContent>
@@ -610,7 +398,7 @@ function toggleWebSearch() {
             </PromptInputTools>
 
             <PromptInputSubmit
-              :disabled="status === 'streaming'"
+              :disabled="isBusy"
               :status="status"
             />
           </PromptInputFooter>
