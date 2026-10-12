@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { SidebarProps } from "@/components/ui/sidebar"
-import { ArchiveX, Command, File, Inbox, Send, Trash2 } from "@lucide/vue"
+import { ArchiveX, Command, File, FolderKanban, Send, Trash2 } from "@lucide/vue"
 import { h, ref } from "vue"
 import NavUser from "@/components/NavUser.vue"
 import { Label } from "@/components/ui/label"
@@ -32,9 +32,9 @@ const data = {
   },
   navMain: [
     {
-      title: "Inbox",
+      title: "Issues",
       url: "#",
-      icon: Inbox,
+      icon: FolderKanban,
       isActive: true,
     },
     {

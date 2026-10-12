@@ -35,6 +35,7 @@ from .adapter.gateway.repo import SQLiteConversationRepository
 from .database import get_session, create_db_and_tables
 
 app = FastAPI()
+app.frontend("/", directory="dist", fallback="index.html")
 
 model = os.getenv("PYDANTIC_AI_MODEL", "google:gemini-3.7-flash")
 
@@ -150,7 +151,7 @@ class ChatRequest(BaseModel):
     prompt: str
 
 
-@app.post("/chat", response_class=StreamingResponse)
+@app.post("/agent/chat", response_class=StreamingResponse)
 async def chat(
     request: ChatRequest,
     controllers: tuple[
