@@ -1,5 +1,7 @@
 # 無人機田間試驗評估智慧代理人
 
+![DEMO 主畫面](docs/assets/demo.png)
+
 **人工智慧與資訊安全期末專題提案**
 
 * **專案日期：** 2026 年 9 月 7 日至 12 月 21 日
@@ -8,20 +10,43 @@
 
 ---
 
-## 實作架構
+## 專案啟動步驟
 
-後端採用三層 Clean Architecture：
+### 1. 環境需求
+* **Python**：>= 3.13
+* **uv**：Python 套件與環境管理工具
+* **Node.js**：>= 18 與 npm
 
-```text
-adapter → usecase → entity
-```
+### 2. 後端啟動 (FastAPI)
+1. **安裝依賴套件**：
+   ```bash
+   uv sync
+   ```
+2. **設定環境變數**：
+   於專案根目錄建立 `.env` 檔案並設定金鑰與模型：
+   ```env
+   PYDANTIC_AI_MODEL=google:gemini-3.7-flash
+   GEMINI_API_KEY=your_gemini_api_key
+   ```
+3. **啟動後端服務**：
+   ```bash
+   uv run fastapi dev src/main.py
+   ```
+   後端預設服務網址為 `http://127.0.0.1:8000`。
 
-* `entity`：田間試驗、證據與評估規則，不依賴外部框架。
-* `usecase`：Agent 執行、資料匯入、試驗評估、證據驗證與報告流程；抽象 interface 位於 `usecase/port/`。
-* `adapter`：FastAPI、Pydantic AI、SQLite、Rasterio、RAG 與檔案輸出的具體 implementation。
-* `bootstrap.py`：建立 adapter 並注入 usecase；`main.py` 只負責啟動 ASGI app。
+### 3. 前端啟動 (Vue 3 + Vite)
+1. **切換至前端目錄並安裝套件**：
+   ```bash
+   cd frontend
+   npm install
+   ```
+2. **啟動開發伺服器**：
+   ```bash
+   npm run dev
+   ```
+   前端預設存取網址為 `http://localhost:5173`。
 
-詳細分層、依賴圖與功能對應請見 [05. 系統設計](docs/05_proposed_scheme.md#clean-architecture-分層)，完整目錄請見 [06. 執行規劃](docs/06_execution_plan.md#github-repository-結構)。
+> **備註**：前端亦可執行 `npm run build` 打包至 `src/dist`，由 FastAPI 直接託管靜態頁面。
 
 ---
 

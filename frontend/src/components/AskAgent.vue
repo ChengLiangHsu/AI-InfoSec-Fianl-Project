@@ -201,7 +201,7 @@ function addUserMessage(content: string) {
 
     messages.value = [...messages.value, assistantMessage]
     try {
-      const realResponse = await axios.post("/agent/chat", {
+      const realResponse = await axios.post("http://localhost:8000/agent/chat", {
         prompt: content,
       })
       await streamResponse(assistantVersionId, realResponse.data)
