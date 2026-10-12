@@ -35,3 +35,6 @@
 - [HTTPX：發送非同步請求](https://www.python-httpx.org/async/#Making%20Async%20requests)
 - [Python：非同步程式碼套件](https://docs.python.org/zh-tw/3/library/asyncio.html)
 - [Lucide](https://lucide.dev/icons/)
+- [OpenDroneMap](https://opendronemap.org/)
+- [FIELDimageR](https://opendronemap.org/fieldimager/)
+- [ODM 範例資料集](https://opendronemap.org/odm/datasets/)
