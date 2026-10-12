@@ -37,4 +37,4 @@
 - [Lucide](https://lucide.dev/icons/)
 - [OpenDroneMap](https://opendronemap.org/)
 - [FIELDimageR](https://opendronemap.org/fieldimager/)
-- [ODM 範例資料集](https://opendronemap.org/odm/datasets/)
+- [ODM 範例圖片集](https://opendronemap.org/odm/datasets/)
