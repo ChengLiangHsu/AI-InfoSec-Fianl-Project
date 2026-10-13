@@ -15,10 +15,9 @@
 ### 1. 環境需求
 * **Python**：>= 3.13
 * **uv**：Python 套件與環境管理工具
-* **Node.js**：>= 18 與 npm
 
-### 2. 後端啟動 (FastAPI)
-1. **安裝依賴套件**：
+### 2. 啟動專案 (FastAPI)
+1. **在專案根目錄安裝依賴套件**：
    ```bash
    uv sync
    ```
@@ -28,25 +27,20 @@
    PYDANTIC_AI_MODEL=google:gemini-3.7-flash
    GEMINI_API_KEY=your_gemini_api_key
    ```
-3. **啟動後端服務**：
+3. **在專案根目錄啟動服務**：
    ```bash
    uv run fastapi dev src/main.py
    ```
-   後端預設服務網址為 `http://127.0.0.1:8000`。
+---
 
-### 3. 前端啟動 (Vue 3 + Vite)
-1. **切換至前端目錄並安裝套件**：
-   ```bash
-   cd frontend
-   npm install
-   ```
-2. **啟動開發伺服器**：
-   ```bash
-   npm run dev
-   ```
-   前端預設存取網址為 `http://localhost:5173`。
+## 試用 ODM 功能
 
-> **備註**：前端亦可執行 `npm run build` 打包至 `src/dist`，由 FastAPI 直接託管靜態頁面。
+1. **安裝並啟動 Docker**。
+2. **將圖片放到 `odm/images` 資料夾**。
+3. **執行指令**：
+   ```bash
+   docker run -ti --rm -v /odm:/odm/code opendronemap/odm --project-path /odm
+   ```
 
 ---
 

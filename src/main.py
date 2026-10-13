@@ -3,6 +3,7 @@ import json
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from collections.abc import AsyncIterable, Iterable
 from typing import Annotated, Any, Literal, TypeVar
 
@@ -35,7 +36,7 @@ from .adapter.gateway.repo import SQLiteConversationRepository
 from .database import get_session, create_db_and_tables
 
 app = FastAPI()
-app.frontend("/", directory="dist", fallback="index.html")
+app.frontend("/", directory=Path(__file__).resolve().parent / "dist", fallback="index.html")
 
 model = os.getenv("PYDANTIC_AI_MODEL", "google:gemini-3.7-flash")
 
@@ -160,7 +161,7 @@ async def chat(
 ) -> AsyncIterable[str]:
     read_conversation_controller, update_conversation_controller = controllers
     conversation = read_conversation_controller.handle({
-        "id": "c6ef5aa80d62417dac43ba0066a20474"
+        "id": "1a1a5e60006f4a8bad74572ba2de2f28"
     })
     messages_history = conversation.messages
     async with AsyncClient() as client:
