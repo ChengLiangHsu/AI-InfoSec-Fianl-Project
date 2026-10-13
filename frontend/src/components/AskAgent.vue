@@ -2,7 +2,6 @@
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input'
 import type { ChatStatus, ToolUIPart } from 'ai'
 import axios from 'axios'
-import { CheckIcon, GlobeIcon } from '@lucide/vue'
 import { Conversation, ConversationContent, ConversationScrollButton } from '@/components/ai-elements/conversation'
 import {
   Message,
@@ -15,19 +14,6 @@ import {
   MessageContent,
   MessageResponse,
 } from '@/components/ai-elements/message'
-import {
-  ModelSelector,
-  ModelSelectorContent,
-  ModelSelectorEmpty,
-  ModelSelectorGroup,
-  ModelSelectorInput,
-  ModelSelectorItem,
-  ModelSelectorList,
-  ModelSelectorLogo,
-  ModelSelectorLogoGroup,
-  ModelSelectorName,
-  ModelSelectorTrigger,
-} from '@/components/ai-elements/model-selector'
 import {
   PromptInput,
   PromptInputActionAddAttachments,
@@ -85,44 +71,6 @@ const apiInstance = axios.create({
   baseURL: 'http://127.0.0.1:8000',
 })
 
-const models = [
-  {
-    id: 'gpt-4o',
-    name: 'GPT-4o',
-    chef: 'OpenAI',
-    chefSlug: 'openai',
-    providers: ['openai', 'azure'],
-  },
-  {
-    id: 'gpt-4o-mini',
-    name: 'GPT-4o Mini',
-    chef: 'OpenAI',
-    chefSlug: 'openai',
-    providers: ['openai', 'azure'],
-  },
-  {
-    id: 'claude-opus-4-20250514',
-    name: 'Claude 4 Opus',
-    chef: 'Anthropic',
-    chefSlug: 'anthropic',
-    providers: ['anthropic', 'azure', 'google', 'amazon-bedrock'],
-  },
-  {
-    id: 'claude-sonnet-4-20250514',
-    name: 'Claude 4 Sonnet',
-    chef: 'Anthropic',
-    chefSlug: 'anthropic',
-    providers: ['anthropic', 'azure', 'google', 'amazon-bedrock'],
-  },
-  {
-    id: 'gemini-2.0-flash-exp',
-    name: 'Gemini 2.0 Flash',
-    chef: 'Google',
-    chefSlug: 'google',
-    providers: ['google'],
-  },
-]
-
 const suggestions = [
   '無人機田間試驗應評估哪些指標？',
   '如何規劃無人機田間試驗的試驗區與對照組？',
@@ -134,15 +82,11 @@ const suggestions = [
   '請協助整理無人機田間試驗的評估報告架構。',
 ]
 
-const modelId = ref<string>(models[0].id)
-const modelSelectorOpen = ref(false)
-const useWebSearch = ref(false)
 const status = ref<ChatStatus>('ready')
 const messages = ref<MessageType[]>([])
 const requestError = ref('')
 const isBusy = computed(() => status.value === 'submitted' || status.value === 'streaming')
 
-const selectedModelData = computed(() => models.find(m => m.id === modelId.value))
 
 
 function updateStreamingContent(versionId: string, content: string) {
@@ -235,14 +179,6 @@ function handleSuggestionClick(suggestion: string) {
   addUserMessage(suggestion)
 }
 
-function handleModelSelect(id: string) {
-  modelId.value = id
-  modelSelectorOpen.value = false
-}
-
-function toggleWebSearch() {
-  useWebSearch.value = !useWebSearch.value
-}
 </script>
 
 <template>
@@ -320,6 +256,7 @@ function toggleWebSearch() {
         </p>
         <PromptInput
           class="w-full"
+          :disabled="isBusy"
           multiple
           global-drop
           @submit="handleSubmit"
@@ -335,70 +272,13 @@ function toggleWebSearch() {
           <PromptInputFooter class="flex-wrap">
             <PromptInputTools class="min-w-0 flex-wrap">
               <PromptInputActionMenu>
-                <PromptInputActionMenuTrigger />
+                <PromptInputActionMenuTrigger :disabled="isBusy" />
                 <PromptInputActionMenuContent>
-                  <PromptInputActionAddAttachments />
+                  <PromptInputActionAddAttachments :disabled="isBusy" />
                 </PromptInputActionMenuContent>
               </PromptInputActionMenu>
 
-              <PromptInputSpeechButton />
-
-              <PromptInputButton
-                :variant="useWebSearch ? 'default' : 'ghost'"
-                @click="toggleWebSearch"
-              >
-                <GlobeIcon :size="16" />
-                <span>Search</span>
-              </PromptInputButton>
-
-              <ModelSelector v-model:open="modelSelectorOpen">
-                <ModelSelectorTrigger as-child>
-                  <PromptInputButton>
-                    <ModelSelectorLogo
-                      v-if="selectedModelData?.chefSlug"
-                      :provider="selectedModelData.chefSlug"
-                    />
-                    <ModelSelectorName v-if="selectedModelData?.name">
-                      {{ selectedModelData.name }}
-                    </ModelSelectorName>
-                  </PromptInputButton>
-                </ModelSelectorTrigger>
-
-                <ModelSelectorContent>
-                  <ModelSelectorInput placeholder="Search models..." />
-                  <ModelSelectorList>
-                    <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
-
-                    <ModelSelectorGroup
-                      v-for="chef in ['OpenAI', 'Anthropic', 'Google']"
-                      :key="chef"
-                      :heading="chef"
-                    >
-                      <ModelSelectorItem
-                        v-for="m in models.filter(model => model.chef === chef)"
-                        :key="m.id"
-                        :value="m.id"
-                        @select="() => handleModelSelect(m.id)"
-                      >
-                        <ModelSelectorLogo :provider="m.chefSlug" />
-                        <ModelSelectorName>{{ m.name }}</ModelSelectorName>
-                        <ModelSelectorLogoGroup>
-                          <ModelSelectorLogo
-                            v-for="provider in m.providers"
-                            :key="provider"
-                            :provider="provider"
-                          />
-                        </ModelSelectorLogoGroup>
-                        <CheckIcon
-                          v-if="modelId === m.id"
-                          class="ml-auto size-4"
-                        />
-                        <div v-else class="ml-auto size-4" />
-                      </ModelSelectorItem>
-                    </ModelSelectorGroup>
-                  </ModelSelectorList>
-                </ModelSelectorContent>
-              </ModelSelector>
+              <PromptInputSpeechButton :disabled="isBusy" />
             </PromptInputTools>
 
             <PromptInputSubmit
