@@ -166,7 +166,11 @@ async def chat(
     messages_history = conversation.messages
     async with AsyncClient() as client:
         deps = Deps(client=client)
-        result = await weather_agent.run(request.prompt, deps=deps)
+        result = await weather_agent.run(
+            user_prompt=request.prompt,
+            deps=deps, 
+            message_history=messages_history
+        )
     for line in result.output.splitlines():
         yield line + "\n"
     print("success!")

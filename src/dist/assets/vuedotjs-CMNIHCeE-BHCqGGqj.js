@@ -1,1 +1,0 @@
-import{Kt as e,Pt as t,jt as n,rn as r}from"./index-C1WdySZD.js";var i={viewBox:`0 0 24 24`,width:`1.2em`,height:`1.2em`};function a(r,a){return e(),t(`svg`,i,[...a[0]||=[n(`path`,{fill:`currentColor`,d:`M24 1.61h-9.94L12 5.16L9.94 1.61H0l12 20.78ZM12 14.08L5.16 2.23h4.43L12 6.41l2.41-4.18h4.43Z`},null,-1)]])}var o=r({name:`simple-icons-vuedotjs`,render:a});export{o as default};
