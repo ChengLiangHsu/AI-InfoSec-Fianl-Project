@@ -81,6 +81,10 @@ interface MessageType {
   tools?: MessageTool[]
 }
 
+const apiInstance = axios.create({
+  baseURL: 'http://127.0.0.1:8000',
+})
+
 const models = [
   {
     id: 'gpt-4o',
@@ -201,7 +205,7 @@ function addUserMessage(content: string) {
 
     messages.value = [...messages.value, assistantMessage]
     try {
-      const realResponse = await axios.post("http://localhost:8000/agent/chat", {
+      const realResponse = await apiInstance.post("/agent/chat", {
         prompt: content,
       })
       await streamResponse(assistantVersionId, realResponse.data)

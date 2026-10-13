@@ -1,0 +1,1 @@
+import{Kt as e,Nt as t,Pt as n,Rt as r,cn as i,f as a,fn as o}from"./index-C1WdySZD.js";var s={key:0,"data-stream-markdown":`caret`},c=r({__name:`caret`,setup(r){let{enableCaret:c,caret:l}=a();return(r,a)=>i(c)?(e(),n(`span`,s,o(i(l)),1)):t(`v-if`,!0)}});export{c as default};
