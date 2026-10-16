@@ -1,21 +1,27 @@
-import os
-import json
-import asyncio
-from dataclasses import dataclass
-from datetime import datetime
-from collections.abc import AsyncIterable, Iterable
-from typing import Annotated, Any, Literal, TypeVar
+from __future__ import annotations as _annotations
 
+import os
 from dotenv import load_dotenv
 
 load_dotenv()
+import asyncio
+import json
+import sqlite3
+from collections.abc import AsyncGenerator, Callable
+from concurrent.futures.thread import ThreadPoolExecutor
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from functools import partial
+from pathlib import Path
+from typing import Annotated, Any, Literal, TypeVar
 
-from fastapi import FastAPI, Depends, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from httpx import AsyncClient
-from pydantic import BaseModel
-from sqlmodel import Session
+import fastapi
+import logfire
+from fastapi import Depends, Request
+from fastapi.responses import FileResponse, Response, StreamingResponse
+from typing_extensions import LiteralString, ParamSpec, TypedDict
+
 from pydantic_ai import (
     Agent,
     ModelMessage,
@@ -25,146 +31,193 @@ from pydantic_ai import (
     TextPart,
     UnexpectedModelBehavior,
     UserPromptPart,
-    RunContext
 )
-from typing_extensions import LiteralString, ParamSpec, TypedDict
 
-from .usecase import ReadConversationUsecase, UpdateConversationUsecase
-from .adapter.controller import ReadConversationController, UpdateConversationController
-from .adapter.gateway.repo import SQLiteConversationRepository
-from .database import get_session, create_db_and_tables
-
-app = FastAPI()
-app.frontend("/", directory="dist", fallback="index.html")
+# 'if-token-present' means nothing will be sent (and the example will work) if you don't have logfire configured
+logfire.configure(send_to_logfire="if-token-present")
+logfire.instrument_pydantic_ai()
 
 model = os.getenv("PYDANTIC_AI_MODEL", "google:gemini-3.7-flash")
+agent = Agent(model)
+THIS_DIR = Path(__file__).parent
+
+
+@asynccontextmanager
+async def lifespan(_app: fastapi.FastAPI):
+    async with Database.connect() as db:
+        yield {"db": db}
+
+
+app = fastapi.FastAPI(lifespan=lifespan)
+logfire.instrument_fastapi(app)
+
+
+@app.get("/")
+async def index() -> FileResponse:
+    return FileResponse((THIS_DIR / "chat_app.html"), media_type="text/html")
+
+
+@app.get("/chat_app.ts")
+async def main_ts() -> FileResponse:
+    """Get the raw typescript code, it's compiled in the browser, forgive me."""
+    return FileResponse((THIS_DIR / "chat_app.ts"), media_type="text/plain")
+
+
+async def get_db(request: Request) -> Database:
+    return request.state.db
+
+
+@app.get("/chat/")
+async def get_chat(database: Database = Depends(get_db)) -> Response:
+    msgs = await database.get_messages()
+    return Response(
+        b"\n".join(json.dumps(to_chat_message(m)).encode("utf-8") for m in msgs),
+        media_type="text/plain",
+    )
+
+
+class ChatMessage(TypedDict):
+    """Format of messages sent to the browser."""
+
+    role: Literal["user", "model"]
+    timestamp: str
+    content: str
+
+
+def to_chat_message(m: ModelMessage) -> ChatMessage:
+    first_part = m.parts[0]
+    if isinstance(m, ModelRequest):
+        if isinstance(first_part, UserPromptPart):
+            assert isinstance(first_part.content, str)
+            return {
+                "role": "user",
+                "timestamp": first_part.timestamp.isoformat(),
+                "content": first_part.content,
+            }
+    elif isinstance(m, ModelResponse):
+        if isinstance(first_part, TextPart):
+            return {
+                "role": "model",
+                "timestamp": m.timestamp.isoformat(),
+                "content": first_part.content,
+            }
+    raise UnexpectedModelBehavior(f"Unexpected message type for chat app: {m}")
+
+
+@app.post("/chat/")
+async def post_chat(
+    prompt: Annotated[str, fastapi.Form()], database: Database = Depends(get_db)
+) -> StreamingResponse:
+    async def stream_messages():
+        """Streams new line delimited JSON `Message`s to the client."""
+        # stream the user prompt so that can be displayed straight away
+        yield (
+            json.dumps(
+                {
+                    "role": "user",
+                    "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+                    "content": prompt,
+                }
+            ).encode("utf-8")
+            + b"\n"
+        )
+        # get the chat history so far to pass as context to the agent
+        messages = await database.get_messages()
+        # run the agent with the user prompt and the chat history
+        async with agent.run_stream(prompt, message_history=messages) as result:
+            async for text in result.stream_output(debounce_by=0.01):
+                # text here is a `str` and the frontend wants
+                # JSON encoded ModelResponse, so we create one
+                m = ModelResponse(parts=[TextPart(text)], timestamp=result.timestamp)
+                yield json.dumps(to_chat_message(m)).encode("utf-8") + b"\n"
+
+        # add new messages (e.g. the user prompt and the agent response in this case) to the database
+        await database.add_messages(result.new_messages_json())
+
+    return StreamingResponse(stream_messages(), media_type="text/plain")
+
+
+P = ParamSpec("P")
+R = TypeVar("R")
+
 
 @dataclass
-class Deps:
-    client: AsyncClient
+class Database:
+    """Rudimentary database to store chat messages in SQLite.
 
-weather_agent = Agent(
-    model,
-    instructions='以繁體中文回答，天氣的問題',
-    deps_type=Deps,
-    retries=2,
-)
-
-class LatLng(BaseModel):
-    lat: float
-    lng: float
-
-@weather_agent.tool
-async def get_lat_lng(ctx: RunContext[Deps], location_description: str) -> LatLng:
-    """Get the latitude and longitude of a location.
-    Args:
-        ctx: The context.
-        location_description: A description of a location.
+    The SQLite standard library package is synchronous, so we
+    use a thread pool executor to run queries asynchronously.
     """
-    # NOTE: the response here will be random, and is not related to the location description.
-    r = await ctx.deps.client.get(
-        'https://demo-endpoints.pydantic.workers.dev/latlng',
-        params={'location': location_description},
-    )
-    r.raise_for_status()
-    return LatLng.model_validate_json(r.content)
 
-@weather_agent.tool
-async def get_weather(ctx: RunContext[Deps], lat: float, lng: float) -> dict[str, Any]:
-    """Get the weather at a location.
-    Args:
-        ctx: The context.
-        lat: Latitude of the location.
-        lng: Longitude of the location.
-    """
-    # NOTE: the responses here will be random, and are not related to the lat and lng.
-    temp_response, descr_response = await asyncio.gather(
-        ctx.deps.client.get(
-            'https://demo-endpoints.pydantic.workers.dev/number',
-            params={'min': 10, 'max': 30},
-        ),
-        ctx.deps.client.get(
-            'https://demo-endpoints.pydantic.workers.dev/weather',
-            params={'lat': lat, 'lng': lng},
-        ),
-    )
-    temp_response.raise_for_status()
-    descr_response.raise_for_status()
-    return {
-        'temperature': f'{temp_response.text} °C',
-        'description': descr_response.text,
-    }
+    con: sqlite3.Connection
+    _loop: asyncio.AbstractEventLoop
+    _executor: ThreadPoolExecutor
 
-async def main():
-    async with AsyncClient() as client:
-        logfire.instrument_httpx(client, capture_all=True)
-        deps = Deps(client=client)
-        result = await weather_agent.run(
-            'What is the weather like in London and in Wiltshire?', deps=deps
+    @classmethod
+    @asynccontextmanager
+    async def connect(
+        cls, file: Path = THIS_DIR / ".chat_app_messages.sqlite"
+    ) -> AsyncGenerator[Database]:
+        with logfire.span("connect to DB"):
+            loop = asyncio.get_running_loop()
+            executor = ThreadPoolExecutor(max_workers=1)
+            con = await loop.run_in_executor(executor, cls._connect, file)
+            slf = cls(con, loop, executor)
+        try:
+            yield slf
+        finally:
+            await slf._asyncify(con.close)
+
+    @staticmethod
+    def _connect(file: Path) -> sqlite3.Connection:
+        con = sqlite3.connect(str(file))
+        con = logfire.instrument_sqlite3(con)
+        cur = con.cursor()
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS messages (id INT PRIMARY KEY, message_list TEXT);"
         )
-        print('Response:', result.output)
+        con.commit()
+        return con
 
-sessionDep = Annotated[Session, Depends(get_session, scope="function")]
+    async def add_messages(self, messages: bytes):
+        await self._asyncify(
+            self._execute,
+            "INSERT INTO messages (message_list) VALUES (?);",
+            messages,
+            commit=True,
+        )
+        await self._asyncify(self.con.commit)
 
+    async def get_messages(self) -> list[ModelMessage]:
+        c = await self._asyncify(
+            self._execute, "SELECT message_list FROM messages order by id"
+        )
+        rows = await self._asyncify(c.fetchall)
+        messages: list[ModelMessage] = []
+        for row in rows:
+            messages.extend(ModelMessagesTypeAdapter.validate_json(row[0]))
+        return messages
 
-def build_controller(
-    session: sessionDep,
-) -> tuple[ReadConversationController, UpdateConversationController]:
-    repo = SQLiteConversationRepository(session)
-    read_conversation_usecase = ReadConversationUsecase(repo=repo)
-    update_conversation_usecase = UpdateConversationUsecase(repo=repo)
-    return ReadConversationController(
-        usecase=read_conversation_usecase
-    ), UpdateConversationController(usecase=update_conversation_usecase)
+    def _execute(
+        self, sql: LiteralString, *args: Any, commit: bool = False
+    ) -> sqlite3.Cursor:
+        cur = self.con.cursor()
+        cur.execute(sql, args)
+        if commit:
+            self.con.commit()
+        return cur
 
-
-origins = [
-    "http://localhost:5173",
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-message = """
-Rick: (stumbles in drunkenly, and turns on the lights) Morty! You gotta come on. You got--... you gotta come with me.
-Morty: (rubs his eyes) What, Rick? What's going on?
-Rick: I got a surprise for you, Morty.
-Morty: It's the middle of the night. What are you talking about?
-Rick: (spills alcohol on Morty's bed) Come on, I got a surprise for you. (drags Morty by the ankle) Come on, hurry up. (pulls Morty out of his bed and into the hall)
-Morty: Ow! Ow! You're tugging me too hard!
-Rick: We gotta go, gotta get outta here, come on. Got a surprise for you Morty.
-"""
-
-
-@app.on_event("startup")
-def on_startup():
-    create_db_and_tables()
+    async def _asyncify(
+        self, func: Callable[P, R], *args: P.args, **kwargs: P.kwargs
+    ) -> R:
+        return await self._loop.run_in_executor(  # pyright: ignore[reportUnknownVariableType]
+            self._executor,
+            partial(func, **kwargs),
+            *args,  # pyright: ignore[reportCallIssue]
+        )
 
 
-class ChatRequest(BaseModel):
-    prompt: str
+if __name__ == "__main__":
+    import uvicorn
 
-
-@app.post("/agent/chat", response_class=StreamingResponse)
-async def chat(
-    request: ChatRequest,
-    controllers: tuple[
-        ReadConversationController, UpdateConversationController
-    ] = Depends(build_controller),
-) -> AsyncIterable[str]:
-    read_conversation_controller, update_conversation_controller = controllers
-    conversation = read_conversation_controller.handle({
-        "id": "c6ef5aa80d62417dac43ba0066a20474"
-    })
-    messages_history = conversation.messages
-    async with AsyncClient() as client:
-        deps = Deps(client=client)
-        result = await weather_agent.run(request.prompt, deps=deps)
-    for line in result.output.splitlines():
-        yield line + "\n"
+    uvicorn.run("chat_app:app", reload=True, reload_dirs=[str(THIS_DIR)])
