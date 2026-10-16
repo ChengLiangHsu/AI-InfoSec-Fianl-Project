@@ -21,7 +21,7 @@ import logfire
 from fastapi import Depends, Request
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from typing_extensions import LiteralString, ParamSpec, TypedDict
-
+from pydantic import BaseModel
 from pydantic_ai import (
     Agent,
     ModelMessage,
@@ -71,42 +71,62 @@ async def get_db(request: Request) -> Database:
 async def get_chat(database: Database = Depends(get_db)) -> Response:
     msgs = await database.get_messages()
     return Response(
-        b"\n".join(json.dumps(to_chat_message(m)).encode("utf-8") for m in msgs),
+        b"\n".join(json.dumps(to_model_message(m)).encode("utf-8") for m in msgs),
         media_type="text/plain",
     )
 
 
-class ChatMessage(TypedDict):
+class ModelMessageResponse(TypedDict):
     """Format of messages sent to the browser."""
 
-    role: Literal["user", "model"]
-    timestamp: str
+    key: str
+    role: "assistant"
+    versions: list[Version]
+
+
+class Version(TypedDict):
+    """Format of a message version."""
+    id: str
     content: str
 
 
-def to_chat_message(m: ModelMessage) -> ChatMessage:
+def to_model_message(m: ModelMessage) -> ModelMessageResponse:
     first_part = m.parts[0]
     if isinstance(m, ModelRequest):
         if isinstance(first_part, UserPromptPart):
             assert isinstance(first_part.content, str)
             return {
                 "role": "user",
-                "timestamp": first_part.timestamp.isoformat(),
-                "content": first_part.content,
+                "key": first_part.timestamp.isoformat(),
+                "versions": [
+                    {
+                        "id": "1",
+                        "content": first_part.content
+                    }
+                ]
             }
     elif isinstance(m, ModelResponse):
         if isinstance(first_part, TextPart):
             return {
-                "role": "model",
-                "timestamp": m.timestamp.isoformat(),
-                "content": first_part.content,
+                "role": "assistant",
+                "key": m.timestamp.isoformat(),
+                "versions": [
+                    {
+                        "id": "1",
+                        "content": first_part.content
+                    }
+                ],
             }
     raise UnexpectedModelBehavior(f"Unexpected message type for chat app: {m}")
 
 
-@app.post("/chat/")
+class PostChatRequest(BaseModel):
+    prompt: str
+
+
+@app.post("/chat")
 async def post_chat(
-    prompt: Annotated[str, fastapi.Form()], database: Database = Depends(get_db)
+    request: PostChatRequest, database: Database = Depends(get_db)
 ) -> StreamingResponse:
     async def stream_messages():
         """Streams new line delimited JSON `Message`s to the client."""
@@ -115,8 +135,13 @@ async def post_chat(
             json.dumps(
                 {
                     "role": "user",
-                    "timestamp": datetime.now(tz=timezone.utc).isoformat(),
-                    "content": prompt,
+                    "key": datetime.now(tz=timezone.utc).isoformat(),
+                    "versions": [
+                        {
+                            "id": "1",
+                            "content": request.prompt
+                        }
+                    ]
                 }
             ).encode("utf-8")
             + b"\n"
@@ -124,12 +149,12 @@ async def post_chat(
         # get the chat history so far to pass as context to the agent
         messages = await database.get_messages()
         # run the agent with the user prompt and the chat history
-        async with agent.run_stream(prompt, message_history=messages) as result:
+        async with agent.run_stream(request.prompt, message_history=messages) as result:
             async for text in result.stream_output(debounce_by=0.01):
                 # text here is a `str` and the frontend wants
                 # JSON encoded ModelResponse, so we create one
                 m = ModelResponse(parts=[TextPart(text)], timestamp=result.timestamp)
-                yield json.dumps(to_chat_message(m)).encode("utf-8") + b"\n"
+                yield json.dumps(to_model_message(m)).encode("utf-8") + b"\n"
 
         # add new messages (e.g. the user prompt and the agent response in this case) to the database
         await database.add_messages(result.new_messages_json())
@@ -220,4 +245,4 @@ class Database:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("chat_app:app", reload=True, reload_dirs=[str(THIS_DIR)])
+    uvicorn.run("main:app", app_dir=str(THIS_DIR), reload=True)

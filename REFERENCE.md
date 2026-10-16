@@ -38,3 +38,6 @@
 - [OpenDroneMap](https://opendronemap.org/)
 - [FIELDimageR](https://opendronemap.org/fieldimager/)
 - [ODM 範例資料集](https://opendronemap.org/odm/datasets/)
+- [Python：非同步上下文管理器](https://docs.python.org/zh-tw/3/library/contextlib.html#contextlib.asynccontextmanager)
+- [Vite：依照網址路徑代理到指定伺服器](https://vite.dev/config/server-options#:~:text=Any%20requests%20whose%20request%20path%20starts%20with%20that%20key%20will%20be%20proxied%20to%20the%20specified%20target.)
+- [MDN：Fetch 傳遞 JSON 資料](https://developer.mozilla.org/zh-TW/docs/Web/API/Fetch_API/Using_Fetch#%E4%B8%8A%E5%82%B3_json_%E8%B3%87%E6%96%99)

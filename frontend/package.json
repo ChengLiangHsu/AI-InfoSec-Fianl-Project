@@ -23,7 +23,6 @@
     "@vueuse/core": "^15.0.0",
     "ai": "^7.0.137",
     "ansi-to-vue3": "^0.1.2",
-    "axios": "^1.20.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "embla-carousel-vue": "^8.6.0",

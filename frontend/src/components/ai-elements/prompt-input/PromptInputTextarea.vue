@@ -70,15 +70,7 @@ const modelValue = computed({
 </script>
 
 <template>
-  <InputGroupTextarea
-    v-model="modelValue"
-    placeholder="What would you like to know?"
-    name="message"
-    :class="cn('field-sizing-content max-h-48 min-h-16', props.class)"
-    v-bind="props"
-    @keydown="handleKeyDown"
-    @paste="handlePaste"
-    @compositionstart="isComposing = true"
-    @compositionend="isComposing = false"
-  />
+  <InputGroupTextarea v-model="modelValue" placeholder="請問可以如何幫助你？" name="message"
+    :class="cn('field-sizing-content max-h-48 min-h-16', props.class)" v-bind="props" @keydown="handleKeyDown"
+    @paste="handlePaste" @compositionstart="isComposing = true" @compositionend="isComposing = false" />
 </template>
