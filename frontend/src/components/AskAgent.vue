@@ -81,6 +81,10 @@ interface MessageType {
   tools?: MessageTool[]
 }
 
+const apiInstance = axios.create({
+  baseURL: "http://localhost:8000",
+});
+
 const models = [
   {
     id: 'gpt-4o',
@@ -201,7 +205,7 @@ function addUserMessage(content: string) {
 
     messages.value = [...messages.value, assistantMessage]
     try {
-      const realResponse = await axios.post("http://localhost:8000/agent/chat", {
+      const realResponse = await apiInstance.post("/agent/chat", {
         prompt: content,
       })
       await streamResponse(assistantVersionId, realResponse.data)
@@ -245,51 +249,31 @@ function toggleWebSearch() {
   <div class="relative flex size-full flex-col divide-y overflow-hidden">
     <Conversation>
       <ConversationContent>
-        <MessageBranch
-          v-for="message in messages"
-          :key="message.key"
-          :default-branch="0"
-        >
+        <MessageBranch v-for="message in messages" :key="message.key" :default-branch="0">
           <MessageBranchContent>
-            <Message
-              v-for="version in message.versions"
-              :key="`${message.key}-${version.id}`"
-              :from="message.from"
-            >
+            <Message v-for="version in message.versions" :key="`${message.key}-${version.id}`" :from="message.from">
               <div>
                 <Sources v-if="message.sources?.length">
                   <SourcesTrigger :count="message.sources.length" />
                   <SourcesContent>
-                    <Source
-                      v-for="source in message.sources"
-                      :key="source.href"
-                      :href="source.href"
-                      :title="source.title"
-                    />
+                    <Source v-for="source in message.sources" :key="source.href" :href="source.href"
+                      :title="source.title" />
                   </SourcesContent>
                 </Sources>
 
-                <Reasoning
-                  v-if="message.reasoning"
-                  :duration="message.reasoning.duration"
-                >
+                <Reasoning v-if="message.reasoning" :duration="message.reasoning.duration">
                   <ReasoningTrigger />
                   <ReasoningContent :content="message.reasoning.content" />
                 </Reasoning>
 
                 <MessageContent>
-                  <MessageResponse
-                    :content="version.content"
-                  />
+                  <MessageResponse :content="version.content" />
                 </MessageContent>
               </div>
             </Message>
           </MessageBranchContent>
 
-          <MessageBranchSelector
-            v-if="message.versions.length > 1"
-            :from="message.from"
-          >
+          <MessageBranchSelector v-if="message.versions.length > 1" :from="message.from">
             <MessageBranchPrevious />
             <MessageBranchPage />
             <MessageBranchNext />
@@ -301,25 +285,15 @@ function toggleWebSearch() {
 
     <div class="grid shrink-0 gap-4 pt-4">
       <Suggestions class="px-4">
-        <Suggestion
-          v-for="suggestion in suggestions"
-          :key="suggestion"
-          :suggestion="suggestion"
-          :disabled="isBusy"
-          @click="handleSuggestionClick"
-        />
+        <Suggestion v-for="suggestion in suggestions" :key="suggestion" :suggestion="suggestion" :disabled="isBusy"
+          @click="handleSuggestionClick" />
       </Suggestions>
 
       <div class="w-full px-4 pb-4">
         <p v-if="requestError" role="alert" class="mb-2 text-sm text-destructive">
           {{ requestError }}
         </p>
-        <PromptInput
-          class="w-full"
-          multiple
-          global-drop
-          @submit="handleSubmit"
-        >
+        <PromptInput class="w-full" multiple global-drop @submit="handleSubmit">
           <PromptInputHeader>
             <PromptInputAttachmentsDisplay />
           </PromptInputHeader>
@@ -339,10 +313,7 @@ function toggleWebSearch() {
 
               <PromptInputSpeechButton />
 
-              <PromptInputButton
-                :variant="useWebSearch ? 'default' : 'ghost'"
-                @click="toggleWebSearch"
-              >
+              <PromptInputButton :variant="useWebSearch ? 'default' : 'ghost'" @click="toggleWebSearch">
                 <GlobeIcon :size="16" />
                 <span>Search</span>
               </PromptInputButton>
@@ -350,10 +321,7 @@ function toggleWebSearch() {
               <ModelSelector v-model:open="modelSelectorOpen">
                 <ModelSelectorTrigger as-child>
                   <PromptInputButton>
-                    <ModelSelectorLogo
-                      v-if="selectedModelData?.chefSlug"
-                      :provider="selectedModelData.chefSlug"
-                    />
+                    <ModelSelectorLogo v-if="selectedModelData?.chefSlug" :provider="selectedModelData.chefSlug" />
                     <ModelSelectorName v-if="selectedModelData?.name">
                       {{ selectedModelData.name }}
                     </ModelSelectorName>
@@ -365,30 +333,15 @@ function toggleWebSearch() {
                   <ModelSelectorList>
                     <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
 
-                    <ModelSelectorGroup
-                      v-for="chef in ['OpenAI', 'Anthropic', 'Google']"
-                      :key="chef"
-                      :heading="chef"
-                    >
-                      <ModelSelectorItem
-                        v-for="m in models.filter(model => model.chef === chef)"
-                        :key="m.id"
-                        :value="m.id"
-                        @select="() => handleModelSelect(m.id)"
-                      >
+                    <ModelSelectorGroup v-for="chef in ['OpenAI', 'Anthropic', 'Google']" :key="chef" :heading="chef">
+                      <ModelSelectorItem v-for="m in models.filter(model => model.chef === chef)" :key="m.id"
+                        :value="m.id" @select="() => handleModelSelect(m.id)">
                         <ModelSelectorLogo :provider="m.chefSlug" />
                         <ModelSelectorName>{{ m.name }}</ModelSelectorName>
                         <ModelSelectorLogoGroup>
-                          <ModelSelectorLogo
-                            v-for="provider in m.providers"
-                            :key="provider"
-                            :provider="provider"
-                          />
+                          <ModelSelectorLogo v-for="provider in m.providers" :key="provider" :provider="provider" />
                         </ModelSelectorLogoGroup>
-                        <CheckIcon
-                          v-if="modelId === m.id"
-                          class="ml-auto size-4"
-                        />
+                        <CheckIcon v-if="modelId === m.id" class="ml-auto size-4" />
                         <div v-else class="ml-auto size-4" />
                       </ModelSelectorItem>
                     </ModelSelectorGroup>
@@ -397,10 +350,7 @@ function toggleWebSearch() {
               </ModelSelector>
             </PromptInputTools>
 
-            <PromptInputSubmit
-              :disabled="isBusy"
-              :status="status"
-            />
+            <PromptInputSubmit :disabled="isBusy" :status="status" />
           </PromptInputFooter>
         </PromptInput>
       </div>
