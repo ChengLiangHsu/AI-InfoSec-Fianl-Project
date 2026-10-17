@@ -46,3 +46,4 @@
 - [Exifr：用於讀取有地理資訊的圖片檔套件](https://github.com/MikeKovarik/exifr)
 - [JavaScript：四捨五入](https://developer.mozilla.org/zh-TW/docs/Web/JavaScript/Reference/Global_Objects/Number/toFixed)
 - [NodeODM API 文件](https://github.com/OpenDroneMap/NodeODM/blob/master/docs/index.adoc)
+- [HTTPX 發送被表單包裝的檔案](https://www.python-httpx.org/quickstart/#sending-multipart-file-uploads)

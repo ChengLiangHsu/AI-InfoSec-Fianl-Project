@@ -41,6 +41,7 @@ import { Input } from '@/components/ui/input'
 import { ref, watch } from 'vue'
 import AskAgent from './components/AskAgent.vue'
 import exifr from 'exifr'
+
 interface UploadItem {
   name: string
   size: string
@@ -48,6 +49,12 @@ interface UploadItem {
   latitude: number
   longitude: number
 }
+
+interface Project {
+  id: string
+}
+
+const projects = ref<Project[]>([])
 const uploadList = ref<UploadItem[]>([])
 const isCreatingProject = ref(false)
 async function handleFileUpload(event: Event) {
@@ -78,15 +85,19 @@ async function hadleCreateProject(event: Event) {
   }
   const formData = new FormData(event.target)
   isCreatingProject.value = true
-  const response = await fetch("/api/files", {
+  const response = await fetch("/api/odm-task", {
     method: "POST",
     body: formData,
   });
+  const data = await response.json();
   if (!response.ok) {
     alert("建立專案失敗")
     isCreatingProject.value = false
     return
   }
+  projects.value.push({
+    id: data.data["uuid"]
+  })
   isCreatingProject.value = false
 }
 const isAgentOpen = ref(true)
@@ -102,7 +113,7 @@ watch(selectedProject, () => {
   <SidebarProvider :style="{
     '--sidebar-width': '350px',
   }">
-    <AppSidebar v-model="selectedProject" />
+    <AppSidebar v-model:selected-project="selectedProject" v-model:projects="projects" />
     <SidebarInset>
       <header v-if="selectedProject" class="bg-background sticky top-0 flex shrink-0 items-center gap-2 border-b p-4">
         <SidebarTrigger class="-ml-1" />

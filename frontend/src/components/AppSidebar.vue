@@ -22,7 +22,8 @@ const props = withDefaults(defineProps<SidebarProps>(), {
   collapsible: "icon",
 })
 
-const selectedProject = defineModel()
+const selectedProject = defineModel("selectedProject")
+const projects = defineModel("projects")
 
 const data = {
   user: {
@@ -38,28 +39,9 @@ const data = {
       isActive: true,
     }
   ],
-  projects: [
-    {
-      name: "20261017",
-      email: "williamsmith@example.com",
-      subject: "Meeting Tomorrow",
-      date: "09:34 AM",
-      teaser:
-        "Hi team, just a reminder about our meeting tomorrow at 10 AM.\nPlease come prepared with your project updates.",
-    },
-    {
-      name: "Alice Smith",
-      email: "alicesmith@example.com",
-      subject: "Re: Project Update",
-      date: "Yesterday",
-      teaser:
-        "Thanks for the update. The progress looks great so far.\nLet's schedule a call to discuss the next steps.",
-    }
-  ],
 }
 
 const activeItem = ref(data.navMain[0]!)
-const projects = ref(data.projects)
 const { setOpen } = useSidebar()
 </script>
 
@@ -92,9 +74,6 @@ const { setOpen } = useSidebar()
                 <SidebarMenuButton :tooltip="h('div', { hidden: false }, item.title)"
                   :is-active="activeItem.title === item.title" class="px-2.5 md:px-2" @click="() => {
                     activeItem = item
-
-                    const project = data.projects.sort(() => Math.random() - 0.5)
-                    projects = project.slice(0, Math.max(5, Math.floor(Math.random() * 10) + 1))
                     setOpen(true)
                   }">
                   <component :is="item.icon" />
@@ -124,16 +103,12 @@ const { setOpen } = useSidebar()
       <SidebarContent>
         <SidebarGroup class="px-0">
           <SidebarGroupContent>
-            <a v-for="project in projects" :key="project.email" @click="selectedProject = project.name"
-              class="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex flex-col items-start gap-2 border-b p-4 text-sm leading-tight whitespace-nowrap last:border-b-0">
+            <a v-for="project in projects" :key="project.id" @click="selectedProject = project.id"
+              class="overflow-hidden cursor-pointer hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex flex-col items-start gap-2 border-b p-4 text-sm leading-tight whitespace-nowrap last:border-b-0">
               <div class="flex w-full items-center gap-2">
-                <span>{{ project.name }}</span>
-                <span class="ml-auto text-xs">{{ project.date }}</span>
+                <span>{{ project.id }}</span>
+                <span class="ml-auto text-xs">{{ project.id }}</span>
               </div>
-              <span class="font-medium">{{ project.subject }}</span>
-              <span class="line-clamp-2 w-[260px] whitespace-break-spaces text-xs">
-                {{ project.teaser }}
-              </span>
             </a>
           </SidebarGroupContent>
         </SidebarGroup>

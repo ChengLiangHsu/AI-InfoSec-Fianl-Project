@@ -166,25 +166,21 @@ async def post_chat(
 P = ParamSpec("P")
 R = TypeVar("R")
 
-@app.post("/file/")
-async def create_file(file: Annotated[bytes, File()]):
-    return {"file_size": len(file)}
+@app.post("/odm-task")
+async def create_odm_task(files: list[UploadFile]):
+    odm_files = [
+        ("images", (f.filename, await f.read(), f.content_type))
+        for f in files
+    ]
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        r = await client.post("http://localhost:3000/task/new", files=odm_files)
+    return {"result": True, "data": r.json()}
 
-@app.post("/files")
-async def create_files(files: Annotated[list[bytes], File()]):
-    return {"file_sizes": [len(file) for file in files]}
-
-class CreateODMTaskRequest(BaseModel):
-    pass
-
-@app.post("/odm/task")
-async def post_odm_task():
+@app.get("/odm-task-info/{task_id}")
+async def get_odm_task_info(task_id: str):
     async with httpx.AsyncClient() as client:
-        r = await client.post("http://localhost:3000/task/new")
-    return {
-        "result": True,
-        "data": {}
-    }
+        r = await client.get(f"http://localhost:3000/task/{task_id}")
+    return r.json()
 
 
 @dataclass
