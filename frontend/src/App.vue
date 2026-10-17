@@ -4,34 +4,65 @@ export const iframeHeight = "800px"
 </script>
 
 <script setup lang="ts">
-import { MessageCircleIcon, MinusIcon } from '@lucide/vue'
+import { MessageCircleIcon, MinusIcon, FileCodeIcon, XIcon, Plus } from '@lucide/vue'
 import AppSidebar from "@/components/AppSidebar.vue"
 import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbList,
-  BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
+import {
+  Attachment,
+  AttachmentAction,
+  AttachmentActions,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentGroup,
+  AttachmentMedia,
+  AttachmentTitle,
+} from '@/components/ui/attachment'
 import { Separator } from "@/components/ui/separator"
 import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { ref } from 'vue'
 import AskAgent from './components/AskAgent.vue'
-
+const images = [
+  {
+    name: 'workspace.png',
+    meta: 'PNG · 820 KB',
+    src: 'https://images.unsplash.com/photo-1497366754035-f200968a6e72?w=900&auto=format&fit=crop&q=80',
+    alt: 'Workspace',
+  },
+  {
+    name: 'desk-reference.jpg',
+    meta: 'JPG · 1.1 MB',
+    src: 'https://images.unsplash.com/photo-1497215728101-856f4ea42174?w=900&auto=format&fit=crop&q=80',
+    alt: 'Desk',
+  },
+  {
+    name: 'office-reference.jpg',
+    meta: 'JPG · 940 KB',
+    src: 'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=900&auto=format&fit=crop&q=80',
+    alt: 'Office',
+  },
+]
 const isAgentOpen = ref(true)
+const selectedProject = ref()
 </script>
 
 <template>
   <SidebarProvider :style="{
     '--sidebar-width': '350px',
   }">
-    <AppSidebar />
-    <SidebarInset>
+    <AppSidebar v-model="selectedProject" />
+    <SidebarInset v-if="selectedProject">
       <header class="bg-background sticky top-0 flex shrink-0 items-center gap-2 border-b p-4">
         <SidebarTrigger class="-ml-1" />
         <Separator orientation="vertical" class="mr-2 data-[orientation=vertical]:h-4" />
@@ -39,20 +70,67 @@ const isAgentOpen = ref(true)
           <BreadcrumbList>
             <BreadcrumbItem class="hidden md:block">
               <BreadcrumbLink href="#">
-                All Inboxes
+                專案
               </BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator class="hidden md:block" />
             <BreadcrumbItem>
-              <BreadcrumbPage>Inbox</BreadcrumbPage>
+              <BreadcrumbLink href="#">
+                {{ selectedProject }}
+              </BreadcrumbLink>
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
       </header>
-      <div class="flex flex-1 flex-col gap-4 p-4">
-        <div v-for="index in 24" :key="index" class="aspect-video h-12 w-full rounded-lg bg-muted/50" />
+      <div class="mx-auto flex w-full max-w-sm flex-col gap-3 py-12">
+        {{ selectedProject }}
       </div>
     </SidebarInset>
+    <div v-else class="mx-auto flex w-full max-w-sm flex-col gap-3 py-12">
+      <Label for="picture">Picture</Label>
+      <Input id="picture" type="file" multiple />
+      <AttachmentGroup>
+        <template v-for="image in images" :key="image.name">
+          <Attachment orientation="vertical">
+            <AttachmentMedia variant="image">
+              <img :src="image.src" :alt="image.alt">
+            </AttachmentMedia>
+            <AttachmentContent>
+              <AttachmentTitle>{{ image.name }}</AttachmentTitle>
+              <AttachmentDescription>{{ image.meta }}</AttachmentDescription>
+            </AttachmentContent>
+          </Attachment>
+        </template>
+      </AttachmentGroup>
+      <Attachment state="uploading" class="w-full">
+        <AttachmentMedia>
+          <Spinner />
+        </AttachmentMedia>
+        <AttachmentContent>
+          <AttachmentTitle>sales-dashboard.pdf</AttachmentTitle>
+          <AttachmentDescription>Uploading · 64%</AttachmentDescription>
+        </AttachmentContent>
+        <AttachmentActions>
+          <AttachmentAction aria-label="Cancel upload">
+            <XIcon />
+          </AttachmentAction>
+        </AttachmentActions>
+      </Attachment>
+      <Attachment class="w-full">
+        <AttachmentMedia>
+          <FileCodeIcon />
+        </AttachmentMedia>
+        <AttachmentContent>
+          <AttachmentTitle>message-renderer.vue</AttachmentTitle>
+          <AttachmentDescription>TypeScript · 12 KB</AttachmentDescription>
+        </AttachmentContent>
+        <AttachmentActions>
+          <AttachmentAction aria-label="Remove message-renderer.vue">
+            <XIcon />
+          </AttachmentAction>
+        </AttachmentActions>
+      </Attachment>
+    </div>
   </SidebarProvider>
   <section v-show="isAgentOpen" id="ask-agent-window" aria-labelledby="ask-agent-title"
     class="fixed bottom-4 right-4 z-40 flex h-[600px] max-h-[calc(100dvh-2rem)] w-[420px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border bg-background text-foreground shadow-xl">
