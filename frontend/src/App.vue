@@ -4,7 +4,7 @@ export const iframeHeight = "800px"
 </script>
 
 <script setup lang="ts">
-import { MessageCircleIcon, MinusIcon, FileCodeIcon, XIcon, Plus } from '@lucide/vue'
+import { MessageCircleIcon, MinusIcon, FileCodeIcon, XIcon, Plus, Upload, ImageIcon } from '@lucide/vue'
 import AppSidebar from "@/components/AppSidebar.vue"
 import {
   Breadcrumb,
@@ -15,8 +15,6 @@ import {
 } from "@/components/ui/breadcrumb"
 import {
   Attachment,
-  AttachmentAction,
-  AttachmentActions,
   AttachmentContent,
   AttachmentDescription,
   AttachmentGroup,
@@ -31,30 +29,45 @@ import {
 } from "@/components/ui/sidebar"
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import AskAgent from './components/AskAgent.vue'
-const images = [
-  {
-    name: 'workspace.png',
-    meta: 'PNG · 820 KB',
-    src: 'https://images.unsplash.com/photo-1497366754035-f200968a6e72?w=900&auto=format&fit=crop&q=80',
-    alt: 'Workspace',
-  },
-  {
-    name: 'desk-reference.jpg',
-    meta: 'JPG · 1.1 MB',
-    src: 'https://images.unsplash.com/photo-1497215728101-856f4ea42174?w=900&auto=format&fit=crop&q=80',
-    alt: 'Desk',
-  },
-  {
-    name: 'office-reference.jpg',
-    meta: 'JPG · 940 KB',
-    src: 'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=900&auto=format&fit=crop&q=80',
-    alt: 'Office',
-  },
-]
+import exifr from 'exifr'
+interface UploadItem {
+  name: string
+  size: string
+  state: 'idle' | 'uploading' | 'done' | 'error'
+  latitude: number
+  longitude: number
+}
+const uploadList = ref<UploadItem[]>([])
+async function handleFileUpload(event: Event) {
+  uploadList.value = []
+  if (event) {
+    const fileList = event.target?.files;
+    for (const file of fileList) {
+      const gps = await exifr.gps(file)
+      if (!gps) {
+        alert(`${file.name} 沒有GPS資訊`)
+        event.target.value = '';
+        break;
+      }
+      uploadList.value.push({
+        name: file.name,
+        size: (file.size / 1024 / 1024).toFixed(2) + 'MB',
+        state: 'idle',
+        latitude: gps.latitude,
+        longitude: gps.longitude
+      })
+    }
+  }
+}
 const isAgentOpen = ref(true)
 const selectedProject = ref()
+
+watch(selectedProject, () => {
+  uploadList.value = []
+})
+
 </script>
 
 <template>
@@ -88,48 +101,22 @@ const selectedProject = ref()
     </SidebarInset>
     <div v-else class="mx-auto flex w-full max-w-sm flex-col gap-3 py-12">
       <Label for="picture">Picture</Label>
-      <Input id="picture" type="file" multiple />
-      <AttachmentGroup>
-        <template v-for="image in images" :key="image.name">
+      <Input ref="pictureInput" type="file" multiple accept=".jpg, .jpeg, .png" @change="handleFileUpload" />
+      <AttachmentGroup class="grid grid-cols-3 gap-3 max-h-105 overflow-y-auto p-1">
+        <template v-for="image in uploadList" :key="image.name">
           <Attachment orientation="vertical">
-            <AttachmentMedia variant="image">
-              <img :src="image.src" :alt="image.alt">
+            <AttachmentMedia variant="icon">
+              <ImageIcon class="size-6 text-muted-foreground" />
             </AttachmentMedia>
             <AttachmentContent>
               <AttachmentTitle>{{ image.name }}</AttachmentTitle>
-              <AttachmentDescription>{{ image.meta }}</AttachmentDescription>
+              <AttachmentDescription>檔案大小：{{ image.size }}</AttachmentDescription>
+              <AttachmentDescription>緯度：{{ image.latitude }}</AttachmentDescription>
+              <AttachmentDescription>經度：{{ image.longitude }}</AttachmentDescription>
             </AttachmentContent>
           </Attachment>
         </template>
       </AttachmentGroup>
-      <Attachment state="uploading" class="w-full">
-        <AttachmentMedia>
-          <Spinner />
-        </AttachmentMedia>
-        <AttachmentContent>
-          <AttachmentTitle>sales-dashboard.pdf</AttachmentTitle>
-          <AttachmentDescription>Uploading · 64%</AttachmentDescription>
-        </AttachmentContent>
-        <AttachmentActions>
-          <AttachmentAction aria-label="Cancel upload">
-            <XIcon />
-          </AttachmentAction>
-        </AttachmentActions>
-      </Attachment>
-      <Attachment class="w-full">
-        <AttachmentMedia>
-          <FileCodeIcon />
-        </AttachmentMedia>
-        <AttachmentContent>
-          <AttachmentTitle>message-renderer.vue</AttachmentTitle>
-          <AttachmentDescription>TypeScript · 12 KB</AttachmentDescription>
-        </AttachmentContent>
-        <AttachmentActions>
-          <AttachmentAction aria-label="Remove message-renderer.vue">
-            <XIcon />
-          </AttachmentAction>
-        </AttachmentActions>
-      </Attachment>
     </div>
   </SidebarProvider>
   <section v-show="isAgentOpen" id="ask-agent-window" aria-labelledby="ask-agent-title"

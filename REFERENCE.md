@@ -42,3 +42,6 @@
 - [Vite：依照網址路徑代理到指定伺服器](https://vite.dev/config/server-options#:~:text=Any%20requests%20whose%20request%20path%20starts%20with%20that%20key%20will%20be%20proxied%20to%20the%20specified%20target.)
 - [MDN：Fetch 傳遞 JSON 資料](https://developer.mozilla.org/zh-TW/docs/Web/API/Fetch_API/Using_Fetch#%E4%B8%8A%E5%82%B3_json_%E8%B3%87%E6%96%99)
 - [MDN：Input 上傳多張圖片](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input/file#multiple)
+- [MDN：透過事件資訊獲取上傳的檔案](https://developer.mozilla.org/zh-TW/docs/Web/API/File_API/Using_files_from_web_applications#%E4%BD%BF%E7%94%A8_change_event_%E7%8D%B2%E5%8F%96%E9%81%B8%E6%93%87%E7%9A%84%E6%AA%94%E6%A1%88)
+- [Exifr：用於讀取有地理資訊的圖片檔套件](https://github.com/MikeKovarik/exifr)
+- [JavaScript：四捨五入](https://developer.mozilla.org/zh-TW/docs/Web/JavaScript/Reference/Global_Objects/Number/toFixed)
