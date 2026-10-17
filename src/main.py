@@ -18,7 +18,8 @@ from typing import Annotated, Any, Literal, TypeVar
 
 import fastapi
 import logfire
-from fastapi import Depends, Request
+import httpx
+from fastapi import Depends, Request, File, UploadFile
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from typing_extensions import LiteralString, ParamSpec, TypedDict
 from pydantic import BaseModel
@@ -164,6 +165,26 @@ async def post_chat(
 
 P = ParamSpec("P")
 R = TypeVar("R")
+
+@app.post("/file/")
+async def create_file(file: Annotated[bytes, File()]):
+    return {"file_size": len(file)}
+
+@app.post("/files")
+async def create_files(files: Annotated[list[bytes], File()]):
+    return {"file_sizes": [len(file) for file in files]}
+
+class CreateODMTaskRequest(BaseModel):
+    pass
+
+@app.post("/odm/task")
+async def post_odm_task():
+    async with httpx.AsyncClient() as client:
+        r = await client.post("http://localhost:3000/task/new")
+    return {
+        "result": True,
+        "data": {}
+    }
 
 
 @dataclass

@@ -14,6 +14,14 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
 import {
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form'
+import {
   Attachment,
   AttachmentContent,
   AttachmentDescription,
@@ -22,13 +30,14 @@ import {
   AttachmentTitle,
 } from '@/components/ui/attachment'
 import { Separator } from "@/components/ui/separator"
+import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { ref, watch } from 'vue'
 import AskAgent from './components/AskAgent.vue'
 import exifr from 'exifr'
@@ -40,6 +49,7 @@ interface UploadItem {
   longitude: number
 }
 const uploadList = ref<UploadItem[]>([])
+const isCreatingProject = ref(false)
 async function handleFileUpload(event: Event) {
   uploadList.value = []
   if (event) {
@@ -61,6 +71,24 @@ async function handleFileUpload(event: Event) {
     }
   }
 }
+async function hadleCreateProject(event: Event) {
+  if (uploadList.value.length === 0) {
+    alert("請先上傳檔案")
+    return
+  }
+  const formData = new FormData(event.target)
+  isCreatingProject.value = true
+  const response = await fetch("/api/files", {
+    method: "POST",
+    body: formData,
+  });
+  if (!response.ok) {
+    alert("建立專案失敗")
+    isCreatingProject.value = false
+    return
+  }
+  isCreatingProject.value = false
+}
 const isAgentOpen = ref(true)
 const selectedProject = ref()
 
@@ -75,8 +103,8 @@ watch(selectedProject, () => {
     '--sidebar-width': '350px',
   }">
     <AppSidebar v-model="selectedProject" />
-    <SidebarInset v-if="selectedProject">
-      <header class="bg-background sticky top-0 flex shrink-0 items-center gap-2 border-b p-4">
+    <SidebarInset>
+      <header v-if="selectedProject" class="bg-background sticky top-0 flex shrink-0 items-center gap-2 border-b p-4">
         <SidebarTrigger class="-ml-1" />
         <Separator orientation="vertical" class="mr-2 data-[orientation=vertical]:h-4" />
         <Breadcrumb>
@@ -95,29 +123,43 @@ watch(selectedProject, () => {
           </BreadcrumbList>
         </Breadcrumb>
       </header>
-      <div class="mx-auto flex w-full max-w-sm flex-col gap-3 py-12">
+      <div v-if="selectedProject" class="mx-auto flex w-full max-w-sm flex-col gap-3 py-12">
         {{ selectedProject }}
       </div>
+      <div v-if="!selectedProject" class="mx-auto flex w-full max-w-sm flex-col gap-3 py-12">
+        <form @submit.prevent="hadleCreateProject">
+          <FormField name="files">
+            <FormItem>
+              <FormLabel>上傳圖片</FormLabel>
+              <FormControl>
+                <Input ref="pictureInput" name="files" type="file" multiple accept=".jpg, .jpeg, .png"
+                  @change="handleFileUpload" :disabled="isCreatingProject" />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          </FormField>
+          <Button type="submit" size="sm" variant="outline" :disabled="isCreatingProject">
+            <Spinner class="animate-spin" v-if="isCreatingProject" />
+            創建專案
+          </Button>
+        </form>
+        <AttachmentGroup class="grid grid-cols-3 gap-3 max-h-105 overflow-y-auto p-1">
+          <template v-for="image in uploadList" :key="image.name">
+            <Attachment orientation="vertical">
+              <AttachmentMedia variant="icon">
+                <ImageIcon class="size-6 text-muted-foreground" />
+              </AttachmentMedia>
+              <AttachmentContent>
+                <AttachmentTitle>{{ image.name }}</AttachmentTitle>
+                <AttachmentDescription>檔案大小：{{ image.size }}</AttachmentDescription>
+                <AttachmentDescription>緯度：{{ image.latitude }}</AttachmentDescription>
+                <AttachmentDescription>經度：{{ image.longitude }}</AttachmentDescription>
+              </AttachmentContent>
+            </Attachment>
+          </template>
+        </AttachmentGroup>
+      </div>
     </SidebarInset>
-    <div v-else class="mx-auto flex w-full max-w-sm flex-col gap-3 py-12">
-      <Label for="picture">Picture</Label>
-      <Input ref="pictureInput" type="file" multiple accept=".jpg, .jpeg, .png" @change="handleFileUpload" />
-      <AttachmentGroup class="grid grid-cols-3 gap-3 max-h-105 overflow-y-auto p-1">
-        <template v-for="image in uploadList" :key="image.name">
-          <Attachment orientation="vertical">
-            <AttachmentMedia variant="icon">
-              <ImageIcon class="size-6 text-muted-foreground" />
-            </AttachmentMedia>
-            <AttachmentContent>
-              <AttachmentTitle>{{ image.name }}</AttachmentTitle>
-              <AttachmentDescription>檔案大小：{{ image.size }}</AttachmentDescription>
-              <AttachmentDescription>緯度：{{ image.latitude }}</AttachmentDescription>
-              <AttachmentDescription>經度：{{ image.longitude }}</AttachmentDescription>
-            </AttachmentContent>
-          </Attachment>
-        </template>
-      </AttachmentGroup>
-    </div>
   </SidebarProvider>
   <section v-show="isAgentOpen" id="ask-agent-window" aria-labelledby="ask-agent-title"
     class="fixed bottom-4 right-4 z-40 flex h-[600px] max-h-[calc(100dvh-2rem)] w-[420px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border bg-background text-foreground shadow-xl">
