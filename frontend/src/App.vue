@@ -171,6 +171,9 @@ watch(selectedProject, () => {
       <div v-if="selectedProject" class="mx-auto flex w-full max-w-sm flex-col gap-3 py-12">
         {{ selectedProject }}
         <Progress :model-value="selectedProject.progress" />
+        <div v-if="selectedProject.progress === 100">
+          <img class="w-96 h-96 object-cover" :src="`/api/odm-task-orthophoto/${selectedProject.id}`" alt="">
+        </div>
       </div>
       <div v-if="!selectedProject" class="mx-auto flex w-full max-w-sm flex-col gap-3 py-12">
         <form @submit.prevent="hadleCreateProject" class="flex flex-col gap-5">

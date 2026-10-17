@@ -1,6 +1,8 @@
 from __future__ import annotations as _annotations
 
 import os
+from zipfile import ZipFile
+from io import BytesIO
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -22,6 +24,7 @@ import httpx
 from fastapi import Depends, Request, File, UploadFile, Form
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from typing_extensions import LiteralString, ParamSpec, TypedDict
+from PIL import Image
 from pydantic import BaseModel
 from pydantic_ai import (
     Agent,
@@ -189,6 +192,18 @@ async def get_odm_task_info(task_id: str, database: Database = Depends(get_db)):
         "data": project
     }
     return response
+
+@app.get("/odm-task-orthophoto/{task_id}")
+async def get_odm_task_orthophoto(task_id: str):
+    async with httpx.AsyncClient() as client:
+        r = await client.get(f"http://localhost:3000/task/{task_id}/download/all.zip", timeout=120.0)
+    zip_file = r.content
+    outfile = BytesIO()
+    with ZipFile(BytesIO(zip_file)) as z:
+        with z.open('odm_orthophoto/odm_orthophoto.tif') as target:
+            with Image.open(target) as im:
+                im.save(outfile, 'PNG')
+    return Response(outfile.getvalue(), media_type="image/png")
 
 @app.get("/odm-task-list")
 async def get_odm_task_list(database: Database = Depends(get_db)):

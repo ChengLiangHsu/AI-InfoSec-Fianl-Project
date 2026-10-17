@@ -48,3 +48,8 @@
 - [NodeODM API 文件](https://github.com/OpenDroneMap/NodeODM/blob/master/docs/index.adoc)
 - [HTTPX 發送被表單包裝的檔案](https://www.python-httpx.org/quickstart/#sending-multipart-file-uploads)
 - [sqlite3 一次執行多行命令](https://docs.python.org/3/library/sqlite3.html#:~:text=executescript(%22%22%22)
+- [FastAPI 可以回傳二進制資料](https://fastapi.tiangolo.com/advanced/custom-response/#available-responses)
+- [HTTPX 可以對回應進行二進制解讀](https://www.python-httpx.org/quickstart/#binary-response-content)
+- [Python zipfile 套件只能處理檔案路徑或檔案物件](https://docs.python.org/3/library/zipfile.html#:~:text=where%20file%20can%20be%20a%20path)
+- [Python 認定 io 物件為檔案物件](https://docs.python.org/3/library/io.html#:~:text=A%20concrete%20object%20belonging%20to%20any%20of%20these%20categories%20is%20called%20a%20file%20object)
+- [HTTP tif 檔的 media type](https://developer.mozilla.org/zh-TW/docs/Web/HTTP/Guides/MIME_types/Common_types#:~:text=image/tiff)
