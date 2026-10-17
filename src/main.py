@@ -155,6 +155,9 @@ R = TypeVar("R")
 class Project(TypedDict):
     id: str
     name: str
+    images: int
+    status: int
+    time_elapsed: int
 
 @app.post("/odm-task")
 async def create_odm_task(name: Annotated[str, Form()], files: list[UploadFile], database: Database = Depends(get_db)):
@@ -166,19 +169,23 @@ async def create_odm_task(name: Annotated[str, Form()], files: list[UploadFile],
         r = await client.post("http://localhost:3000/task/new", files=odm_files)
     project = Project(
         id=r.json()["uuid"],
-        name=name
+        name=name,
+        images=len(files)
     )
     await database.add_project(project)
     response = {"id": r.json()["uuid"], "name": name}
     return {"result": True, "data": response}
 
 @app.get("/odm-task-info/{task_id}")
-async def get_odm_task_info(task_id: str):
+async def get_odm_task_info(task_id: str, database: Database = Depends(get_db)):
     async with httpx.AsyncClient() as client:
         r = await client.get(f"http://localhost:3000/task/{task_id}/info")
+    print(r.json())
+    await database.update_project(task_id, r.json())
+    project = await database.get_project(task_id)
     response = {
         "result": True,
-        "data": r.json()
+        "data": project
     }
     return response
 
@@ -221,7 +228,8 @@ class Database:
             );
             CREATE TABLE IF NOT EXISTS projects (
                 id TEXT PRIMARY KEY,
-                name TEXT
+                name TEXT,
+                images INT
             );
         """)
         con.commit()
@@ -230,9 +238,10 @@ class Database:
     async def add_project(self, project: Project):
         await self._asyncify(
             self._execute,
-            "INSERT INTO projects (id, name) VALUES (?, ?);",
+            "INSERT INTO projects (id, name, images) VALUES (?, ?, ?);",
             project["id"],
             project["name"],
+            project["images"],
             commit=True,
         )
         await self._asyncify(self.con.commit)
@@ -246,14 +255,21 @@ class Database:
         )
         await self._asyncify(self.con.commit)
 
+    async def get_project(self, task_id: str) -> Project:
+        c = await self._asyncify(
+            self._execute, "SELECT * FROM projects WHERE id = ?", task_id
+        )
+        row = await self._asyncify(c.fetchone)
+        return Project(id=row[0], name=row[1], images=int(row[2]))
+
     async def get_projects(self) -> list[Project]:
         c = await self._asyncify(
-            self._execute, "SELECT id, name FROM projects order by id"
+            self._execute, "SELECT * FROM projects order by id"
         )
         rows = await self._asyncify(c.fetchall)
         projects: list[Project] = []
         for row in rows:
-            projects.append(Project(id=row[0], name=row[1]))
+            projects.append(Project(id=row[0], name=row[1], images=row[2]))
         return projects
 
     async def get_messages(self) -> list[ModelMessage]:
@@ -265,6 +281,16 @@ class Database:
         for row in rows:
             messages.extend(ModelMessagesTypeAdapter.validate_json(row[0]))
         return messages
+
+    async def update_project(self, task_id: str, project: Project):
+        await self._asyncify(
+            self._execute,
+            "UPDATE projects SET images = ? WHERE id = ?;",
+            project["imagesCount"],
+            task_id,
+            commit=True,
+        )
+        await self._asyncify(self.con.commit)
 
     def _execute(
         self, sql: LiteralString, *args: Any, commit: bool = False

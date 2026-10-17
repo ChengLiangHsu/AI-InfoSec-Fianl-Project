@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import type { SidebarProps } from "@/components/ui/sidebar"
-import { Command, FolderKanban, Plus } from "@lucide/vue"
+import { Clock, Command, FolderKanban, Images, Plus } from "@lucide/vue"
 import { h, ref, defineModel } from "vue"
 import NavUser from "@/components/NavUser.vue"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import {
   Sidebar,
   SidebarContent,
@@ -104,12 +105,28 @@ const { setOpen } = useSidebar()
         <SidebarGroup class="px-0">
           <SidebarGroupContent>
             <a v-for="project in projects" :key="project.id" @click="selectedProject = project"
-              class="overflow-hidden cursor-pointer flex flex-col items-start gap-2 border-b border-l-2 p-4 text-sm leading-tight whitespace-nowrap transition-colors last:border-b-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              class="cursor-pointer flex flex-col gap-1.5 border-b border-l-2 p-3 text-sm transition-colors last:border-b-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               :class="selectedProject?.id === project.id
-                ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium border-l-primary'
+                ? 'bg-sidebar-accent text-sidebar-accent-foreground border-l-primary'
                 : 'border-l-transparent text-muted-foreground'">
-              <div class="flex w-full items-center gap-2">
-                <span class="truncate">{{ project.name }}</span>
+              <div class="flex w-full items-center justify-between gap-2">
+                <span class="font-medium text-foreground truncate">{{ project.name }}</span>
+                <Badge v-if="project.status" variant="secondary" class="text-[10px] px-1.5 py-0 h-4 shrink-0">
+                  {{ project.status }}
+                </Badge>
+              </div>
+              <div class="text-xs text-muted-foreground font-mono truncate w-full">
+                ID: {{ project.id }}
+              </div>
+              <div class="flex w-full items-center justify-between text-xs text-muted-foreground pt-0.5">
+                <span class="flex items-center gap-1">
+                  <Images class="size-3.5" />
+                  {{ project.images ?? 0 }} 張
+                </span>
+                <span v-if="project.timeElapsed" class="flex items-center gap-1">
+                  <Clock class="size-3.5" />
+                  {{ project.timeElapsed }}
+                </span>
               </div>
             </a>
           </SidebarGroupContent>

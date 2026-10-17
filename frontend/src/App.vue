@@ -53,6 +53,7 @@ interface UploadItem {
 interface Project {
   id: string
   name: string
+  images?: number
 }
 
 const projects = ref<Project[]>([])
@@ -98,10 +99,7 @@ async function hadleCreateProject(event: Event) {
     isCreatingProject.value = false
     return
   }
-  projects.value.push({
-    id: data.data["id"],
-    name: data.data["name"]
-  })
+  projects.value = await fetch("/api/odm-task-list").then((res) => res.json()).then((res) => res.data)
   selectedProject.value = projects.value.find((project) => project.id === data.data["id"]) ?? null
   isCreatingProject.value = false
 }
