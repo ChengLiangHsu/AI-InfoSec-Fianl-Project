@@ -23,6 +23,8 @@ const props = withDefaults(defineProps<SidebarProps>(), {
   collapsible: "icon",
 })
 
+const isCreatingProject = defineModel("isCreatingProject")
+const processingProject = defineModel("processingProject")
 const selectedProject = defineModel("selectedProject")
 const projects = defineModel("projects")
 
@@ -105,6 +107,7 @@ const { setOpen } = useSidebar()
         <SidebarGroup class="px-0">
           <SidebarGroupContent>
             <a v-for="project in projects" :key="project.id" @click="selectedProject = project"
+              :disabled='isCreatingProject === true'
               class="cursor-pointer flex flex-col gap-1.5 border-b border-l-2 p-3 text-sm transition-colors last:border-b-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               :class="selectedProject?.id === project.id
                 ? 'bg-sidebar-accent text-sidebar-accent-foreground border-l-primary'

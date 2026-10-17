@@ -54,10 +54,12 @@ interface Project {
   id: string
   name: string
   images?: number
+  progress?: number
 }
 
 const projects = ref<Project[]>([])
 const selectedProject = ref<Project | null>(null)
+const processingProject = ref<Project | null>(null)
 const uploadList = ref<UploadItem[]>([])
 const isCreatingProject = ref(false)
 const isAgentOpen = ref(true)
@@ -100,8 +102,17 @@ async function hadleCreateProject(event: Event) {
     return
   }
   projects.value = await fetch("/api/odm-task-list").then((res) => res.json()).then((res) => res.data)
-  selectedProject.value = projects.value.find((project) => project.id === data.data["id"]) ?? null
-  isCreatingProject.value = false
+  selectedProject.value = projects.value.find((project) => project.id === data.data["id"])
+  processingProject.value = selectedProject.value || null
+  const timer = setInterval(async () => {
+    const res = await fetch(`/api/odm-task-info/${data.data["id"]}`)
+    const resData = await res.json()
+    processingProject.value.progress = resData.data.progress
+    if (resData.data.progress === 100) {
+      clearInterval(timer)
+      isCreatingProject.value = false
+    }
+  }, 2000)
 }
 
 onMounted(async () => {
@@ -111,6 +122,17 @@ onMounted(async () => {
     return
   }
   projects.value = data.data
+  processingProject.value = projects.value.find((p) => p.progress !== 100) || null
+  if (processingProject.value) {
+    const timer = setInterval(async () => {
+      const res = await fetch(`/api/odm-task-info/${processingProject.value?.id}`)
+      const resData = await res.json()
+      processingProject.value.progress = resData.data.progress
+      if (resData.data.progress === 100) {
+        clearInterval(timer)
+      }
+    }, 2000)
+  }
 })
 
 watch(selectedProject, () => {
@@ -123,7 +145,8 @@ watch(selectedProject, () => {
   <SidebarProvider :style="{
     '--sidebar-width': '350px',
   }">
-    <AppSidebar v-model:selected-project="selectedProject" v-model:projects="projects" />
+    <AppSidebar v-model:is-creating-project="isCreatingProject" v-model:selected-project="selectedProject"
+      v-model:projects="projects" />
     <SidebarInset>
       <header v-if="selectedProject" class="bg-background sticky top-0 flex shrink-0 items-center gap-2 border-b p-4">
         <SidebarTrigger class="-ml-1" />

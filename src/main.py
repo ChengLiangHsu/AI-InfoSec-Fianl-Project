@@ -170,7 +170,8 @@ async def create_odm_task(name: Annotated[str, Form()], files: list[UploadFile],
     project = Project(
         id=r.json()["uuid"],
         name=name,
-        images=len(files)
+        images=len(files),
+        progress=0
     )
     await database.add_project(project)
     response = {"id": r.json()["uuid"], "name": name}
@@ -229,7 +230,8 @@ class Database:
             CREATE TABLE IF NOT EXISTS projects (
                 id TEXT PRIMARY KEY,
                 name TEXT,
-                images INT
+                images INT,
+                progress INT
             );
         """)
         con.commit()
@@ -238,10 +240,11 @@ class Database:
     async def add_project(self, project: Project):
         await self._asyncify(
             self._execute,
-            "INSERT INTO projects (id, name, images) VALUES (?, ?, ?);",
+            "INSERT INTO projects (id, name, images, progress) VALUES (?, ?, ?, ?);",
             project["id"],
             project["name"],
             project["images"],
+            project["progress"],
             commit=True,
         )
         await self._asyncify(self.con.commit)
@@ -260,16 +263,16 @@ class Database:
             self._execute, "SELECT * FROM projects WHERE id = ?", task_id
         )
         row = await self._asyncify(c.fetchone)
-        return Project(id=row[0], name=row[1], images=int(row[2]))
+        return Project(id=row[0], name=row[1], images=int(row[2]), progress=int(row[3]))
 
     async def get_projects(self) -> list[Project]:
         c = await self._asyncify(
-            self._execute, "SELECT * FROM projects order by id"
+            self._execute, "SELECT * FROM projects"
         )
         rows = await self._asyncify(c.fetchall)
         projects: list[Project] = []
         for row in rows:
-            projects.append(Project(id=row[0], name=row[1], images=row[2]))
+            projects.append(Project(id=row[0], name=row[1], images=int(row[2]), progress=int(row[3])))
         return projects
 
     async def get_messages(self) -> list[ModelMessage]:
@@ -285,8 +288,9 @@ class Database:
     async def update_project(self, task_id: str, project: Project):
         await self._asyncify(
             self._execute,
-            "UPDATE projects SET images = ? WHERE id = ?;",
+            "UPDATE projects SET images = ? , progress = ? WHERE id = ?;",
             project["imagesCount"],
+            project["progress"],
             task_id,
             commit=True,
         )
