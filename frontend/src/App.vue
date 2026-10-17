@@ -38,6 +38,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { Input } from '@/components/ui/input'
+import { Progress } from '@/components/ui/progress'
 import { onMounted, ref, watch } from 'vue'
 import AskAgent from './components/AskAgent.vue'
 import exifr from 'exifr'
@@ -169,6 +170,7 @@ watch(selectedProject, () => {
       </header>
       <div v-if="selectedProject" class="mx-auto flex w-full max-w-sm flex-col gap-3 py-12">
         {{ selectedProject }}
+        <Progress :model-value="selectedProject.progress" />
       </div>
       <div v-if="!selectedProject" class="mx-auto flex w-full max-w-sm flex-col gap-3 py-12">
         <form @submit.prevent="hadleCreateProject" class="flex flex-col gap-5">
