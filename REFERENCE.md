@@ -47,3 +47,4 @@
 - [JavaScript：四捨五入](https://developer.mozilla.org/zh-TW/docs/Web/JavaScript/Reference/Global_Objects/Number/toFixed)
 - [NodeODM API 文件](https://github.com/OpenDroneMap/NodeODM/blob/master/docs/index.adoc)
 - [HTTPX 發送被表單包裝的檔案](https://www.python-httpx.org/quickstart/#sending-multipart-file-uploads)
+- [sqlite3 一次執行多行命令](https://docs.python.org/3/library/sqlite3.html#:~:text=executescript(%22%22%22)

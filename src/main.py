@@ -19,7 +19,7 @@ from typing import Annotated, Any, Literal, TypeVar
 import fastapi
 import logfire
 import httpx
-from fastapi import Depends, Request, File, UploadFile
+from fastapi import Depends, Request, File, UploadFile, Form
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from typing_extensions import LiteralString, ParamSpec, TypedDict
 from pydantic import BaseModel
@@ -52,21 +52,8 @@ async def lifespan(_app: fastapi.FastAPI):
 app = fastapi.FastAPI(lifespan=lifespan)
 logfire.instrument_fastapi(app)
 
-
-@app.get("/")
-async def index() -> FileResponse:
-    return FileResponse((THIS_DIR / "chat_app.html"), media_type="text/html")
-
-
-@app.get("/chat_app.ts")
-async def main_ts() -> FileResponse:
-    """Get the raw typescript code, it's compiled in the browser, forgive me."""
-    return FileResponse((THIS_DIR / "chat_app.ts"), media_type="text/plain")
-
-
 async def get_db(request: Request) -> Database:
     return request.state.db
-
 
 @app.get("/chat/")
 async def get_chat(database: Database = Depends(get_db)) -> Response:
@@ -165,32 +152,44 @@ async def post_chat(
 
 P = ParamSpec("P")
 R = TypeVar("R")
+class Project(TypedDict):
+    id: str
+    name: str
 
 @app.post("/odm-task")
-async def create_odm_task(files: list[UploadFile]):
+async def create_odm_task(name: Annotated[str, Form()], files: list[UploadFile], database: Database = Depends(get_db)):
     odm_files = [
         ("images", (f.filename, await f.read(), f.content_type))
         for f in files
     ]
     async with httpx.AsyncClient(timeout=120.0) as client:
         r = await client.post("http://localhost:3000/task/new", files=odm_files)
-    return {"result": True, "data": r.json()}
+    project = Project(
+        id=r.json()["uuid"],
+        name=name
+    )
+    await database.add_project(project)
+    response = {"id": r.json()["uuid"], "name": name}
+    return {"result": True, "data": response}
 
 @app.get("/odm-task-info/{task_id}")
 async def get_odm_task_info(task_id: str):
     async with httpx.AsyncClient() as client:
-        r = await client.get(f"http://localhost:3000/task/{task_id}")
-    return r.json()
+        r = await client.get(f"http://localhost:3000/task/{task_id}/info")
+    response = {
+        "result": True,
+        "data": r.json()
+    }
+    return response
+
+@app.get("/odm-task-list")
+async def get_odm_task_list(database: Database = Depends(get_db)):
+    projects = await database.get_projects()
+    return {"result": True, "data": projects}
 
 
 @dataclass
 class Database:
-    """Rudimentary database to store chat messages in SQLite.
-
-    The SQLite standard library package is synchronous, so we
-    use a thread pool executor to run queries asynchronously.
-    """
-
     con: sqlite3.Connection
     _loop: asyncio.AbstractEventLoop
     _executor: ThreadPoolExecutor
@@ -215,11 +214,28 @@ class Database:
         con = sqlite3.connect(str(file))
         con = logfire.instrument_sqlite3(con)
         cur = con.cursor()
-        cur.execute(
-            "CREATE TABLE IF NOT EXISTS messages (id INT PRIMARY KEY, message_list TEXT);"
-        )
+        cur.executescript("""
+            CREATE TABLE IF NOT EXISTS messages (
+                id INT PRIMARY KEY,
+                message_list TEXT
+            );
+            CREATE TABLE IF NOT EXISTS projects (
+                id TEXT PRIMARY KEY,
+                name TEXT
+            );
+        """)
         con.commit()
         return con
+
+    async def add_project(self, project: Project):
+        await self._asyncify(
+            self._execute,
+            "INSERT INTO projects (id, name) VALUES (?, ?);",
+            project["id"],
+            project["name"],
+            commit=True,
+        )
+        await self._asyncify(self.con.commit)
 
     async def add_messages(self, messages: bytes):
         await self._asyncify(
@@ -229,6 +245,16 @@ class Database:
             commit=True,
         )
         await self._asyncify(self.con.commit)
+
+    async def get_projects(self) -> list[Project]:
+        c = await self._asyncify(
+            self._execute, "SELECT id, name FROM projects order by id"
+        )
+        rows = await self._asyncify(c.fetchall)
+        projects: list[Project] = []
+        for row in rows:
+            projects.append(Project(id=row[0], name=row[1]))
+        return projects
 
     async def get_messages(self) -> list[ModelMessage]:
         c = await self._asyncify(

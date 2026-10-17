@@ -38,7 +38,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { Input } from '@/components/ui/input'
-import { ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import AskAgent from './components/AskAgent.vue'
 import exifr from 'exifr'
 
@@ -52,11 +52,14 @@ interface UploadItem {
 
 interface Project {
   id: string
+  name: string
 }
 
 const projects = ref<Project[]>([])
+const selectedProject = ref<Project | null>(null)
 const uploadList = ref<UploadItem[]>([])
 const isCreatingProject = ref(false)
+const isAgentOpen = ref(true)
 async function handleFileUpload(event: Event) {
   uploadList.value = []
   if (event) {
@@ -96,12 +99,21 @@ async function hadleCreateProject(event: Event) {
     return
   }
   projects.value.push({
-    id: data.data["uuid"]
+    id: data.data["id"],
+    name: data.data["name"]
   })
+  selectedProject.value = projects.value.find((project) => project.id === data.data["id"]) ?? null
   isCreatingProject.value = false
 }
-const isAgentOpen = ref(true)
-const selectedProject = ref()
+
+onMounted(async () => {
+  const response = await fetch("/api/odm-task-list")
+  const data = await response.json()
+  if (!response.ok) {
+    return
+  }
+  projects.value = data.data
+})
 
 watch(selectedProject, () => {
   uploadList.value = []
@@ -127,8 +139,8 @@ watch(selectedProject, () => {
             </BreadcrumbItem>
             <BreadcrumbSeparator class="hidden md:block" />
             <BreadcrumbItem>
-              <BreadcrumbLink href="#">
-                {{ selectedProject }}
+              <BreadcrumbLink>
+                {{ selectedProject.name }}
               </BreadcrumbLink>
             </BreadcrumbItem>
           </BreadcrumbList>
@@ -138,13 +150,22 @@ watch(selectedProject, () => {
         {{ selectedProject }}
       </div>
       <div v-if="!selectedProject" class="mx-auto flex w-full max-w-sm flex-col gap-3 py-12">
-        <form @submit.prevent="hadleCreateProject">
+        <form @submit.prevent="hadleCreateProject" class="flex flex-col gap-5">
           <FormField name="files">
             <FormItem>
               <FormLabel>上傳圖片</FormLabel>
               <FormControl>
                 <Input ref="pictureInput" name="files" type="file" multiple accept=".jpg, .jpeg, .png"
                   @change="handleFileUpload" :disabled="isCreatingProject" />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          </FormField>
+          <FormField name="name">
+            <FormItem>
+              <FormLabel>專案名稱</FormLabel>
+              <FormControl>
+                <Input name="name" type="text" />
               </FormControl>
               <FormMessage />
             </FormItem>

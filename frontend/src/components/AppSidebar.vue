@@ -103,11 +103,13 @@ const { setOpen } = useSidebar()
       <SidebarContent>
         <SidebarGroup class="px-0">
           <SidebarGroupContent>
-            <a v-for="project in projects" :key="project.id" @click="selectedProject = project.id"
-              class="overflow-hidden cursor-pointer hover:bg-sidebar-accent hover:text-sidebar-accent-foreground flex flex-col items-start gap-2 border-b p-4 text-sm leading-tight whitespace-nowrap last:border-b-0">
+            <a v-for="project in projects" :key="project.id" @click="selectedProject = project"
+              class="overflow-hidden cursor-pointer flex flex-col items-start gap-2 border-b border-l-2 p-4 text-sm leading-tight whitespace-nowrap transition-colors last:border-b-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              :class="selectedProject?.id === project.id
+                ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium border-l-primary'
+                : 'border-l-transparent text-muted-foreground'">
               <div class="flex w-full items-center gap-2">
-                <span>{{ project.id }}</span>
-                <span class="ml-auto text-xs">{{ project.id }}</span>
+                <span class="truncate">{{ project.name }}</span>
               </div>
             </a>
           </SidebarGroupContent>
