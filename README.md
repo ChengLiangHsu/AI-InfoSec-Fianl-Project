@@ -1,6 +1,6 @@
 # 無人機田間試驗評估智慧代理人
 
-![DEMO 主畫面](docs/assets/demo.png)
+![DEMO 主畫面](./issues/spectral-image-dropdown/recording.webp)
 
 **人工智慧與資訊安全期末專題提案**
 
@@ -35,12 +35,19 @@
 
 ## 試用 ODM 功能
 
+<<<<<<< HEAD
 1. **安裝並啟動 Docker**。
 2. **將圖片放到 `odm/images` 資料夾**。
 3. **執行指令**：
    ```bash
    docker run -ti --rm -v /odm:/odm/code opendronemap/odm --project-path /odm
    ```
+=======
+### 4. NodeODM
+```bash
+docker run --rm -p 3000:3000 opendronemap/nodeodm
+```
+>>>>>>> refs/remotes/origin/main
 
 ---
 

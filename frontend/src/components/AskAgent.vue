@@ -1,8 +1,20 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import type { PromptInputMessage } from '@/components/ai-elements/prompt-input'
+<<<<<<< HEAD
 import type { ChatStatus, ToolUIPart } from 'ai'
 import axios from 'axios'
 import { Conversation, ConversationContent, ConversationScrollButton } from '@/components/ai-elements/conversation'
+=======
+import {
+  PromptInput,
+  PromptInputBody,
+  PromptInputFooter,
+  PromptInputProvider,
+  PromptInputSubmit,
+  PromptInputTextarea,
+} from '@/components/ai-elements/prompt-input'
+>>>>>>> refs/remotes/origin/main
 import {
   Message,
   MessageBranch,
@@ -14,6 +26,7 @@ import {
   MessageContent,
   MessageResponse,
 } from '@/components/ai-elements/message'
+<<<<<<< HEAD
 import {
   PromptInput,
   PromptInputActionAddAttachments,
@@ -32,39 +45,27 @@ import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-e
 import { Source, Sources, SourcesContent, SourcesTrigger } from '@/components/ai-elements/sources'
 import { Suggestion, Suggestions } from '@/components/ai-elements/suggestion'
 import { computed, ref } from 'vue'
+=======
+import { Conversation, ConversationContent, ConversationScrollButton } from '@/components/ai-elements/conversation'
+import type { AttachmentData } from '@/components/ai-elements/attachments'
+>>>>>>> refs/remotes/origin/main
 
-interface MessageVersion {
+const status = ref<'submitted' | 'streaming' | 'ready' | 'error'>('ready')
+const messages = ref<MessageType[]>([])
+
+interface Version {
   id: string
   content: string
 }
 
-interface MessageSource {
-  href: string
-  title: string
-}
-
-interface MessageReasoning {
-  content: string
-  duration: number
-}
-
-interface MessageTool {
-  name: string
-  description: string
-  status: ToolUIPart['state']
-  parameters: Record<string, unknown>
-  result?: string
-  error?: string
-}
-
 interface MessageType {
   key: string
-  from: 'user' | 'assistant'
-  sources?: MessageSource[]
-  versions: MessageVersion[]
-  reasoning?: MessageReasoning
-  tools?: MessageTool[]
+  role: 'user' | 'assistant'
+  versions?: Version[]
+  content?: string
+  attachments?: AttachmentData[]
 }
+<<<<<<< HEAD
 
 const apiInstance = axios.create({
   baseURL: 'http://127.0.0.1:8000',
@@ -94,30 +95,55 @@ function updateStreamingContent(versionId: string, content: string) {
     return
   const version = target.versions.find(v => v.id === versionId)
   if (!version)
+=======
+async function onFetchResponse(response: Response): Promise<void> {
+  status.value = 'streaming'
+  let text = ''
+  let decoder = new TextDecoder()
+  if (response.ok) {
+    const reader = response.body?.getReader()
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        break
+      }
+      text += decoder.decode(value)
+      const lines = text.split('\n')
+      const newMessages: MessageType[] = lines.filter(line => line.length > 1).map(j => JSON.parse(j))
+      for (const message of newMessages) {
+        updateStreamingContent(message)
+      }
+    }
+    status.value = 'ready'
+  } else {
+    const text = await response.text()
+    console.error(`Unexpected response: ${response.status}`, { response, text })
+    throw new Error(`Unexpected response: ${response.status}`)
+  }
+}
+function updateStreamingContent(message: MessageType) {
+  const { key, versions } = message
+  const versionId = versions[0].id
+  const content = versions[0].content
+  const target = messages.value.find(msg => msg.key === key)
+  if (!target) {
+    messages.value.push(message)
+>>>>>>> refs/remotes/origin/main
     return
+  }
+  const version = target.versions?.find(v => v.id === versionId)
   version.content = content
   messages.value = [...messages.value]
 }
 
-async function streamResponse(versionId: string, content: string) {
-  status.value = 'streaming'
-  const words = content.split(' ')
-  let currentContent = ''
-
-  for (let i = 0; i < words.length; i += 1) {
-    currentContent += (i > 0 ? ' ' : '') + words[i]
-    updateStreamingContent(versionId, currentContent)
-    await new Promise(resolve => setTimeout(resolve, Math.random() * 100 + 50))
-  }
-
-  status.value = 'ready'
+function onError(error: any) {
+  console.error(error)
+  document.getElementById('error')?.classList.remove('d-none')
 }
 
-function addUserMessage(content: string) {
-  if (isBusy.value)
-    return
-
+async function onSubmit(messages: PromptInputMessage[]): Promise<void> {
   status.value = 'submitted'
+<<<<<<< HEAD
   requestError.value = ''
   const timestamp = Date.now()
   const userMessage: MessageType = {
@@ -178,57 +204,29 @@ function handleSuggestionClick(suggestion: string) {
   addUserMessage(suggestion)
 }
 
+=======
+  const body = JSON.stringify({
+    prompt: messages.text,
+  })
+  const response = await fetch('/api/chat', { method: 'POST', body, headers: { 'Content-Type': 'application/json' } })
+  await onFetchResponse(response)
+}
+>>>>>>> refs/remotes/origin/main
 </script>
 
 <template>
   <div class="relative flex size-full flex-col divide-y overflow-hidden">
     <Conversation>
       <ConversationContent>
-        <MessageBranch
-          v-for="message in messages"
-          :key="message.key"
-          :default-branch="0"
-        >
+        <MessageBranch v-for="message in messages" :key="message.key" :default-branch="0">
           <MessageBranchContent>
-            <Message
-              v-for="version in message.versions"
-              :key="`${message.key}-${version.id}`"
-              :from="message.from"
-            >
-              <div>
-                <Sources v-if="message.sources?.length">
-                  <SourcesTrigger :count="message.sources.length" />
-                  <SourcesContent>
-                    <Source
-                      v-for="source in message.sources"
-                      :key="source.href"
-                      :href="source.href"
-                      :title="source.title"
-                    />
-                  </SourcesContent>
-                </Sources>
-
-                <Reasoning
-                  v-if="message.reasoning"
-                  :duration="message.reasoning.duration"
-                >
-                  <ReasoningTrigger />
-                  <ReasoningContent :content="message.reasoning.content" />
-                </Reasoning>
-
-                <MessageContent>
-                  <MessageResponse
-                    :content="version.content"
-                  />
-                </MessageContent>
-              </div>
+            <Message v-for="version in message.versions" :key="`${message.key}-${version.id}`" :from="message.role">
+              <MessageContent>
+                <MessageResponse :content="version.content" />
+              </MessageContent>
             </Message>
           </MessageBranchContent>
-
-          <MessageBranchSelector
-            v-if="message.versions.length > 1"
-            :from="message.from"
-          >
+          <MessageBranchSelector v-if="message.versions.length > 1" :from="message.role">
             <MessageBranchPrevious />
             <MessageBranchPage />
             <MessageBranchNext />
@@ -237,6 +235,7 @@ function handleSuggestionClick(suggestion: string) {
       </ConversationContent>
       <ConversationScrollButton />
     </Conversation>
+<<<<<<< HEAD
 
     <div class="grid shrink-0 gap-4 pt-4">
       <Suggestions class="px-4">
@@ -264,9 +263,15 @@ function handleSuggestionClick(suggestion: string) {
             <PromptInputAttachmentsDisplay />
           </PromptInputHeader>
 
+=======
+    <div class="w-full px-4 pb-4">
+      <PromptInputProvider @submit="onSubmit">
+        <PromptInput multiple global-drop class="w-full">
+>>>>>>> refs/remotes/origin/main
           <PromptInputBody>
-            <PromptInputTextarea :disabled="isBusy" />
+            <PromptInputTextarea />
           </PromptInputBody>
+<<<<<<< HEAD
 
           <PromptInputFooter class="flex-wrap">
             <PromptInputTools class="min-w-0 flex-wrap">
@@ -284,9 +289,14 @@ function handleSuggestionClick(suggestion: string) {
               :disabled="isBusy"
               :status="status"
             />
+=======
+          <PromptInputFooter>
+            <PromptInputSubmit :disabled="status === 'streaming'" :status="status" />
+>>>>>>> refs/remotes/origin/main
           </PromptInputFooter>
         </PromptInput>
-      </div>
+      </PromptInputProvider>
     </div>
   </div>
 </template>
+<style></style>
