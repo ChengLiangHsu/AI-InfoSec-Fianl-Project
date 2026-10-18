@@ -116,6 +116,21 @@ async function hadleCreateProject(event: Event) {
   }, 2000)
 }
 
+async function handleDeleteProject(id: string) {
+  if (!confirm("確定要刪除此專案嗎？")) return
+  const response = await fetch(`/api/odm-task/${id}`, {
+    method: "DELETE",
+  })
+  if (!response.ok) {
+    alert("刪除專案失敗")
+    return
+  }
+  projects.value = projects.value.filter((p) => p.id !== id)
+  if (selectedProject.value?.id === id) {
+    selectedProject.value = null
+  }
+}
+
 onMounted(async () => {
   const response = await fetch("/api/odm-task-list")
   const data = await response.json()
@@ -167,6 +182,9 @@ watch(selectedProject, () => {
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
+        <Button variant="destructive" size="sm" class="ml-auto" @click="handleDeleteProject(selectedProject.id)">
+          刪除專案
+        </Button>
       </header>
       <div v-if="selectedProject" class="mx-auto flex w-full max-w-sm flex-col gap-3 py-12">
         {{ selectedProject }}

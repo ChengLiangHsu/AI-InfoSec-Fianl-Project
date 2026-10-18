@@ -24,7 +24,12 @@ import httpx
 from fastapi import Depends, Request, File, UploadFile, Form
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from typing_extensions import LiteralString, ParamSpec, TypedDict
+import numpy as np
 from PIL import Image
+try:
+    from formulas import lookup_formula, get_algorithm_list
+except ImportError:
+    from src.formulas import lookup_formula, get_algorithm_list
 from pydantic import BaseModel
 from pydantic_ai import (
     Agent,
@@ -209,10 +214,103 @@ async def get_odm_task_orthophoto(task_id: str):
                 im.save(file_path, 'PNG')
     return FileResponse(file_path, media_type="image/png")
 
+def generate_spectral_image(input_path: Path, output_path: Path, formula: str = "VARI") -> bool:
+    expr, hrange = lookup_formula(formula, "RGB")
+    Image.MAX_IMAGE_PIXELS = None
+    with Image.open(input_path) as img:
+        arr = np.asarray(img, dtype=np.float32) / 255.0
+
+    has_alpha = arr.shape[2] == 4
+    if has_alpha:
+        alpha = (arr[:, :, 3] * 255).astype(np.uint8)
+
+    b1, b2, b3 = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        val = eval(expr, {"sqrt": np.sqrt}, {"b1": b1, "b2": b2, "b3": b3})
+        val = np.nan_to_num(val, nan=0.0, posinf=1.0, neginf=-1.0)
+
+    if hrange:
+        vmin, vmax = hrange
+    else:
+        vmin, vmax = -1.0, 1.0
+
+    norm = np.clip((val - vmin) / (vmax - vmin) * 255.0, 0, 255).astype(np.uint8)
+
+    # Red (low) -> Yellow (mid) -> Green (high)
+    lut = np.zeros((256, 3), dtype=np.uint8)
+    for i in range(256):
+        if i < 128:
+            lut[i] = [255, int(255 * (i / 128.0)), 0]
+        else:
+            lut[i] = [int(255 * (1.0 - (i - 128) / 128.0)), 255, 0]
+
+    rgb_colored = lut[norm]
+
+    if has_alpha:
+        rgba = np.dstack([rgb_colored, alpha])
+        out_img = Image.fromarray(rgba, mode="RGBA")
+    else:
+        out_img = Image.fromarray(rgb_colored, mode="RGB")
+
+    out_img.save(output_path, "PNG")
+    return True
+
+@app.get("/odm-task-formulas")
+async def get_odm_task_formulas():
+    all_algos = get_algorithm_list(max_bands=3)
+    rgb_algos = [
+        {
+            "id": a["id"],
+            "expr": a["expr"],
+            "help": str(a.get("help", "")),
+            "range": a.get("range", (-1, 1))
+        }
+        for a in all_algos if "RGB" in a.get("filters", [])
+    ]
+    return {"result": True, "data": rgb_algos}
+
+@app.get("/odm-task-spectral/{task_id}")
+async def get_odm_task_spectral(task_id: str, formula: str = "VARI"):
+    """
+    取得生成的光譜圖
+    """
+    spectral_file_path = THIS_DIR / "odm" / f"{task_id}_{formula}.png"
+    if spectral_file_path.exists():
+        return FileResponse(spectral_file_path, media_type="image/png")
+
+    ortho_file_path = THIS_DIR / "odm" / f"{task_id}.png"
+    if not ortho_file_path.exists():
+        await get_odm_task_orthophoto(task_id)
+        if not ortho_file_path.exists():
+            return Response(content="Orthophoto not found", status_code=404)
+
+    try:
+        generate_spectral_image(ortho_file_path, spectral_file_path, formula)
+    except Exception as e:
+        return Response(content=f"Error generating spectral image: {e}", status_code=400)
+
+    return FileResponse(spectral_file_path, media_type="image/png")
+
 @app.get("/odm-task-list")
 async def get_odm_task_list(database: Database = Depends(get_db)):
     projects = await database.get_projects()
     return {"result": True, "data": projects}
+
+@app.delete("/odm-task/{task_id}")
+async def delete_odm_task(task_id: str, database: Database = Depends(get_db)):
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            await client.post("http://localhost:3000/task/remove", json={"uuid": task_id})
+    except Exception:
+        pass
+    for f in (THIS_DIR / "odm").glob(f"{task_id}*.png"):
+        try:
+            f.unlink()
+        except Exception:
+            pass
+    await database.delete_project(task_id)
+    return {"result": True}
 
 
 @dataclass
@@ -314,6 +412,16 @@ class Database:
             commit=True,
         )
         await self._asyncify(self.con.commit)
+
+    async def delete_project(self, task_id: str):
+        await self._asyncify(
+            self._execute,
+            "DELETE FROM projects WHERE id = ?;",
+            task_id,
+            commit=True,
+        )
+        await self._asyncify(self.con.commit)
+
 
     def _execute(
         self, sql: LiteralString, *args: Any, commit: bool = False
