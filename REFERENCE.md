@@ -53,3 +53,4 @@
 - [Python zipfile 套件只能處理檔案路徑或檔案物件](https://docs.python.org/3/library/zipfile.html#:~:text=where%20file%20can%20be%20a%20path)
 - [Python 認定 io 物件為檔案物件](https://docs.python.org/3/library/io.html#:~:text=A%20concrete%20object%20belonging%20to%20any%20of%20these%20categories%20is%20called%20a%20file%20object)
 - [HTTP tif 檔的 media type](https://developer.mozilla.org/zh-TW/docs/Web/HTTP/Guides/MIME_types/Common_types#:~:text=image/tiff)
+- [Python Pillow 關閉解析圖檔的閥值](https://pillow.readthedocs.io/en/stable/reference/Image.html#:~:text=This%20threshold%20can%20be%20changed%20by%20setting%20MAX_IMAGE_PIXELS.%20It%20can%20be%20disabled%20by%20setting%20Image.MAX_IMAGE_PIXELS%20=%20None.)

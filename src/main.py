@@ -195,15 +195,19 @@ async def get_odm_task_info(task_id: str, database: Database = Depends(get_db)):
 
 @app.get("/odm-task-orthophoto/{task_id}")
 async def get_odm_task_orthophoto(task_id: str):
+    file_path = THIS_DIR / 'odm' / f"{task_id}.png"
+    if file_path.exists():
+        return FileResponse(file_path, media_type="image/png")
+
     async with httpx.AsyncClient() as client:
         r = await client.get(f"http://localhost:3000/task/{task_id}/download/all.zip", timeout=120.0)
     zip_file = r.content
-    outfile = BytesIO()
+    Image.MAX_IMAGE_PIXELS = None
     with ZipFile(BytesIO(zip_file)) as z:
         with z.open('odm_orthophoto/odm_orthophoto.tif') as target:
             with Image.open(target) as im:
-                im.save(outfile, 'PNG')
-    return Response(outfile.getvalue(), media_type="image/png")
+                im.save(file_path, 'PNG')
+    return FileResponse(file_path, media_type="image/png")
 
 @app.get("/odm-task-list")
 async def get_odm_task_list(database: Database = Depends(get_db)):

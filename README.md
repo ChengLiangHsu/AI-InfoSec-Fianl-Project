@@ -46,7 +46,10 @@
    ```
    前端預設存取網址為 `http://localhost:5173`。
 
-> **備註**：前端亦可執行 `npm run build` 打包至 `src/dist`，由 FastAPI 直接託管靜態頁面。
+### 4. NodeODM
+```bash
+docker run --rm -p 3000:3000 opendronemap/nodeodm
+```
 
 ---
 
