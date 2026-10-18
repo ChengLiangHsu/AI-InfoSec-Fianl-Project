@@ -28,8 +28,10 @@ import numpy as np
 from PIL import Image
 try:
     from formulas import lookup_formula, get_algorithm_list
+    from nodeodm_manager import ensure_nodeodm_running
 except ImportError:
     from src.formulas import lookup_formula, get_algorithm_list
+    from src.nodeodm_manager import ensure_nodeodm_running
 from pydantic import BaseModel
 from pydantic_ai import (
     Agent,
@@ -53,6 +55,8 @@ THIS_DIR = Path(__file__).parent
 
 @asynccontextmanager
 async def lifespan(_app: fastapi.FastAPI):
+    if not ensure_nodeodm_running():
+        raise RuntimeError("NodeODM 啟動失敗，中止後端服務。")
     async with Database.connect() as db:
         yield {"db": db}
 
