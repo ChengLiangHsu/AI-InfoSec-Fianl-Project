@@ -1,6 +1,6 @@
 # 無人機田間試驗評估智慧代理人
 
-![DEMO 主畫面](issues\spectral-image-dropdown\recording.webp)
+![DEMO 主畫面](./issues/spectral-image-dropdown/recording.webp)
 
 **人工智慧與資訊安全期末專題提案**
 
