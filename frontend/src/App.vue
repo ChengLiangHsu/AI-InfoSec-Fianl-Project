@@ -4,7 +4,7 @@ export const iframeHeight = "800px"
 </script>
 
 <script setup lang="ts">
-import { MessageCircleIcon, MinusIcon, FileCodeIcon, XIcon, Plus, Upload, ImageIcon, Clock, Images, ExternalLink, Download, CheckCircle2 } from '@lucide/vue'
+import { MessageCircleIcon, MinusIcon, FileCodeIcon, XIcon, Plus, Upload, ImageIcon, Clock, Images, CheckCircle2 } from '@lucide/vue'
 import AppSidebar from "@/components/AppSidebar.vue"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -47,9 +47,24 @@ import {
 } from "@/components/ui/sidebar"
 import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
-import { onMounted, ref, watch } from 'vue'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { computed, onMounted, ref, watch } from 'vue'
 import AskAgent from './components/AskAgent.vue'
 import exifr from 'exifr'
+
+interface Formula {
+  id: string
+  expr: string
+  help?: string
+  range?: [number, number]
+}
 
 interface UploadItem {
   name: string
@@ -72,6 +87,21 @@ const processingProject = ref<Project | null>(null)
 const uploadList = ref<UploadItem[]>([])
 const isCreatingProject = ref(false)
 const isAgentOpen = ref(true)
+const formulas = ref<Formula[]>([])
+const selectedFormula = ref<string>('rgb')
+const isImageLoading = ref(false)
+
+const currentImageUrl = computed(() => {
+  if (!selectedProject.value) return ''
+  if (selectedFormula.value === 'rgb') {
+    return `/api/odm-task-orthophoto/${selectedProject.value.id}`
+  }
+  return `/api/odm-task-spectral/${selectedProject.value.id}?formula=${selectedFormula.value}`
+})
+
+watch(selectedFormula, () => {
+  isImageLoading.value = true
+})
 async function handleFileUpload(event: Event) {
   uploadList.value = []
   if (event) {
@@ -140,6 +170,16 @@ async function handleDeleteProject(id: string) {
 }
 
 onMounted(async () => {
+  try {
+    const formulasRes = await fetch("/api/odm-task-formulas")
+    const formulasData = await formulasRes.json()
+    if (formulasRes.ok && formulasData.data) {
+      formulas.value = formulasData.data
+    }
+  } catch (err) {
+    console.error("無法取得光譜演算法清單", err)
+  }
+
   const response = await fetch("/api/odm-task-list")
   const data = await response.json()
   if (!response.ok) {
@@ -161,6 +201,8 @@ onMounted(async () => {
 
 watch(selectedProject, () => {
   uploadList.value = []
+  selectedFormula.value = 'rgb'
+  isImageLoading.value = true
 })
 
 </script>
@@ -240,26 +282,36 @@ watch(selectedProject, () => {
               <CardDescription>拼接完成的空拍高解析度影像</CardDescription>
             </div>
             <div class="flex items-center gap-2">
-              <Button as-child variant="outline" size="sm">
-                <a :href="`/api/odm-task-orthophoto/${selectedProject.id}`" target="_blank" rel="noopener noreferrer">
-                  <ExternalLink class="size-4 mr-1.5" />
-                  開啟原圖
-                </a>
-              </Button>
-              <Button as-child variant="default" size="sm">
-                <a :href="`/api/odm-task-orthophoto/${selectedProject.id}`" download>
-                  <Download class="size-4 mr-1.5" />
-                  下載影像
-                </a>
-              </Button>
+              <Select v-model="selectedFormula">
+                <SelectTrigger class="w-[200px]">
+                  <SelectValue placeholder="選擇光譜影像" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="rgb">
+                      原始正射影像 (RGB)
+                    </SelectItem>
+                    <SelectItem v-for="f in formulas" :key="f.id" :value="f.id">
+                      {{ f.id }}
+                    </SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </div>
           </CardHeader>
           <CardContent class="p-4">
-            <div class="flex w-full items-center justify-center overflow-hidden rounded-lg border bg-muted/20 p-2">
+            <div class="relative flex min-h-[300px] w-full items-center justify-center overflow-hidden rounded-lg border bg-muted/20 p-2">
+              <div v-if="isImageLoading" class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/60 backdrop-blur-xs">
+                <Spinner class="size-8 animate-spin text-primary" />
+                <span class="mt-2 text-xs font-medium text-muted-foreground">影像載入中...</span>
+              </div>
               <img
-                class="max-h-[65vh] w-auto max-w-full object-contain rounded shadow-sm"
-                :src="`/api/odm-task-orthophoto/${selectedProject.id}`"
+                class="max-h-[65vh] w-auto max-w-full object-contain rounded shadow-sm transition-opacity duration-200"
+                :class="{ 'opacity-40': isImageLoading }"
+                :src="currentImageUrl"
                 :alt="selectedProject.name"
+                @load="isImageLoading = false"
+                @error="isImageLoading = false"
               >
             </div>
           </CardContent>
