@@ -4,8 +4,16 @@ export const iframeHeight = "800px"
 </script>
 
 <script setup lang="ts">
-import { MessageCircleIcon, MinusIcon, FileCodeIcon, XIcon, Plus, Upload, ImageIcon } from '@lucide/vue'
+import { MessageCircleIcon, MinusIcon, FileCodeIcon, XIcon, Plus, Upload, ImageIcon, Clock, Images, ExternalLink, Download, CheckCircle2 } from '@lucide/vue'
 import AppSidebar from "@/components/AppSidebar.vue"
+import { Badge } from "@/components/ui/badge"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -186,12 +194,85 @@ watch(selectedProject, () => {
           刪除專案
         </Button>
       </header>
-      <div v-if="selectedProject" class="mx-auto flex w-full max-w-sm flex-col gap-3 py-12">
-        {{ selectedProject }}
-        <Progress :model-value="selectedProject.progress" />
-        <div v-if="selectedProject.progress === 100">
-          <img class="w-96 h-96 object-cover" :src="`/api/odm-task-orthophoto/${selectedProject.id}`" alt="">
-        </div>
+      <div v-if="selectedProject" class="mx-auto flex w-full max-w-4xl flex-col gap-6 p-6">
+        <!-- 專案資訊卡片 -->
+        <Card>
+          <CardHeader class="pb-3">
+            <div class="flex items-start justify-between gap-4">
+              <div class="space-y-1">
+                <CardTitle class="text-xl font-bold">{{ selectedProject.name }}</CardTitle>
+                <CardDescription class="font-mono text-xs text-muted-foreground">
+                  ID: {{ selectedProject.id }}
+                </CardDescription>
+              </div>
+              <Badge :variant="selectedProject.progress === 100 ? 'default' : 'secondary'">
+                <CheckCircle2 v-if="selectedProject.progress === 100" class="size-3.5 mr-1" />
+                <Spinner v-else class="size-3.5 mr-1 animate-spin" />
+                {{ selectedProject.progress === 100 ? '已完成' : `處理中 (${selectedProject.progress ?? 0}%)` }}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent class="space-y-4">
+            <div class="flex flex-wrap items-center gap-6 text-sm text-muted-foreground">
+              <div class="flex items-center gap-2">
+                <Images class="size-4" />
+                <span>圖片數量：<strong class="text-foreground">{{ selectedProject.images ?? 0 }}</strong> 張</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <Clock class="size-4" />
+                <span>運算進度：<strong class="text-foreground">{{ selectedProject.progress ?? 0 }}%</strong></span>
+              </div>
+            </div>
+
+            <!-- 處理中進度條 -->
+            <div v-if="selectedProject.progress !== 100" class="space-y-2 pt-2">
+              <Progress :model-value="selectedProject.progress ?? 0" />
+              <p class="text-xs text-muted-foreground">正在進行航拍正射影像運算，請稍候...</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <!-- 正射影像成果卡片 -->
+        <Card v-if="selectedProject.progress === 100">
+          <CardHeader class="flex flex-row items-center justify-between pb-3">
+            <div>
+              <CardTitle class="text-lg">正射影像成果 (Orthophoto)</CardTitle>
+              <CardDescription>拼接完成的空拍高解析度影像</CardDescription>
+            </div>
+            <div class="flex items-center gap-2">
+              <Button as-child variant="outline" size="sm">
+                <a :href="`/api/odm-task-orthophoto/${selectedProject.id}`" target="_blank" rel="noopener noreferrer">
+                  <ExternalLink class="size-4 mr-1.5" />
+                  開啟原圖
+                </a>
+              </Button>
+              <Button as-child variant="default" size="sm">
+                <a :href="`/api/odm-task-orthophoto/${selectedProject.id}`" download>
+                  <Download class="size-4 mr-1.5" />
+                  下載影像
+                </a>
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent class="p-4">
+            <div class="flex w-full items-center justify-center overflow-hidden rounded-lg border bg-muted/20 p-2">
+              <img
+                class="max-h-[65vh] w-auto max-w-full object-contain rounded shadow-sm"
+                :src="`/api/odm-task-orthophoto/${selectedProject.id}`"
+                :alt="selectedProject.name"
+              >
+            </div>
+          </CardContent>
+        </Card>
+
+        <!-- 運算中提示 -->
+        <Card v-else class="border-dashed p-8 text-center text-muted-foreground">
+          <div class="flex flex-col items-center justify-center gap-3">
+            <Spinner class="size-8 animate-spin text-primary" />
+            <div class="text-sm font-medium text-foreground">正射影像生成中...</div>
+            <p class="text-xs text-muted-foreground">任務完成後將在此自動顯示拼接成果影像</p>
+          </div>
+        </Card>
       </div>
       <div v-if="!selectedProject" class="mx-auto flex w-full max-w-sm flex-col gap-3 py-12">
         <form @submit.prevent="hadleCreateProject" class="flex flex-col gap-5">
@@ -209,7 +290,7 @@ watch(selectedProject, () => {
             <FormItem>
               <FormLabel>專案名稱</FormLabel>
               <FormControl>
-                <Input name="name" type="text" />
+                <Input name="name" type="text" :disabled="isCreatingProject" />
               </FormControl>
               <FormMessage />
             </FormItem>
