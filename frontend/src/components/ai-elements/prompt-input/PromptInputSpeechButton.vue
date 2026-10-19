@@ -2,7 +2,7 @@
 import type { HTMLAttributes } from 'vue'
 import { MicIcon } from '@lucide/vue'
 import { cn } from '@/lib/utils'
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { usePromptInput } from './context'
 import PromptInputButton from './PromptInputButton.vue'
 
@@ -60,6 +60,7 @@ type PromptInputSpeechButtonProps = InstanceType<typeof PromptInputButton>['$pro
 
 interface Props extends /* @vue-ignore */ PromptInputSpeechButtonProps {
   class?: HTMLAttributes['class']
+  disabled?: boolean
 }
 
 const props = defineProps<Props>()
@@ -78,10 +79,19 @@ onMounted(() => {
     sr.interimResults = true
     sr.lang = 'en-US'
 
-    sr.onstart = () => isListening.value = true
+    sr.onstart = () => {
+      if (props.disabled) {
+        sr.stop()
+        return
+      }
+      isListening.value = true
+    }
     sr.onend = () => isListening.value = false
 
     sr.onresult = (event: SpeechRecognitionEvent) => {
+      if (props.disabled)
+        return
+
       let finalTranscript = ''
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i]
@@ -109,8 +119,15 @@ onUnmounted(() => {
   recognition.value?.stop()
 })
 
+watch(() => props.disabled, (disabled) => {
+  if (disabled) {
+    recognition.value?.stop()
+    isListening.value = false
+  }
+})
+
 function toggleListening() {
-  if (!recognition.value)
+  if (props.disabled || !recognition.value)
     return
   if (isListening.value) {
     recognition.value.stop()
@@ -123,13 +140,13 @@ function toggleListening() {
 
 <template>
   <PromptInputButton
-    :disabled="!recognition"
     :class="cn(
       'relative transition-all duration-200',
       isListening && 'animate-pulse bg-accent text-accent-foreground',
       props.class,
     )"
     v-bind="props"
+    :disabled="props.disabled || !recognition"
     @click="toggleListening"
   >
     <MicIcon class="size-4" />

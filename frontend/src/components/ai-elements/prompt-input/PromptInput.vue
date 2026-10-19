@@ -9,6 +9,7 @@ import { PROMPT_INPUT_KEY } from './types'
 
 const props = defineProps<{
   class?: HTMLAttributes['class']
+  disabled?: boolean
   accept?: string
   multiple?: boolean
   globalDrop?: boolean
@@ -86,6 +87,9 @@ function handleDrop(e: DragEvent) {
   if (e.dataTransfer?.types?.includes('Files')) {
     e.preventDefault()
   }
+  if (props.disabled)
+    return
+
   if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
     addFiles(e.dataTransfer.files)
   }
@@ -107,7 +111,7 @@ onUnmounted(() => {
 
 function onFileChange(e: Event) {
   const input = e.target as HTMLInputElement
-  if (input.files) {
+  if (!props.disabled && input.files) {
     addFiles(input.files)
   }
   input.value = ''
@@ -115,6 +119,9 @@ function onFileChange(e: Event) {
 
 function onSubmit(e: Event) {
   e.preventDefault()
+  if (props.disabled)
+    return
+
   submitForm()
 }
 </script>
@@ -125,6 +132,7 @@ function onSubmit(e: Event) {
       ref="fileInputRef"
       type="file"
       class="hidden"
+      :disabled="disabled"
       :accept="accept"
       :multiple="multiple"
       @change="onFileChange"
