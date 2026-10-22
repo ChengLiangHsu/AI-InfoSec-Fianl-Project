@@ -1,8 +1,0 @@
-- [Reka UI Select 元件 modelValue 屬性說明](https://reka-ui.com/docs/components/select#:~:text=modelValue)
-- [Reka UI Select 受控值與雙向綁定 (v-model)](https://reka-ui.com/docs/components/select#:~:text=The%20controlled%20value%20of%20the%20Select.%20Can%20be%20bind%20as)
-- [Vue 3 元件基本 v-model 雙向綁定](https://vuejs.org/guide/components/v-model.html#basic-usage)
-- [Vue 3 響應式計算屬性 (Computed Properties)](https://vuejs.org/guide/essentials/computed.html#:~:text=That's%20why%20for%20complex%20logic%20that%20includes%20reactive%20data,%20it%20is%20recommended%20to%20use%20a%20computed%20property.)
-- [Vue 3 偵聽器與副作用處理 (Watchers Side Effects)](https://vuejs.org/guide/essentials/watchers.html#:~:text=side%20effects)
-- [MDN HTMLElement load 事件說明](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/load_event#:~:text=The%20load%20event%20fires%20for%20elements%20containing%20a%20resource)
-- [MDN HTMLElement error 事件說明](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/error_event#:~:text=The%20error%20event%20is%20fired%20on%20an%20element%20when%20a%20resource%20failed%20to%20load)
-- [Vue 3 事件處理與原生 DOM 事件監聽 (Event Handling)](https://vuejs.org/guide/essentials/event-handling.html#:~:text=We%20can%20use%20the%20v-on%20directive,%20which%20we%20typically%20shorten%20to%20the%20@%20symbol,%20to%20listen%20to%20DOM%20events)
