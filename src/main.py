@@ -1,15 +1,4 @@
-<<<<<<< HEAD
-import os
-import json
-import asyncio
-from dataclasses import dataclass
-from datetime import datetime
-from pathlib import Path
-from collections.abc import AsyncIterable, Iterable
-from typing import Annotated, Any, Literal, TypeVar
-=======
 from __future__ import annotations as _annotations
->>>>>>> refs/remotes/origin/main
 
 import os
 from zipfile import ZipFile
@@ -55,19 +44,9 @@ from pydantic_ai import (
     UserPromptPart,
 )
 
-<<<<<<< HEAD
-from .usecase import ReadConversationUsecase, UpdateConversationUsecase
-from .adapter.controller import ReadConversationController, UpdateConversationController
-from .adapter.gateway.repo import SQLiteConversationRepository
-from .database import get_session, create_db_and_tables
-
-app = FastAPI()
-app.frontend("/", directory=Path(__file__).resolve().parent / "dist", fallback="index.html")
-=======
 # 'if-token-present' means nothing will be sent (and the example will work) if you don't have logfire configured
 logfire.configure(send_to_logfire="if-token-present")
 logfire.instrument_pydantic_ai()
->>>>>>> refs/remotes/origin/main
 
 model = os.getenv("PYDANTIC_AI_MODEL", "google:gemini-3.7-flash")
 agent = Agent(model)
@@ -145,30 +124,6 @@ class PostChatRequest(BaseModel):
     prompt: str
 
 
-<<<<<<< HEAD
-@app.post("/agent/chat", response_class=StreamingResponse)
-async def chat(
-    request: ChatRequest,
-    controllers: tuple[
-        ReadConversationController, UpdateConversationController
-    ] = Depends(build_controller),
-) -> AsyncIterable[str]:
-    read_conversation_controller, update_conversation_controller = controllers
-    conversation = read_conversation_controller.handle({
-        "id": "1a1a5e60006f4a8bad74572ba2de2f28"
-    })
-    messages_history = conversation.messages
-    async with AsyncClient() as client:
-        deps = Deps(client=client)
-        result = await weather_agent.run(
-            user_prompt=request.prompt,
-            deps=deps, 
-            message_history=messages_history
-        )
-    for line in result.output.splitlines():
-        yield line + "\n"
-    print("success!")
-=======
 @app.post("/chat")
 async def post_chat(
     request: PostChatRequest, database: Database = Depends(get_db)
@@ -495,4 +450,3 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run("main:app", app_dir=str(THIS_DIR), reload=True)
->>>>>>> refs/remotes/origin/main
