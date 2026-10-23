@@ -4,7 +4,7 @@ export const iframeHeight = "800px"
 </script>
 
 <script setup lang="ts">
-import { MessageCircleIcon, MinusIcon, FileCodeIcon, XIcon, Plus, Upload, ImageIcon, Clock, Images, CheckCircle2 } from '@lucide/vue'
+import { MessageCircleIcon, MinusIcon, FileCodeIcon, XIcon, Plus, Upload, ImageIcon, Clock, Images, CheckCircle2, Layers } from '@lucide/vue'
 import AppSidebar from "@/components/AppSidebar.vue"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -48,17 +48,23 @@ import {
 import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { computed, onMounted, ref, watch } from 'vue'
 import AskAgent from './components/AskAgent.vue'
 import GeminiHomeChat from './components/GeminiHomeChat.vue'
+import { useChatAgent } from './lib/useChatAgent'
 import exifr from 'exifr'
+
+const { clearChat } = useChatAgent()
+
+async function handleGoHome() {
+  selectedProject.value = null
+  await clearChat('home')
+}
 
 interface Formula {
   id: string
@@ -203,7 +209,7 @@ async function handleDeleteProject(id: string) {
   }
   projects.value = projects.value.filter((p) => p.id !== id)
   if (selectedProject.value?.id === id) {
-    selectedProject.value = null
+    await handleGoHome()
   }
 }
 
@@ -258,8 +264,8 @@ watch(selectedProject, () => {
         <Breadcrumb>
           <BreadcrumbList>
             <BreadcrumbItem class="hidden md:block">
-              <BreadcrumbLink href="#">
-                專案
+              <BreadcrumbLink href="#" class="cursor-pointer" @click.prevent="handleGoHome">
+                主畫面
               </BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator class="hidden md:block" />
@@ -317,29 +323,84 @@ watch(selectedProject, () => {
           <CardHeader class="flex flex-row items-center justify-between pb-3">
             <div>
               <CardTitle class="text-lg">正射影像成果 (Orthophoto)</CardTitle>
-              <CardDescription>拼接完成的空拍高解析度影像</CardDescription>
+              <CardDescription>拼接完成的空拍高解析度影像與植生指標運算</CardDescription>
             </div>
             <div class="flex items-center gap-2">
-              <Select v-model="selectedFormula">
-                <SelectTrigger class="w-[200px]">
-                  <SelectValue placeholder="選擇光譜影像" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectItem value="rgb">
-                      原始正射影像 (RGB)
-                    </SelectItem>
-                    <SelectItem v-for="f in formulas" :key="f.id" :value="f.id">
-                      {{ f.id }}
-                    </SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+              <Badge variant="outline" class="font-mono text-xs">
+                目前顯示：{{ selectedFormula === 'rgb' ? '原始正射影像 (RGB)' : selectedFormula }}
+              </Badge>
             </div>
           </CardHeader>
           <CardContent class="p-4">
             <div
-              class="relative flex min-h-[300px] w-full items-center justify-center overflow-hidden rounded-lg border bg-muted/20 p-2">
+              class="relative flex min-h-[360px] w-full items-center justify-center overflow-hidden rounded-lg border bg-muted/20 p-2">
+              
+              <!-- 懸浮公式快速切換按鈕群 (Floating Formula Switcher) -->
+              <div
+                class="absolute top-3 right-3 z-20 flex flex-col gap-1.5 rounded-xl border border-border/80 bg-background/85 p-1.5 shadow-lg backdrop-blur-md">
+                <div class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  <Layers class="size-3.5" />
+                  <span>光譜演算法</span>
+                </div>
+                <div class="flex flex-col gap-1 max-h-[320px] overflow-y-auto pr-0.5">
+                  <TooltipProvider :delay-duration="150">
+                    <Tooltip>
+                      <TooltipTrigger as-child>
+                        <Button
+                          size="sm"
+                          :variant="selectedFormula === 'rgb' ? 'default' : 'outline'"
+                          class="h-8 justify-start gap-2 px-3 text-xs font-medium shadow-xs transition-all"
+                          @click="selectedFormula = 'rgb'"
+                        >
+                          <span
+                            class="size-2 rounded-full"
+                            :class="selectedFormula === 'rgb' ? 'bg-primary-foreground' : 'bg-emerald-500'"
+                          />
+                          <span>RGB 原始</span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="left" class="max-w-xs space-y-1 p-2 text-xs">
+                        <p class="font-bold text-foreground">原始正射影像 (RGB)</p>
+                        <p class="text-muted-foreground leading-relaxed">未經光譜指數計算之原始拼接正射影像。</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+
+                  <div class="my-0.5 h-px bg-border/60" />
+
+                  <TooltipProvider
+                    v-for="f in formulas"
+                    :key="f.id"
+                    :delay-duration="150"
+                  >
+                    <Tooltip>
+                      <TooltipTrigger as-child>
+                        <Button
+                          size="sm"
+                          :variant="selectedFormula === f.id ? 'default' : 'outline'"
+                          class="h-8 justify-between gap-3 px-3 text-xs font-medium shadow-xs transition-all"
+                          @click="selectedFormula = f.id"
+                        >
+                          <span class="font-semibold">{{ f.id }}</span>
+                          <span
+                            v-if="selectedFormula === f.id"
+                            class="size-1.5 rounded-full bg-primary-foreground animate-pulse"
+                          />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="left" class="max-w-xs space-y-1 p-2 text-xs">
+                        <p class="font-bold text-foreground">{{ f.id }}</p>
+                        <p v-if="f.help" class="text-muted-foreground leading-relaxed">{{ f.help }}</p>
+                        <p v-if="f.expr" class="font-mono text-[10px] text-muted-foreground/80 bg-muted/60 px-1.5 py-0.5 rounded">
+                          公式: {{ f.expr }}
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+              </div>
+
+              <!-- 影像載入中遮罩 -->
               <div v-if="isImageLoading"
                 class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/60 backdrop-blur-xs">
                 <Spinner class="size-8 animate-spin text-primary" />
@@ -377,7 +438,11 @@ watch(selectedProject, () => {
         <MinusIcon class="size-4" />
       </button>
     </header>
-    <AskAgent :project-id="selectedProject?.id" />
+    <AskAgent
+      :project-id="selectedProject?.id"
+      :project-name="selectedProject?.name"
+      :selected-formula="selectedFormula"
+    />
   </section>
 
   <button v-if="selectedProject && !isAgentOpen" type="button" aria-label="開啟 AskAgent" aria-controls="ask-agent-window"

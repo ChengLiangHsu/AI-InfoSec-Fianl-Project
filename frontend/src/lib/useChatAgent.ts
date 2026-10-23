@@ -121,10 +121,46 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
     }
   }
 
+  async function clearChat(pid?: string): Promise<void> {
+    const targetId = pid || currentProjectId.value
+    conversations.value[targetId] = []
+    statusMap.value[targetId] = 'ready'
+    try {
+      await fetch(`/api/chat/?project_id=${encodeURIComponent(targetId)}`, {
+        method: 'DELETE',
+      })
+    } catch (e) {
+      console.error(`Failed to clear chat for ${targetId}`, e)
+    }
+  }
+
+  async function migrateChat(fromId: string, toId: string): Promise<void> {
+    const fromMsgs = conversations.value[fromId] || []
+    if (fromMsgs.length > 0) {
+      conversations.value[toId] = [...(conversations.value[toId] || []), ...fromMsgs]
+      conversations.value[fromId] = []
+    }
+    statusMap.value[fromId] = 'ready'
+    try {
+      await fetch('/api/chat/migrate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from_project_id: fromId,
+          to_project_id: toId,
+        }),
+      })
+    } catch (e) {
+      console.error(`Failed to migrate chat from ${fromId} to ${toId}`, e)
+    }
+  }
+
   return {
     status,
     messages,
     loadInitialMessages,
     sendPrompt,
+    clearChat,
+    migrateChat,
   }
 }

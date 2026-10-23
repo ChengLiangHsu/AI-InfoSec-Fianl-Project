@@ -35,10 +35,12 @@ except ImportError:
 from pydantic import BaseModel
 from pydantic_ai import (
     Agent,
+    BinaryContent,
     ModelMessage,
     ModelMessagesTypeAdapter,
     ModelRequest,
     ModelResponse,
+    RunContext,
     TextPart,
     UnexpectedModelBehavior,
     UserPromptPart,
@@ -48,19 +50,304 @@ from pydantic_ai import (
 logfire.configure(send_to_logfire="if-token-present")
 logfire.instrument_pydantic_ai()
 
+
+@dataclass
+class ChatDeps:
+    project_id: str
+    database: Database
+
+
 model = os.getenv("PYDANTIC_AI_MODEL", "google:gemini-3.7-flash")
-agent = Agent(model)
+agent = Agent(model, deps_type=ChatDeps)
+vision_agent = Agent(model)
 THIS_DIR = Path(__file__).parent
 
 
+def generate_spectral_image(input_path: Path, output_path: Path, formula: str = "VARI") -> bool:
+    expr, hrange = lookup_formula(formula, "RGB")
+    Image.MAX_IMAGE_PIXELS = None
+    with Image.open(input_path) as img:
+        arr = np.asarray(img, dtype=np.float32) / 255.0
+
+    has_alpha = arr.shape[2] == 4
+    if has_alpha:
+        alpha = (arr[:, :, 3] * 255).astype(np.uint8)
+
+    b1, b2, b3 = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        val = eval(expr, {"sqrt": np.sqrt}, {"b1": b1, "b2": b2, "b3": b3})
+        val = np.nan_to_num(val, nan=0.0, posinf=1.0, neginf=-1.0)
+
+    if hrange:
+        vmin, vmax = hrange
+    else:
+        vmin, vmax = -1.0, 1.0
+
+    norm = np.clip((val - vmin) / (vmax - vmin) * 255.0, 0, 255).astype(np.uint8)
+
+    # Red (low) -> Yellow (mid) -> Green (high)
+    lut = np.zeros((256, 3), dtype=np.uint8)
+    for i in range(256):
+        if i < 128:
+            lut[i] = [255, int(255 * (i / 128.0)), 0]
+        else:
+            lut[i] = [int(255 * (1.0 - (i - 128) / 128.0)), 255, 0]
+
+    rgb_colored = lut[norm]
+
+    if has_alpha:
+        rgba = np.dstack([rgb_colored, alpha])
+        out_img = Image.fromarray(rgba, mode="RGBA")
+    else:
+        out_img = Image.fromarray(rgb_colored, mode="RGB")
+
+    out_img.save(output_path, "PNG")
+    return True
+
+
 @agent.system_prompt
-def system_prompt() -> str:
-    return (
+async def system_prompt(ctx: RunContext[ChatDeps]) -> str:
+    base_prompt = (
         "你是無人機田間試驗智慧評估代理人（Agricultural Drone Field Trial Agent）。\n"
         "你的核心專業是協助農業與植保試驗人員，針對高解析度無人機空拍正射影像進行分析、植生指標計算與藥效評估。\n"
-        "當使用者詢問任何光譜或植生指標（例如 VARI, GLI, NDVI, EXG, SAVI 等）之公式、定義或適用情境時，"
-        "請務必調用 `query_vegetation_index` 工具獲取精確公式與資訊，並結合無人機田間試驗實務進行專業解說。"
+        "你具備直接存取當前專案的正射圖（Orthophoto）與各光譜演算法影像（VARI, GLI, EXG, vNDVI, MPRI 等）的完整能力。\n"
+        "當使用者在小視窗（AskAgent）詢問田間狀況、正射圖、光譜圖或作物健康狀況時，請靈活調用以下工具：\n"
+        "1. `get_current_project_info`：確認專案基本資訊、正射圖生成狀態與可用光譜指標。\n"
+        "2. `calculate_spectral_statistics`：獲取具備統計科學依據的光譜指標數值（平均值、中位數、標準差）與植生健康等級佔比。\n"
+        "3. `inspect_field_imagery`：運用多模態視覺判讀田間正射圖或光譜圖中的行株距、缺株空洞、變色斑塊與生長不均現象。\n"
+        "4. `query_vegetation_index`：查詢植生指標公式、適用波段與學理依據。\n"
+        "請將科學統計數據與多模態視覺判讀深度結合，給予專業、結構化且具可行性的田間試驗評估與農事建議。"
     )
+    pid = ctx.deps.project_id
+    if pid and pid != "home":
+        try:
+            proj = await ctx.deps.database.get_project(pid)
+            ortho_exists = (THIS_DIR / "odm" / f"{pid}.png").exists()
+            base_prompt += (
+                f"\n\n【當前專案資訊】\n"
+                f"- 專案名稱：{proj['name']}\n"
+                f"- 專案 ID：{proj['id']}\n"
+                f"- 航拍相片數：{proj['images']} 張\n"
+                f"- 拼接運算進度：{proj['progress']}%\n"
+                f"- 正射圖產出狀態：{'已完成就緒 (Ready)' if ortho_exists else '尚未完成或生成中'}\n"
+                f"使用者目前在該專案的專屬小視窗（AskAgent）與你對話，你可以直接調用工具存取此專案的正射圖與其光譜圖進行多模態診斷。"
+            )
+        except Exception:
+            pass
+    return base_prompt
+
+
+@agent.tool
+async def get_current_project_info(ctx: RunContext[ChatDeps]) -> dict:
+    """取得當前使用者正在檢視的田間試驗專案資訊、正射圖檔案狀態與支援的光譜演算法。"""
+    pid = ctx.deps.project_id
+    if not pid or pid == "home":
+        return {
+            "status": "not_in_project",
+            "message": "目前使用者位於主畫面首頁，尚未進入任何專案。請引導使用者選擇或建立專案後再進行特定田間影像分析。"
+        }
+    try:
+        proj = await ctx.deps.database.get_project(pid)
+    except Exception as e:
+        return {"status": "error", "message": f"無法載入專案資料: {e}"}
+
+    ortho_path = THIS_DIR / "odm" / f"{pid}.png"
+    has_ortho = ortho_path.exists()
+    width, height = 0, 0
+    if has_ortho:
+        try:
+            with Image.open(ortho_path) as im:
+                width, height = im.size
+        except Exception:
+            pass
+
+    cached_spectrals = [
+        f.stem.replace(f"{pid}_", "")
+        for f in (THIS_DIR / "odm").glob(f"{pid}_*.png")
+    ]
+
+    all_rgb_algos = [a["id"] for a in get_algorithm_list(max_bands=3) if "RGB" in a.get("filters", [])]
+
+    return {
+        "status": "success",
+        "project_id": pid,
+        "project_name": proj["name"],
+        "images_count": proj["images"],
+        "progress": proj["progress"],
+        "has_orthophoto": has_ortho,
+        "image_resolution": f"{width} x {height}" if has_ortho else "未知",
+        "cached_spectral_maps": cached_spectrals,
+        "supported_rgb_formulas": all_rgb_algos,
+    }
+
+
+@agent.tool
+async def calculate_spectral_statistics(
+    ctx: RunContext[ChatDeps], formula: str = "VARI"
+) -> dict:
+    """計算並取得當前專案在指定光譜植生指標（如 VARI, GLI, EXG, vNDVI, MPRI 等）下的田間數值統計資料。
+
+    Args:
+        formula: 光譜指標名稱（預設為 'VARI'，可選如 'GLI', 'EXG', 'vNDVI', 'MPRI', 'NDYI' 等）。
+    """
+    pid = ctx.deps.project_id
+    if not pid or pid == "home":
+        return {"status": "error", "message": "目前未選擇具體專案，無法計算田間光譜統計。"}
+
+    ortho_path = THIS_DIR / "odm" / f"{pid}.png"
+    if not ortho_path.exists():
+        await get_odm_task_orthophoto(pid)
+        if not ortho_path.exists():
+            return {"status": "error", "message": "尚未找到該專案的正射圖，航拍拼接可能尚未完成。"}
+
+    formula_upper = formula.strip().upper()
+    try:
+        expr, hrange = lookup_formula(formula_upper, "RGB")
+    except Exception as e:
+        return {"status": "error", "message": f"找不到光譜指標 '{formula}': {e}"}
+
+    Image.MAX_IMAGE_PIXELS = None
+    with Image.open(ortho_path) as img:
+        w, h = img.size
+        max_dim = 1500
+        if max(w, h) > max_dim:
+            scale = max_dim / max(w, h)
+            new_size = (int(w * scale), int(h * scale))
+            img_resized = img.resize(new_size, Image.Resampling.BILINEAR)
+            arr = np.asarray(img_resized, dtype=np.float32) / 255.0
+        else:
+            arr = np.asarray(img, dtype=np.float32) / 255.0
+
+    has_alpha = arr.shape[2] == 4
+    if has_alpha:
+        valid_mask = arr[:, :, 3] > 0.1
+    else:
+        valid_mask = np.ones(arr.shape[:2], dtype=bool)
+
+    b1, b2, b3 = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
+    vmin, vmax = hrange if hrange else (-1.0, 1.0)
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        val = eval(expr, {"sqrt": np.sqrt}, {"b1": b1, "b2": b2, "b3": b3})
+        val = np.nan_to_num(val, nan=0.0, posinf=vmax, neginf=vmin)
+
+    val_clipped = np.clip(val, vmin, vmax)
+    valid_vals = val_clipped[valid_mask]
+
+    if len(valid_vals) == 0:
+        return {"status": "error", "message": "影像中無有效農田像素。"}
+
+    mean_val = float(np.mean(valid_vals))
+    median_val = float(np.median(valid_vals))
+    std_val = float(np.std(valid_vals))
+    q25 = float(np.percentile(valid_vals, 25))
+    q75 = float(np.percentile(valid_vals, 75))
+    min_val = float(np.min(valid_vals))
+    max_val = float(np.max(valid_vals))
+
+    if formula_upper in ["VARI", "GLI"]:
+        healthy_ratio = float(np.sum(valid_vals > 0.1) / len(valid_vals))
+        moderate_ratio = float(np.sum((valid_vals >= 0.0) & (valid_vals <= 0.1)) / len(valid_vals))
+        low_soil_ratio = float(np.sum(valid_vals < 0.0) / len(valid_vals))
+    elif formula_upper == "EXG":
+        healthy_ratio = float(np.sum(valid_vals > 0.05) / len(valid_vals))
+        moderate_ratio = float(np.sum((valid_vals >= 0.0) & (valid_vals <= 0.05)) / len(valid_vals))
+        low_soil_ratio = float(np.sum(valid_vals < 0.0) / len(valid_vals))
+    else:
+        mid = (vmin + vmax) / 2.0
+        healthy_ratio = float(np.sum(valid_vals > mid) / len(valid_vals))
+        moderate_ratio = float(np.sum((valid_vals >= vmin + (vmax-vmin)*0.25) & (valid_vals <= mid)) / len(valid_vals))
+        low_soil_ratio = float(np.sum(valid_vals < vmin + (vmax-vmin)*0.25) / len(valid_vals))
+
+    return {
+        "status": "success",
+        "formula": formula_upper,
+        "formula_expression": expr,
+        "valid_pixel_count": int(len(valid_vals)),
+        "statistics": {
+            "mean": round(mean_val, 4),
+            "median": round(median_val, 4),
+            "std_deviation": round(std_val, 4),
+            "q25": round(q25, 4),
+            "q75": round(q75, 4),
+            "min": round(min_val, 4),
+            "max": round(max_val, 4),
+        },
+        "vegetation_classification": {
+            "healthy_vegetation_pct": round(healthy_ratio * 100, 2),
+            "moderate_vegetation_pct": round(moderate_ratio * 100, 2),
+            "low_vigor_or_soil_pct": round(low_soil_ratio * 100, 2),
+        },
+        "field_homogeneity": (
+            "高均勻度 (植株生長整齊一致)" if std_val < 0.12 else
+            "中等均勻度 (部分區域存在生長勢落差)" if std_val < 0.22 else
+            "高異質性 (田區長勢不均或存在明顯缺株斑禿)"
+        ),
+    }
+
+
+@agent.tool
+async def inspect_field_imagery(
+    ctx: RunContext[ChatDeps],
+    image_target: Literal["orthophoto", "spectral"] = "spectral",
+    formula: str = "VARI",
+    focus: str = "詳細觀察並診斷田間作物生長勢、行株距整齊度、缺株/斑禿區域或變色異常"
+) -> str:
+    """使用多模態視覺模型（Gemini Vision）直接讀取並觀察當前專案的正射圖（RGB原圖）或指定光譜熱圖。
+
+    Args:
+        image_target: 觀察目標影像，'spectral'（光譜圖，預設）或 'orthophoto'（原始RGB正射影像）。
+        formula: 若 image_target 為 'spectral'，指定要讀取的光譜演算法（如 'VARI', 'GLI', 'EXG' 等，預設 'VARI'）。
+        focus: 觀察焦點或特定問題（例如 '是否有缺株'、'右側田區變色原因' 等）。
+    """
+    pid = ctx.deps.project_id
+    if not pid or pid == "home":
+        return "目前未選擇具體專案，無法讀取田間影像。"
+
+    ortho_path = THIS_DIR / "odm" / f"{pid}.png"
+    if not ortho_path.exists():
+        await get_odm_task_orthophoto(pid)
+        if not ortho_path.exists():
+            return "正射圖檔案不存在，請確認空拍拼接任務是否已完成。"
+
+    formula_upper = formula.strip().upper()
+    if image_target == "spectral":
+        target_img_path = THIS_DIR / "odm" / f"{pid}_{formula_upper}.png"
+        if not target_img_path.exists():
+            try:
+                generate_spectral_image(ortho_path, target_img_path, formula_upper)
+            except Exception as e:
+                return f"生成光譜圖 {formula_upper} 失敗: {e}"
+        image_desc = f"專案 {pid} 的 {formula_upper} 植生指標光譜圖（綠色代表高活力植被、黃色為中度活力、紅色/黑色為低活力或土壤裸露）"
+    else:
+        target_img_path = ortho_path
+        image_desc = f"專案 {pid} 的高解析度無人機原始正射拼接影像 (RGB Orthophoto)"
+
+    try:
+        Image.MAX_IMAGE_PIXELS = None
+        with Image.open(target_img_path) as im:
+            im_copy = im.copy()
+            im_copy.thumbnail((768, 768))
+            buf = BytesIO()
+            im_copy.save(buf, format="PNG")
+            img_bytes = buf.getvalue()
+
+        vision_prompt = (
+            f"這是無人機田間空拍試驗影像：{image_desc}。\n"
+            f"分析焦點：{focus}\n"
+            "請以專業農業航拍評估人員的視角，客觀列出你觀察到的關鍵視覺特徵：\n"
+            "1. 作物行株排列與封壟覆蓋度\n"
+            "2. 是否存在明顯缺株、禿斑、生長發育不良或土壤裸露區域及其方位\n"
+            "3. 顏色分佈均勻性（植株深淺綠落差或異變斑塊）\n"
+            "4. 邊界效應或排水灌溉相關的局部生長差異\n"
+            "請精簡扼要以條列重點陳述具體觀察。"
+        )
+        binary_content = BinaryContent(data=img_bytes, media_type="image/png")
+        vision_result = await vision_agent.run([vision_prompt, binary_content])
+        return f"【多模態視覺判讀成果 - {image_desc}】\n{vision_result.output}"
+    except Exception as e:
+        return f"影像多模態視覺判讀時發生錯誤: {e}"
 
 
 @agent.tool_plain
@@ -148,6 +435,27 @@ async def get_chat(project_id: str = "home", database: Database = Depends(get_db
     )
 
 
+@app.delete("/chat")
+@app.delete("/chat/")
+async def delete_chat(project_id: str = "home", database: Database = Depends(get_db)):
+    await database.delete_messages_by_project(project_id)
+    return {"result": True}
+
+
+class MigrateChatRequest(BaseModel):
+    from_project_id: str = "home"
+    to_project_id: str
+
+
+@app.post("/chat/migrate")
+@app.post("/chat/migrate/")
+async def migrate_chat(
+    request: MigrateChatRequest, database: Database = Depends(get_db)
+):
+    await database.migrate_messages(request.from_project_id, request.to_project_id)
+    return {"result": True}
+
+
 class ModelMessageResponse(TypedDict):
     """Format of messages sent to the browser."""
 
@@ -223,8 +531,11 @@ async def post_chat(
         )
         # get the chat history for this specific project
         messages = await database.get_messages(project_id=request.project_id)
-        # run the agent with the user prompt and the chat history
-        async with agent.run_stream(request.prompt, message_history=messages) as result:
+        # run the agent with the user prompt, chat history and project deps
+        deps = ChatDeps(project_id=request.project_id, database=database)
+        async with agent.run_stream(
+            request.prompt, message_history=messages, deps=deps
+        ) as result:
             async for text in result.stream_output(debounce_by=0.01):
                 # text here is a `str` and the frontend wants
                 # JSON encoded ModelResponse, so we create one
@@ -293,47 +604,6 @@ async def get_odm_task_orthophoto(task_id: str):
                 im.save(file_path, 'PNG')
     return FileResponse(file_path, media_type="image/png")
 
-def generate_spectral_image(input_path: Path, output_path: Path, formula: str = "VARI") -> bool:
-    expr, hrange = lookup_formula(formula, "RGB")
-    Image.MAX_IMAGE_PIXELS = None
-    with Image.open(input_path) as img:
-        arr = np.asarray(img, dtype=np.float32) / 255.0
-
-    has_alpha = arr.shape[2] == 4
-    if has_alpha:
-        alpha = (arr[:, :, 3] * 255).astype(np.uint8)
-
-    b1, b2, b3 = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
-
-    with np.errstate(divide="ignore", invalid="ignore"):
-        val = eval(expr, {"sqrt": np.sqrt}, {"b1": b1, "b2": b2, "b3": b3})
-        val = np.nan_to_num(val, nan=0.0, posinf=1.0, neginf=-1.0)
-
-    if hrange:
-        vmin, vmax = hrange
-    else:
-        vmin, vmax = -1.0, 1.0
-
-    norm = np.clip((val - vmin) / (vmax - vmin) * 255.0, 0, 255).astype(np.uint8)
-
-    # Red (low) -> Yellow (mid) -> Green (high)
-    lut = np.zeros((256, 3), dtype=np.uint8)
-    for i in range(256):
-        if i < 128:
-            lut[i] = [255, int(255 * (i / 128.0)), 0]
-        else:
-            lut[i] = [int(255 * (1.0 - (i - 128) / 128.0)), 255, 0]
-
-    rgb_colored = lut[norm]
-
-    if has_alpha:
-        rgba = np.dstack([rgb_colored, alpha])
-        out_img = Image.fromarray(rgba, mode="RGBA")
-    else:
-        out_img = Image.fromarray(rgb_colored, mode="RGB")
-
-    out_img.save(output_path, "PNG")
-    return True
 
 @app.get("/odm-task-formulas")
 async def get_odm_task_formulas():
@@ -514,6 +784,16 @@ class Database:
             self._execute,
             "DELETE FROM messages WHERE project_id = ?;",
             project_id,
+            commit=True,
+        )
+        await self._asyncify(self.con.commit)
+
+    async def migrate_messages(self, from_project_id: str, to_project_id: str):
+        await self._asyncify(
+            self._execute,
+            "UPDATE messages SET project_id = ? WHERE project_id = ?;",
+            to_project_id,
+            from_project_id,
             commit=True,
         )
         await self._asyncify(self.con.commit)
