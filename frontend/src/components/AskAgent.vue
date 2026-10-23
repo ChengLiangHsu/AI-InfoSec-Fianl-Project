@@ -23,72 +23,30 @@ import {
 import { Conversation, ConversationContent, ConversationScrollButton } from '@/components/ai-elements/conversation'
 import type { AttachmentData } from '@/components/ai-elements/attachments'
 
-const status = ref<'submitted' | 'streaming' | 'ready' | 'error'>('ready')
-const messages = ref<MessageType[]>([])
+import { onMounted, watch } from 'vue'
+import { useChatAgent } from '@/lib/useChatAgent'
 
-interface Version {
-  id: string
-  content: string
-}
+const props = defineProps<{
+  projectId?: string
+}>()
 
-interface MessageType {
-  key: string
-  role: 'user' | 'assistant'
-  versions?: Version[]
-  content?: string
-  attachments?: AttachmentData[]
-}
-async function onFetchResponse(response: Response): Promise<void> {
-  status.value = 'streaming'
-  let text = ''
-  let decoder = new TextDecoder()
-  if (response.ok) {
-    const reader = response.body?.getReader()
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) {
-        break
-      }
-      text += decoder.decode(value)
-      const lines = text.split('\n')
-      const newMessages: MessageType[] = lines.filter(line => line.length > 1).map(j => JSON.parse(j))
-      for (const message of newMessages) {
-        updateStreamingContent(message)
-      }
+const { status, messages, loadInitialMessages, sendPrompt } = useChatAgent(() => props.projectId)
+
+onMounted(() => {
+  loadInitialMessages(props.projectId)
+})
+
+watch(
+  () => props.projectId,
+  (newId) => {
+    if (newId) {
+      loadInitialMessages(newId)
     }
-    status.value = 'ready'
-  } else {
-    const text = await response.text()
-    console.error(`Unexpected response: ${response.status}`, { response, text })
-    throw new Error(`Unexpected response: ${response.status}`)
   }
-}
-function updateStreamingContent(message: MessageType) {
-  const { key, versions } = message
-  const versionId = versions[0].id
-  const content = versions[0].content
-  const target = messages.value.find(msg => msg.key === key)
-  if (!target) {
-    messages.value.push(message)
-    return
-  }
-  const version = target.versions?.find(v => v.id === versionId)
-  version.content = content
-  messages.value = [...messages.value]
-}
+)
 
-function onError(error: any) {
-  console.error(error)
-  document.getElementById('error')?.classList.remove('d-none')
-}
-
-async function onSubmit(messages: PromptInputMessage[]): Promise<void> {
-  status.value = 'submitted'
-  const body = JSON.stringify({
-    prompt: messages.text,
-  })
-  const response = await fetch('/api/chat', { method: 'POST', body, headers: { 'Content-Type': 'application/json' } })
-  await onFetchResponse(response)
+async function onSubmit(payload: PromptInputMessage): Promise<void> {
+  await sendPrompt(payload.text, props.projectId)
 }
 </script>
 

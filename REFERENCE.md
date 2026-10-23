@@ -1,0 +1,1 @@
+- [圖像 GPS 資訊讀取工具](https://github.com/MikeKovarik/exifr)

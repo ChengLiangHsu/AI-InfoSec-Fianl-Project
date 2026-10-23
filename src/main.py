@@ -27,10 +27,10 @@ from typing_extensions import LiteralString, ParamSpec, TypedDict
 import numpy as np
 from PIL import Image
 try:
-    from formulas import lookup_formula, get_algorithm_list
+    from formulas import lookup_formula, get_algorithm_list, algos, get_camera_filters_for
     from nodeodm_manager import ensure_nodeodm_running
 except ImportError:
-    from src.formulas import lookup_formula, get_algorithm_list
+    from src.formulas import lookup_formula, get_algorithm_list, algos, get_camera_filters_for
     from src.nodeodm_manager import ensure_nodeodm_running
 from pydantic import BaseModel
 from pydantic_ai import (
@@ -53,6 +53,73 @@ agent = Agent(model)
 THIS_DIR = Path(__file__).parent
 
 
+@agent.system_prompt
+def system_prompt() -> str:
+    return (
+        "你是無人機田間試驗智慧評估代理人（Agricultural Drone Field Trial Agent）。\n"
+        "你的核心專業是協助農業與植保試驗人員，針對高解析度無人機空拍正射影像進行分析、植生指標計算與藥效評估。\n"
+        "當使用者詢問任何光譜或植生指標（例如 VARI, GLI, NDVI, EXG, SAVI 等）之公式、定義或適用情境時，"
+        "請務必調用 `query_vegetation_index` 工具獲取精確公式與資訊，並結合無人機田間試驗實務進行專業解說。"
+    )
+
+
+@agent.tool_plain
+def query_vegetation_index(name_or_keyword: str = "") -> dict:
+    """查詢農業無人機植生指標（Vegetation Indices）的數學公式、說明、支援波段與適用情境。
+
+    Args:
+        name_or_keyword: 植生指標名稱代碼（如 VARI, GLI, NDVI, EXG, SAVI），或查詢關鍵字（如 'RGB', 'list'）。
+    """
+    query = (name_or_keyword or "").strip()
+
+    # 1. 精確或大小寫比對
+    for k, item in algos.items():
+        if k.lower() == query.lower():
+            filters = get_camera_filters_for(item["expr"], max_bands=4)
+            is_rgb = "RGB" in filters
+            return {
+                "status": "success",
+                "name": k,
+                "formula_expr": item.get("expr"),
+                "description": str(item.get("help", "無特別描述")),
+                "range": item.get("range", [-1, 1]),
+                "supported_bands": filters,
+                "is_rgb_compatible": is_rgb,
+                "note": "適用於一般無人機 RGB 空拍鏡頭" if is_rgb else "需要近紅外光 (NIR) 或多光譜鏡頭"
+            }
+
+    # 2. 關鍵字搜尋或清單查詢
+    if query.lower() in ["rgb", "list", "all", ""]:
+        rgb_list = [
+            {"name": a["id"], "expr": a["expr"], "description": str(a.get("help", ""))}
+            for a in get_algorithm_list(max_bands=3)
+            if "RGB" in a.get("filters", [])
+        ]
+        return {
+            "status": "list",
+            "total_rgb_indices": len(rgb_list),
+            "recommended_rgb_indices": rgb_list[:8],
+            "message": "已列出無人機常見 RGB 植生指標。如需查詢特定指標細節，可指定指標名稱（例如 VARI、GLI）。"
+        }
+
+    # 3. 模糊搜尋
+    matches = [
+        {"name": k, "expr": v["expr"], "description": str(v.get("help", ""))}
+        for k, v in algos.items()
+        if query.lower() in k.lower() or query.lower() in str(v.get("help", "")).lower()
+    ]
+    if matches:
+        return {
+            "status": "matches",
+            "matches": matches[:5]
+        }
+
+    return {
+        "status": "not_found",
+        "message": f"未找到名稱為「{query}」的植生指標。常見 RGB 指標包括：VARI, GLI, EXG, vNDVI, MPRI；NIR 多光譜指標包括：NDVI, GNDVI, SAVI, NDRE。"
+    }
+
+
 @asynccontextmanager
 async def lifespan(_app: fastapi.FastAPI):
     if not ensure_nodeodm_running():
@@ -68,10 +135,15 @@ async def get_db(request: Request) -> Database:
     return request.state.db
 
 @app.get("/chat/")
-async def get_chat(database: Database = Depends(get_db)) -> Response:
-    msgs = await database.get_messages()
+async def get_chat(project_id: str = "home", database: Database = Depends(get_db)) -> Response:
+    msgs = await database.get_messages(project_id=project_id)
+    serialized = []
+    for m in msgs:
+        converted = to_model_message(m)
+        if converted:
+            serialized.append(json.dumps(converted).encode("utf-8"))
     return Response(
-        b"\n".join(json.dumps(to_model_message(m)).encode("utf-8") for m in msgs),
+        b"\n".join(serialized),
         media_type="text/plain",
     )
 
@@ -90,38 +162,41 @@ class Version(TypedDict):
     content: str
 
 
-def to_model_message(m: ModelMessage) -> ModelMessageResponse:
-    first_part = m.parts[0]
+def to_model_message(m: ModelMessage) -> ModelMessageResponse | None:
     if isinstance(m, ModelRequest):
-        if isinstance(first_part, UserPromptPart):
-            assert isinstance(first_part.content, str)
-            return {
-                "role": "user",
-                "key": first_part.timestamp.isoformat(),
-                "versions": [
-                    {
-                        "id": "1",
-                        "content": first_part.content
-                    }
-                ]
-            }
+        for part in m.parts:
+            if isinstance(part, UserPromptPart) and isinstance(part.content, str):
+                return {
+                    "role": "user",
+                    "key": part.timestamp.isoformat(),
+                    "versions": [
+                        {
+                            "id": "1",
+                            "content": part.content
+                        }
+                    ]
+                }
+        return None
     elif isinstance(m, ModelResponse):
-        if isinstance(first_part, TextPart):
-            return {
-                "role": "assistant",
-                "key": m.timestamp.isoformat(),
-                "versions": [
-                    {
-                        "id": "1",
-                        "content": first_part.content
-                    }
-                ],
-            }
-    raise UnexpectedModelBehavior(f"Unexpected message type for chat app: {m}")
+        for part in m.parts:
+            if isinstance(part, TextPart):
+                return {
+                    "role": "assistant",
+                    "key": m.timestamp.isoformat(),
+                    "versions": [
+                        {
+                            "id": "1",
+                            "content": part.content
+                        }
+                    ],
+                }
+        return None
+    return None
 
 
 class PostChatRequest(BaseModel):
     prompt: str
+    project_id: str = "home"
 
 
 @app.post("/chat")
@@ -146,8 +221,8 @@ async def post_chat(
             ).encode("utf-8")
             + b"\n"
         )
-        # get the chat history so far to pass as context to the agent
-        messages = await database.get_messages()
+        # get the chat history for this specific project
+        messages = await database.get_messages(project_id=request.project_id)
         # run the agent with the user prompt and the chat history
         async with agent.run_stream(request.prompt, message_history=messages) as result:
             async for text in result.stream_output(debounce_by=0.01):
@@ -156,8 +231,8 @@ async def post_chat(
                 m = ModelResponse(parts=[TextPart(text)], timestamp=result.timestamp)
                 yield json.dumps(to_model_message(m)).encode("utf-8") + b"\n"
 
-        # add new messages (e.g. the user prompt and the agent response in this case) to the database
-        await database.add_messages(result.new_messages_json())
+        # add new messages with project_id to the database
+        await database.add_messages(result.new_messages_json(), project_id=request.project_id)
 
     return StreamingResponse(stream_messages(), media_type="text/plain")
 
@@ -314,6 +389,7 @@ async def delete_odm_task(task_id: str, database: Database = Depends(get_db)):
         except Exception:
             pass
     await database.delete_project(task_id)
+    await database.delete_messages_by_project(task_id)
     return {"result": True}
 
 
@@ -345,7 +421,8 @@ class Database:
         cur = con.cursor()
         cur.executescript("""
             CREATE TABLE IF NOT EXISTS messages (
-                id INT PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id TEXT DEFAULT 'home',
                 message_list TEXT
             );
             CREATE TABLE IF NOT EXISTS projects (
@@ -355,6 +432,11 @@ class Database:
                 progress INT
             );
         """)
+        # Migration: ensure project_id column exists
+        cur.execute("PRAGMA table_info(messages);")
+        columns = [row[1] for row in cur.fetchall()]
+        if "project_id" not in columns:
+            cur.execute("ALTER TABLE messages ADD COLUMN project_id TEXT DEFAULT 'home';")
         con.commit()
         return con
 
@@ -370,10 +452,11 @@ class Database:
         )
         await self._asyncify(self.con.commit)
 
-    async def add_messages(self, messages: bytes):
+    async def add_messages(self, messages: bytes, project_id: str = "home"):
         await self._asyncify(
             self._execute,
-            "INSERT INTO messages (message_list) VALUES (?);",
+            "INSERT INTO messages (project_id, message_list) VALUES (?, ?);",
+            project_id,
             messages,
             commit=True,
         )
@@ -396,9 +479,9 @@ class Database:
             projects.append(Project(id=row[0], name=row[1], images=int(row[2]), progress=int(row[3])))
         return projects
 
-    async def get_messages(self) -> list[ModelMessage]:
+    async def get_messages(self, project_id: str = "home") -> list[ModelMessage]:
         c = await self._asyncify(
-            self._execute, "SELECT message_list FROM messages order by id"
+            self._execute, "SELECT message_list FROM messages WHERE project_id = ? ORDER BY id", project_id
         )
         rows = await self._asyncify(c.fetchall)
         messages: list[ModelMessage] = []
@@ -422,6 +505,15 @@ class Database:
             self._execute,
             "DELETE FROM projects WHERE id = ?;",
             task_id,
+            commit=True,
+        )
+        await self._asyncify(self.con.commit)
+
+    async def delete_messages_by_project(self, project_id: str):
+        await self._asyncify(
+            self._execute,
+            "DELETE FROM messages WHERE project_id = ?;",
+            project_id,
             commit=True,
         )
         await self._asyncify(self.con.commit)

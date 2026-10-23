@@ -57,6 +57,7 @@ import {
 } from '@/components/ui/select'
 import { computed, onMounted, ref, watch } from 'vue'
 import AskAgent from './components/AskAgent.vue'
+import GeminiHomeChat from './components/GeminiHomeChat.vue'
 import exifr from 'exifr'
 
 interface Formula {
@@ -153,6 +154,43 @@ async function hadleCreateProject(event: Event) {
     }
   }, 2000)
 }
+
+async function onProjectCreated(newProj: Project) {
+  try {
+    const listRes = await fetch("/api/odm-task-list")
+    const listData = await listRes.json()
+    if (listRes.ok && listData.data) {
+      projects.value = listData.data
+    }
+  } catch (err) {
+    console.error("無法更新專案清單", err)
+  }
+
+  const found = projects.value.find((p) => p.id === newProj.id) || newProj
+  selectedProject.value = found
+  processingProject.value = found
+
+  const timer = setInterval(async () => {
+    try {
+      const res = await fetch(`/api/odm-task-info/${newProj.id}`)
+      const resData = await res.json()
+      if (resData.data) {
+        if (selectedProject.value?.id === newProj.id) {
+          selectedProject.value.progress = resData.data.progress
+        }
+        if (processingProject.value?.id === newProj.id) {
+          processingProject.value.progress = resData.data.progress
+        }
+        if (resData.data.progress === 100) {
+          clearInterval(timer)
+        }
+      }
+    } catch {
+      clearInterval(timer)
+    }
+  }, 2000)
+}
+
 
 async function handleDeleteProject(id: string) {
   if (!confirm("確定要刪除此專案嗎？")) return
@@ -324,64 +362,25 @@ watch(selectedProject, () => {
           </div>
         </Card>
       </div>
-      <div v-if="!selectedProject" class="mx-auto flex w-full max-w-sm flex-col gap-3 py-12">
-        <form @submit.prevent="hadleCreateProject" class="flex flex-col gap-5">
-          <FormField name="files">
-            <FormItem>
-              <FormLabel>上傳圖片</FormLabel>
-              <FormControl>
-                <Input ref="pictureInput" name="files" type="file" multiple accept=".jpg, .jpeg, .png"
-                  @change="handleFileUpload" :disabled="isCreatingProject" />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          </FormField>
-          <FormField name="name">
-            <FormItem>
-              <FormLabel>專案名稱</FormLabel>
-              <FormControl>
-                <Input name="name" type="text" :disabled="isCreatingProject" />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          </FormField>
-          <Button type="submit" size="sm" variant="outline" :disabled="isCreatingProject">
-            <Spinner class="animate-spin" v-if="isCreatingProject" />
-            創建專案
-          </Button>
-        </form>
-        <AttachmentGroup class="grid grid-cols-3 gap-3 max-h-105 overflow-y-auto p-1">
-          <template v-for="image in uploadList" :key="image.name">
-            <Attachment orientation="vertical">
-              <AttachmentMedia variant="icon">
-                <ImageIcon class="size-6 text-muted-foreground" />
-              </AttachmentMedia>
-              <AttachmentContent>
-                <AttachmentTitle>{{ image.name }}</AttachmentTitle>
-                <AttachmentDescription>檔案大小：{{ image.size }}</AttachmentDescription>
-                <AttachmentDescription>緯度：{{ image.latitude }}</AttachmentDescription>
-                <AttachmentDescription>經度：{{ image.longitude }}</AttachmentDescription>
-              </AttachmentContent>
-            </Attachment>
-          </template>
-        </AttachmentGroup>
+      <div v-if="!selectedProject" class="h-[calc(100vh-1rem)] w-full">
+        <GeminiHomeChat @project-created="onProjectCreated" />
       </div>
     </SidebarInset>
   </SidebarProvider>
-  <section v-show="isAgentOpen" id="ask-agent-window" aria-labelledby="ask-agent-title"
+  <section v-if="selectedProject" v-show="isAgentOpen" id="ask-agent-window" aria-labelledby="ask-agent-title"
     class="fixed bottom-4 right-4 z-40 flex h-[600px] max-h-[calc(100dvh-2rem)] w-[420px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border bg-background text-foreground shadow-xl">
     <header class="flex shrink-0 items-center justify-between border-b px-4 py-3">
-      <h2 id="ask-agent-title" class="font-semibold">AskAgent</h2>
+      <h2 id="ask-agent-title" class="font-semibold text-sm">AskAgent ({{ selectedProject?.name }})</h2>
       <button type="button" aria-label="收合 AskAgent" aria-controls="ask-agent-window" :aria-expanded="isAgentOpen"
         class="inline-flex size-8 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
         @click="isAgentOpen = false">
         <MinusIcon class="size-4" />
       </button>
     </header>
-    <AskAgent />
+    <AskAgent :project-id="selectedProject?.id" />
   </section>
 
-  <button v-if="!isAgentOpen" type="button" aria-label="開啟 AskAgent" aria-controls="ask-agent-window"
+  <button v-if="selectedProject && !isAgentOpen" type="button" aria-label="開啟 AskAgent" aria-controls="ask-agent-window"
     :aria-expanded="isAgentOpen"
     class="fixed bottom-4 right-4 z-40 inline-flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg hover:opacity-90 focus-visible:outline-2 focus-visible:outline-ring"
     @click="isAgentOpen = true">
