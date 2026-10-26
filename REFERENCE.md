@@ -3,6 +3,9 @@
 ### Python
 - [Python 官方文件](https://docs.python.org/3/)
 
+### Astral uv
+- [uv 官方文件](https://docs.astral.sh/uv/)
+
 ### FastAPI
 - [FastAPI 官方文件](https://fastapi.tiangolo.com/)
 

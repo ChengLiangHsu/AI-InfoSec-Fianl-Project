@@ -4,31 +4,30 @@
 
 > **核心設計原則**：LLM 擔任 planner，感知與計算交給確定性工具。
 
-#### Clean Architecture 分層
+#### 系統分層架構 (System Architecture)
 
-系統程式碼採用 `entity`、`usecase`、`adapter` 三層結構，依賴方向固定為：
+系統採用高內聚的模組化服務架構，明確劃分 API 介面、AI Agent 協調與確定性核心運算三大層次：
 
 ```text
-adapter → usecase → entity
+API 介面層 (FastAPI) → AI Agent 協調層 (Pydantic AI) → 核心功能服務層 (Segmentation / Indices / Rules)
 ```
 
-| 層級 | 職責 | 主要內容 | 禁止事項 |
-| :--- | :--- | :--- | :--- |
-| **Entity** | 表達田間試驗的核心概念與不隨框架改變的領域規則 | Trial、Plot、Treatment、Evidence、Assessment、UTC / CV / 藥效判定規則 | 不得依賴 FastAPI、Pydantic AI、SQLite 或 Rasterio |
-| **Usecase** | 編排使用者目標與應用流程，並定義所需的 port | 執行 Agent、匯入資料集、評估試驗、驗證證據、產生與核准報告 | 不得直接建立資料庫連線、讀取 HTTP request 或呼叫特定模型供應商 SDK |
-| **Adapter** | 將外部輸入與技術細節轉換成 usecase 可使用的形式，並實作 usecase 定義的 port | FastAPI router、Pydantic AI、SQLite repository、Rasterio 分析、檔案儲存 | 不得自行決定 UTC、CV、藥效門檻等領域規則 |
-
-`usecase/port/` 保存抽象 interface；`adapter/` 保存具體 implementation。`bootstrap.py` 是 composition root，負責建立 adapter 並注入 usecase。只有確實需要正式版與測試版兩種 implementation 的外部依賴才建立 port，避免產生只有轉呼叫功能的淺層模組。
+| 層級 | 職責 | 主要內容 |
+| :--- | :--- | :--- |
+| **API 介面層 (API Layer)** | 提供 HTTP 與 REST API 端點，負責資料輸入驗證與前端互動 | FastAPI 路由、請求與回應資料結構 (Pydantic Schemas)、檔案上傳處理 |
+| **AI Agent 協調層 (Agent Layer)** | 意圖解析、工具調度與產出整合，擔任專案的 Planner | Pydantic AI Agent、Prompt 模板、工具調度與證據鏈檢核 |
+| **核心功能服務層 (Core Services)** | 封裝專案三大核心能力的確定性計算與影像處理 | 小區切割 (Plot Segmentation)、植生指標計算 (VARI/NDRE/EXG)、藥效規則與統計 (Abbott/UTC 檢核) |
+| **資料儲存層 (Storage Layer)** | 本機影像快取與資料庫儲存 | SQLite 資料庫、正射影像與小區裁切圖儲存 |
 
 ```mermaid
-graph LR
-    HTTP[HTTP Adapter<br/>FastAPI] --> UC[Usecase<br/>應用流程與 ports]
-    WORKER[Worker Adapter<br/>背景工作] --> UC
-    UC --> ENTITY[Entity<br/>領域模型與規則]
-    AGENT[Agent Adapter<br/>Pydantic AI] -. implements port .-> UC
-    REPO[Repository Adapter<br/>SQLite] -. implements port .-> UC
-    ANALYSIS[Analysis Adapter<br/>Rasterio / 統計工具] -. implements port .-> UC
-    STORAGE[Storage Adapter<br/>本機檔案系統] -. implements port .-> UC
+graph TD
+    API["API 介面層<br/>FastAPI Web & REST API"] --> AGENT["AI Agent 協調層<br/>Pydantic AI Planner"]
+    AGENT --> SEG["小區切割服務<br/>Plot Segmentation"]
+    AGENT --> IND["植生指標計算服務<br/>VARI / NDRE / EXG"]
+    AGENT --> RULE["藥效規則與統計服務<br/>Abbott 公式 / UTC 檢核"]
+    AGENT --> REP["報告草稿生成服務<br/>Markdown / 影像佐證"]
+    SEG --> STORE["儲存層<br/>SQLite / 影像檔案快取"]
+    IND --> STORE
 ```
 
 #### 功能架構
@@ -54,25 +53,26 @@ graph TD
 
 | 模組 | 內容 | 技術選型（初步） |
 | :--- | :--- | :--- |
-| **① User/Application Scenario** | 試驗執行者在飛行後上傳正射影像與試驗設計，詢問「各處理對縱捲葉蟲的防治效果如何？是否達登記標準？」 | Web UI + FastAPI HTTP adapter |
-| **② Query/Input** | 自然語言查詢 + GeoTIFF 正射影像（RGB/多光譜）+ GeoJSON 小區界線 + Excel 處理表與人工調查資料 | FastAPI schema；rasterio、geopandas、openpyxl adapters |
-| **③ Planner & Reasoning Agent** | `run_agent` usecase 解析目標並編排流程；Pydantic AI adapter 實作模型呼叫與 tool calling，領域例外由 entity 規則判定 | Pydantic AI、LLM (Claude / GPT / 本地 Qwen2.5-VL) |
+| **① User/Application Scenario** | 試驗執行者在飛行後上傳正射影像與試驗設計，詢問「各處理對縱捲葉蟲的防治效果如何？是否達登記標準？」 | Web UI + FastAPI 端點 |
+| **② Query/Input** | 自然語言查詢 + GeoTIFF 正射影像（RGB/多光譜）+ GeoJSON 小區界線 + Excel 處理表與人工調查資料 | FastAPI schema；rasterio、geopandas、openpyxl |
+| **③ Planner & Reasoning Agent** | 解析目標並編排流程；Pydantic AI 實作模型呼叫與 tool calling，領域例外由確定性規則判定 | Pydantic AI、LLM (Claude / GPT / 本地 Qwen2.5-VL) |
 | **④ Data Acquisition / Retrieval** | 讀取影像與向量檔、對齊 CRS、以 DAA 對齊人工調查 | rasterio / GDAL、pandas |
 | **⑤ Analytics Engine** | 小區切割與校正（外緣 buffer）、干擾遮罩（青苔/陰影/水面）、光譜指標計算（ExG、VARI、NDRE 等）與小區平均統計 | OpenCV、NumPy、PIL、rasterio |
 | **⑥ Domain Knowledge Integration** | 試驗法規準則：TACTRI 田間試驗準則、EPPO PP 1/152、標準藥效公式（Abbott、Henderson-Tilton、防治率）與對照區壓力檢核 | Python 確定性規則與計算函式 |
 | **⑦ Decision / Recommendation** | 試驗有效性判定 $\rightarrow$ 各處理防治率與排序 $\rightarrow$ 是否達標 $\rightarrow$ 不確定性與限制說明 | LLM 整合 + 固定模板；證據鏈（ROI、數值、公式、條文） |
 | **⑧ Output & Interaction** | 小區級標註影像、處理比較圖表、報告草稿（Markdown / DOCX）、可追問（「為何 T5 排第二？」） | matplotlib / folium、python-docx；對話式追問 |
 
-#### 功能到程式層的對應
+#### 功能到程式模組的對應
 
-| 功能 | 所在位置 |
-| :--- | :--- |
-| Trial、Plot、Treatment、Evidence 與判定規則 | `src/uav_trial_assessor/entity/` |
-| Agent 執行、試驗評估、證據驗證與報告流程 | `src/uav_trial_assessor/usecase/` |
-| FastAPI request / response 與串流 | `src/uav_trial_assessor/adapter/http/` |
-| Pydantic AI agent、prompt 與 tool adapter | `src/uav_trial_assessor/adapter/agent/` |
-| SQLite、影像分析、檔案與報告輸出 | `src/uav_trial_assessor/adapter/` 下對應模組 |
-| 依賴組裝與 ASGI 啟動 | `src/uav_trial_assessor/bootstrap.py`、`main.py` |
+| 功能 | 所在模組 | 說明 |
+| :--- | :--- | :--- |
+| API 路由與資料檢核 | `src/api/` | 處理正射影像上傳、試驗小區輸入與前端互動 |
+| AI Agent 協調與推理 | `src/agent/` | Pydantic AI Agent 負責解析試驗需求與調度工具 |
+| 小區切割與幾何校正 | `src/services/segmentation.py` | 根據網格界線切割小區正射影像並做緩衝區校正 |
+| 植生指標矩陣運算 | `src/services/indices.py` | 執行 VARI、NDRE、EXG 矩陣運算與水面/陰影遮罩 |
+| 藥效公式與試驗規則 | `src/services/trial_rules.py` | 確定性計算 Abbott 藥效公式、UTC 壓力檢核與統計 |
+| 報告生成與佐證產出 | `src/services/report_generator.py` | 彙整數值與裁切影像，產出具證據鏈的報告草稿 |
+| 資料庫與資料存取 | `src/database/` | SQLite 試驗紀錄與小區指標持久化 |
 
 ---
 
