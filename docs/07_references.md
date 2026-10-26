@@ -25,7 +25,7 @@
 21. (2020). Semi-Automated Field Plot Segmentation From UAS Imagery for Experimental Agriculture. *Front. Plant Sci.* 11, 591886. *(※ 待補作者)*
 22. (2020). Detection of Rice Damage by Leaf Folder (*Cnaphalocrocis medinalis*) Using Unmanned Aerial Vehicle Based Hyperspectral Data. *Sustainability* 12(22), 9343. *(※ 待補作者)*
 
-### 待補的領域文件（RAG 知識庫來源）
+### 待補的領域法規與公式標準
 * TACTRI 農藥田間藥效試驗準則（水稻害蟲、水田雜草）
 * EPPO PP 1/152(4)、PP 1/181
 * Abbott (1925)、Henderson & Tilton (1955) 原始公式出處

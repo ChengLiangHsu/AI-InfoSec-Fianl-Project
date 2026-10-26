@@ -1,27 +1,22 @@
 ## 專題概述
 
-本專題提出**無人機田間試驗評估智慧代理人**：以高解析度（$\text{GSD} < 1\text{ cm/px}$）無人機正射影像為輸入，自動完成試驗小區切割、植生指標計算、雜草/病蟲害傷害偵測，並結合作物保護（Crop Protection, CP）領域知識（試驗設計、藥效計算公式、登記試驗規範）推理出各處理的藥效評估與建議，產出可追溯證據的試驗報告草稿。
-
-* **定位**：AI Agent + Domain Knowledge（植保/田間試驗）+ Data Analytics（影像指標 + 統計）+ Real-World Application（農藥登記試驗報告）。
-* **實作架構**：採 `adapter → usecase → entity` 的 Clean Architecture；adapter 隔離 FastAPI、Pydantic AI、SQLite 與影像工具，usecase 編排流程，entity 保存田間試驗規則。詳見[系統設計](05_proposed_scheme.md#clean-architecture-分層)。
+* **核心定位**：提出「無人機田間試驗評估智慧代理人」，深度整合 AI Agent、植保領域知識、影像統計分析與農藥登記試驗實務。
+* **資料處理**：以高解析度（$\text{GSD} < 1\text{ cm/px}$）無人機正射影像為輸入，自動執行試驗小區切割、植生指標計算與傷害偵測。
+* **領域推理**：結合作物保護試驗設計、藥效公式與登記規範推理各處理成效，產出具備可追溯證據之試驗報告草稿。
 
 ---
 
 ## 為何這題適合本組
 
-| 角色 | 成員背景 | 負責面向 |
+| 角色 | 成員 | 負責面向 |
 | :--- | :--- | :--- |
-| **Domain Lead（農業/植保）** | [@Kuonaiwei1126](https://github.com/Kuonaiwei1126) - Bayer 產品開發、TACTRI 登記試驗、UAV 遙測 | 試驗資料與 ground truth、領域知識庫、評估指標設計、結果驗證 |
-| **AI/System Lead（資訊）** | [@ChengLiangHsu](https://github.com/ChengLiangHsu) - 資訊背景 | Agent 架構、影像模型（分割/偵測）、Tool/RAG 整合、GitHub、DESIGN.md |
+| **Domain Lead（農業/植保）** | [@Kuonaiwei1126](https://github.com/Kuonaiwei1126) | 試驗資料與 Ground Truth、領域知識庫、評估指標設計、結果驗證 |
+| **AI/System Lead（資訊/系統）** | [@ChengLiangHsu](https://github.com/ChengLiangHsu) | Agent 架構、影像分析工具、Tool 整合、GitHub、DESIGN.md |
 
-### 手上可用的真實資料
+## 手上可用的真實資料
 > 皆為實際田間試驗 UAV 正射影像，$\text{GSD } 0.85 \sim 0.9\text{ cm}$
 
 | 資料集 | 作物 / 目標 | 設計 | Ground Truth |
 | :--- | :--- | :--- | :--- |
 | **4RL（廣西 2026）** | 水稻二化螟 + 縱捲葉蟲藥效 | RCBD，8 處理 $\times$ 3 重複，24 小區 | 幼蟲數、捲葉率（$0 \sim 50\text{ DAA}$ 多時點） |
 | **Concil（民雄）** | 水稻鴨舌草除草劑藥效 | 農慣法 vs. 處理對半分區 | RGB + 多光譜（NDRE），有青苔干擾 |
-| **Wheat FHB（中國）** | 小麥赤黴病 | 多小區 | 病情指數、DON 毒素、產量 |
-| **育苗箱計數** | 水稻育苗場 | ROI 內計數 | 人工點數（233 箱） |
-
-> **補充**：具體題目名稱、資料集範圍可在 proposal 階段再收斂；現階段先以 4RL + Concil 兩個資料集作為主要 case study。
