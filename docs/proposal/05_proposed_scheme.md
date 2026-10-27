@@ -1,178 +1,154 @@
 # 5. Proposed Scheme / Proposed Design
 
+> **第一版目標**：先完成農藥試驗的影像指標比較流程，以畫布著色與數值比較表呈現結果，流程跑通後才開始實作收穫分析。
+> **後續範圍**：AI 結果摘要、報告生成與匯出延後，人工調查、正式藥效百分比及法定效力判定另行確認。
+
 ### 5.1 System Architecture
 
-> **核心設計原則**：AI Agent 擔任 ReAct 專家調度指揮官，感知、空間分析與藥效計算交給確定性工具。
+#### 系統分層架構
 
-#### 系統分層架構 (System Architecture)
-
-系統採用高內聚的模組化服務架構，明確劃分 API 介面、AI Agent 協調與確定性核心運算三大層次：
-
-```text
-API 介面層 (FastAPI + Vue.js) → AI Agent 協調層 (Pydantic AI ReAct Loop) → 核心功能服務層 (Segmentation / Indices / Rules)
-```
-
-| 層級 | 職責 | 主要內容 |
-| :--- | :--- | :--- |
-| **API 介面層 (API Layer)** | 提供 HTTP 與 REST API 端點，支援畫布互動標註與前端視覺聯動 | FastAPI 路由、Pydantic Schemas、畫布 ROI 座標與處理表對照傳遞 |
-| **AI Agent 協調層 (Agent Layer)** | 意圖解析、動態 Tool Calling 編排與產出整合，擔任專案指揮官 | Pydantic AI Agent (ReAct 循環)、證據鏈檢核機制、小區指標查詢工具 |
-| **核心功能服務層 (Core Services)** | 封裝專案核心能力的確定性計算與影像分區處理 | 畫布 ROI 裁切校正、連續植生指標分區統計 (VARI/NDRE/EXG)、藥效差分與 UTC 檢核 |
-| **資料儲存層 (Storage Layer)** | 本機影像快取與小區統計數值持久化 | SQLite 資料庫（試驗歷程與小區分區數值快查）、正射影像檔案儲存 |
+- **介面層**：使用 [Vue.js](https://vuejs.org/) 與 [Canvas API](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API) 操作影像，透過 [FastAPI](https://fastapi.tiangolo.com/) 傳遞小區與分析設定。
+- **AI 協調層**：使用 [Pydantic AI](https://ai.pydantic.dev/tools/) 推薦可用指標並說明理由，使用者可修改，明確確認後才啟動分析。
+- **確定性運算層**：使用 [NodeODM](https://github.com/OpenDroneMap/NodeODM) 合併照片，以 [NumPy](https://numpy.org/doc/stable/)、[Rasterio](https://rasterio.readthedocs.io/en/stable/) 與 [rasterstats](https://pythonhosted.org/rasterstats/) 完成網格、指標及分區比較。
+- **儲存層**：以 [SQLite](https://www.sqlite.org/docs.html) 保存小區、處理設定與計算結果，影像另外存為檔案。
 
 ```mermaid
 graph TD
-    API["API 介面層<br/>FastAPI & Vue.js Canvas"] --> AGENT["AI Agent 協調層<br/>Pydantic AI ReAct Planner"]
-    AGENT -- tool call --> SEG["小區裁切與校正服務<br/>ROI Buffer & Mask"]
-    AGENT -- tool call --> IND["植生指標分區統計服務<br/>VARI / NDRE / EXG Zonal Stats"]
-    AGENT -- tool call --> RULE["藥效規則與統計服務<br/>光譜均值差分 / UTC 雙軌檢核"]
-    AGENT -- tool call --> QRY["小區數值快查服務<br/>SQLite Metrics Query"]
-    AGENT --> REP["報告草稿生成服務<br/>Markdown / 證據鏈檢核"]
-    SEG --> STORE["儲存層<br/>SQLite / 影像快取"]
-    IND --> STORE
-    QRY --> STORE
+    UI["① 操作介面<br/>上傳 / 網格 / 處理套用 / 指標確認"]
+    ODM["② 影像合併<br/>NodeODM"]
+    GRID["③ 小區與處理管理<br/>試驗田範圍 / 行列數 / 農藥與劑量 / 對照組"]
+    AI["④ AI 指標推薦<br/>RGB 指標與選擇理由"]
+    CONFIRM{"使用者確認指標？"}
+    ANALYSIS["⑤ 指標計算與比較<br/>各小區 / 各處理組 / 對照組差異"]
+    STORE["⑥ 儲存<br/>SQLite / 影像檔案"]
+    VIEW["⑦ 結果畫面<br/>畫布著色 / 數值比較表"]
+    UI --> ODM
+    ODM --> GRID
+    UI --> GRID
+    GRID --> AI
+    AI --> CONFIRM
+    CONFIRM -- 修改或等待 --> UI
+    CONFIRM -- 確認 --> ANALYSIS
+    ODM --> STORE
+    GRID --> STORE
+    ANALYSIS --> STORE
+    ANALYSIS --> VIEW
+    STORE --> VIEW
 ```
 
-#### 功能架構
+#### 各模組職責
 
-```mermaid
-graph TD
-    S1["① 上傳圖片集<br>UAV 空拍原始航照 (含 EXIF GPS)"] --> S2["② 合併正射圖<br>NodeODM 拼接高解析度 GeoTIFF"]
-    S2 --> S3["③ 小區切割<br>畫布 ROI 框選 / 幾何標記 (Buffer 內縮)"]
-    S3 --> S4["④ 選案例<br>用藥評估 (蟲害/除草劑) / 收穫分析 (成熟度)"]
-    S4 --> S5["⑤ AI Agent 決定評估指標<br>依情境與可用波段推薦 (VARI/NDRE/EXG)"]
-    S5 --> S6["⑥ 各小區比較分析<br>連續分區統計、UTC 檢核、相對優勢與 CV"]
-    S6 --> S7["⑦ 產報告<br>三合一聯動：對話佐證、畫布著色、Markdown 報告"]
-    S7 -.->|對話式追問 / 查詢小區| S5
-```
-
-#### 各模組說明
-
-| 模組 | 內容 | 技術選型（初步） |
+| 模組 | 第一版責任 | 參考 |
 | :--- | :--- | :--- |
-| **① 上傳圖片集** | 試驗執行者上傳無人機空拍圖片集（含 GPS 經緯度 EXIF 資訊） | Vue.js 上傳元件、exifr、FastAPI 檔案接收 |
-| **② 合併正射圖** | 調用 NodeODM 引擎自動進行空三解算與特徵點匹配，生成拼接正射影像 (GeoTIFF) | NodeODM、OpenDroneMap Docker 服務 |
-| **③ 小區切割** | 於正射影像畫布上進行試驗小區手動框選 (ROI) 或載入幾何向量，自動內縮緩衝區 | Vue.js Canvas API、Pillow / rasterio 矩陣裁切 |
-| **④ 選案例** | 使用者指定分析業務情境：農藥藥效試驗（殺蟲劑/除草劑）或田間生長收穫成熟度分析 | Web UI 案例選擇卡片、試驗設計處理表映射 |
-| **⑤ AI Agent 決定指標** | Pydantic AI Agent 依選定案例目標與相機波段（RGB / 多光譜紅邊），動態檢索並推薦最適植生指標 | Pydantic AI ReAct Agent、領域知識庫 |
-| **⑥ 各小區比較分析** | 干擾遮罩過濾、連續光譜分區統計 (Zonal Mean ± SE)、UTC 壓力雙軌檢核、相對保護度計算 | OpenCV、NumPy、rasterstats、Abbott 公式 |
-| **⑦ 產報告** | 三合一聯動呈現：對話框條列結論與佐證、畫布小區著色 (綠/黃/紅)、一鍵匯出完整 Markdown 報告 | Vue.js 響應式渲染、SQLite 小區指標快查 |
+| **① 操作介面** | 接收多張 RGB 照片，提供網格設定、處理套用與指標確認操作 | [Vue.js](https://vuejs.org/)、[Canvas](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API) |
+| **② 影像合併** | 將照片交給 NodeODM 拼接，取得正射影像後進入小區設定 | [NodeODM API](https://github.com/OpenDroneMap/NodeODM)、[ODM 輸出](https://docs.opendronemap.org/outputs/) |
+| **③ 小區與處理管理** | 依試驗田範圍及行列數生成網格，允許微調，再以點選方式套用農藥與劑量或未施藥對照 | [等距分點](https://numpy.org/doc/stable/reference/generated/numpy.linspace.html)、[點選範圍判斷](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/isPointInPath) |
+| **④ AI 指標推薦** | 依使用者從選單指定的評估目的，推薦 RGB 可計算的指標與理由，使用者可修改後確認 | [Pydantic AI 工具](https://ai.pydantic.dev/tools/)、[VARI](https://step.esa.int/main/wp-content/help/versions/13.0.0/snap-toolboxes/eu.esa.opt.opttbx.radiometric.indices.ui/vari/VariAlgorithmSpecification.html)、[ExG 文獻](https://elibrary.asabe.org/abstract.asp?aid=27838) |
+| **⑤ 指標計算與比較** | 計算各小區指標，依「農藥＋劑量」彙整，並比較明確指定對照組的指標差異 | [Rasterio](https://rasterio.readthedocs.io/en/stable/)、[分區統計](https://pythonhosted.org/rasterstats/) |
+| **⑥ 儲存** | 保存網格、小區處理設定、確認的指標及計算結果，保留小區編號與數值來源 | [SQLite](https://www.sqlite.org/docs.html) |
+| **⑦ 結果畫面** | 在同一結果頁提供依指標數值著色的畫布及數值比較表 | [Canvas](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API)、[Vue.js](https://vuejs.org/) |
 
-#### 功能到程式模組的對應
+#### 操作規則
 
-| 功能 | 所在模組 | 說明 |
+- **網格切割**：使用者框出試驗田並輸入行列數，系統生成小區網格後允許手動微調與確認。
+- **處理套用**：先選好農藥與施用劑量，再依序點選不同小區套用，以「農藥＋劑量」區分處理組。
+- **未施藥對照**：先選取「未施藥對照」再點選小區，空白僅代表尚未設定，不自動成為對照組。
+- **指標確認**：使用者從選單指定評估目的（例如殺蟲劑或除草劑），AI 顯示推薦指標與理由，使用者可修改，明確確認後才計算。
+- **比較依據**：第一版僅比較 RGB 影像指標，例如 [VARI](https://step.esa.int/main/wp-content/help/versions/13.0.0/snap-toolboxes/eu.esa.opt.opttbx.radiometric.indices.ui/vari/VariAlgorithmSpecification.html) 與 [ExG](https://elibrary.asabe.org/abstract.asp?aid=27838)，原列 NDRE 移出本階段範圍。
+- **結果內容**：比較表列出小區編號、農藥、劑量、對照狀態及指標數值，另提供處理組彙整與對照差異，畫布顏色代表指標數值高低。
+
+#### 功能與程式模組對應
+
+以下是依現有目錄安排的責任規劃，不表示各功能已完成實作。
+
+| 功能 | 模組位置 | 規劃責任 |
 | :--- | :--- | :--- |
-| 空拍圖上傳與任務管理 | `src/api/` | 接收航拍照片集、解析 GPS 資訊與建立正射拼接任務 |
-| 正射拼圖服務封裝 | `src/utility/nodeodm.py` | 協調整合 NodeODM 容器執行正射影像自動拼接運算 |
-| AI Agent 協調與推理 | `src/agent/` | Pydantic AI ReAct Agent 負責情境意圖解析、指標推薦與報告組裝 |
-| 小區裁切與幾何校正 | `src/services/segmentation.py` | 根據畫布 ROI 裁切小區正射影像並執行外緣緩衝區內縮 |
-| 植生指標分區統計運算 | `src/services/indices.py` | 執行 VARI、NDRE、EXG 矩陣運算與連續分區統計 (Zonal Mean ± SE) |
-| 藥效規則與試驗檢核 | `src/services/trial_rules.py` | 確定性計算均值差分保護度、UTC 低壓雙軌判定與 CV 變異係數 |
-| 報告生成與佐證產出 | `src/services/report_generator.py` | 彙整小區數值、裁切影像與佐證鏈，產出結構化 Markdown 報告草稿 |
-| 資料庫與資料存取 | `src/database/` | SQLite 試驗紀錄與小區指標持久化，支援對話追問快查 |
+| 應用程式入口 | `src/main.py` | 僅建立應用程式、管理生命週期與掛載控制器 |
+| 上傳與拼接任務 | `src/controllers/odm.py`、`src/utility/nodeodm.py` | 分別處理請求與 NodeODM 任務協調 |
+| AI 指標推薦 | `src/agents/pydantic_agent.py` | 推薦指標、提供理由與來源，遵守使用者確認流程 |
+| 網格與處理對應 | `src/utility/plots.py`（規劃新增） | 生成小區座標與維護小區處理對應所需的純運算 |
+| 指標與影像運算 | `src/utility/formulas.py`、`src/utility/spectral.py` | 管理公式及執行影像指標運算，擴充分區統計與處理組比較 |
+| 資料存取 | `src/database.py` | 集中保存任務、小區、處理設定與分析結果 |
+| 前端畫面 | `frontend/src/` | 提供網格與點選操作、指標確認、畫布著色及比較表 |
 
 ---
 
 ### 5.2 Flowchart
 
-> **核心決策原則**：對照組決定法定效力（低壓出具警示並轉內部參考），每條結論嚴格綁定證據鏈。
-
 ```mermaid
 flowchart TD
-    S1["① 上傳圖片集 (Drone Photos)"] --> S2["② 合併正射圖 (NodeODM 拼接)"]
-    S2 --> S3["③ 小區切割 (畫布 ROI 標記與外緣內縮)"]
-    S3 --> S4["④ 選案例 (用藥評估 / 收穫分析)"]
-    S4 --> S5["⑤ AI Agent 決定評估指標 (VARI / NDRE / EXG)"]
-    
-    subgraph PlotLoop ["for each plot ROI"]
-        ProcPlot["干擾遮罩排除與連續指標分區統計 (Zonal Mean ± SE)"]
-    end
-    
-    S5 --> ProcPlot
-    ProcPlot --> Stat["處理小區彙整與統計 (Mean ± SE、CV)"]
-    
-    Stat --> CondUTC{"UTC 壓力足夠？"}
-    CondUTC -- No (未達標) --> WarnUTC["標註『法規無效』黃色警示<br>轉入內部研發參考模式"]
-    CondUTC -- Yes (達標) --> ValidUTC["標註『法定試驗有效』<br>依 TACTRI / EPPO 準則評估"]
-    
-    WarnUTC --> S6["⑥ 各小區比較分析<br>均值差分保護度、排序與統計"]
-    ValidUTC --> S6
-    
-    S6 --> CondEvidence{"每條結論有佐證？<br>(ROI 數值 / 法規條文)"}
-    
-    CondEvidence -- No --> Drop["丟棄並重新生成"]
-    Drop --> S6
-    
-    CondEvidence -- Yes --> SaveDB["持久化小區統計數值至 SQLite"]
-    SaveDB --> Human["人工審核 (Human-in-the-loop)"]
-    Human --> S7(["⑦ 產報告 (三合一聯動呈現)<br>① 對話精鍊結論 + 佐證標籤<br>② 畫布小區依等級著色 (綠/黃/紅)<br>③ 匯出完整 Markdown 報告<br>④ 支援 SQLite 零重算對話追問"])
+    INPUT["輸入：多張 RGB 彩色空拍照片"] --> S1["① 合併影像"]
+    S1 --> READY{"拼接成功？"}
+    READY -- 否 --> ERROR["顯示任務錯誤並保留重新處理入口"]
+    READY -- 是 --> S2["② 切割小區<br/>框試驗田 → 輸入行列數 → 生成網格 → 手動微調確認"]
+    S2 --> ASSIGN["先選農藥與劑量，或選未施藥對照<br/>再點選不同小區套用，空白維持未設定"]
+    ASSIGN --> PURPOSE["選單指定評估目的"]
+    PURPOSE --> S3["③ AI 推薦 RGB 指標並說明理由"]
+    S3 --> EDIT["使用者檢視並可修改指標"]
+    EDIT --> CONFIRM{"確認開始分析？"}
+    CONFIRM -- 尚未確認 / 修改 --> EDIT
+    CONFIRM -- 確認 --> CHECK["檢查分析設定與小區資料"]
+    CHECK --> VALID{"資料可計算？"}
+    VALID -- 否 --> FIX["提示需補充或修正的設定"]
+    FIX --> ASSIGN
+    VALID -- 是 --> EACH["逐一處理各分析小區"]
+    EACH --> METRICS["裁切影像、排除無效像素並計算確認的指標"]
+    METRICS --> MORE{"仍有小區？"}
+    MORE -- 是 --> EACH
+    MORE -- 否 --> COMPARE["④ 比較小區與處理組<br/>依農藥＋劑量彙整，計算對照差異"]
+    COMPARE --> SAVE["保存小區與比較數值"]
+    SAVE --> VIEW["⑤ 結果畫面<br/>畫布著色＋數值比較表"]
 ```
 
-* **決策分支設計**：
-  1. **UTC 壓力雙軌制**：若對照組未達危害門檻，不強制終斷程式，改出具黃色警示標註「不具法定效力」並繼續計算相對數值供內部參考。
-  2. **證據鏈攔截**：候選結論必須嚴格具備小區編號、分區指標數值或試驗法規依據，否則直接攔截重試。
-* **人機協同與即時追問**：小區分區數值存入 SQLite 後，使用者可直接點擊著色小區或在對話中追問（如「為何 T5 重複區變異大？」），Agent 透過查詢工具秒級回答。
+- **人工確認**：指標推薦與指標計算之間保留明確確認點，未確認時不執行小區分析。
+- **資料區分**：未設定小區與未施藥對照分開記錄，缺少必要資料時顯示待補充原因，不自動補成對照組或捏造數值。
+- **數值來源**：畫布與比較表使用同一批計算結果，保留小區編號、處理設定及指標名稱以便核對。
 
 ---
 
 ### 5.3 Pseudocode
 
-```python
-Algorithm 1: 無人機田間試驗評估智慧代理人 (核心七階段 ReAct 協調流程)
-Input:  Drone photos or orthomosaic I, canvas ROIs P, trial design D (treatments, UTC, blocks), user query Q
-Output: Tripartite assessment (Chat summary, color-coded canvas, Markdown report R with evidence chain E)
+```text
+Algorithm 1: RGB 空拍小區指標比較
+Input : RGB photos H, trial boundary B, grid dimensions G,
+        treatment options T (pesticide, dose), explicit control option UTC,
+        assessment purpose S
+Output: Colored plot canvas V, plot and treatment comparison tables C
 
-// ① 上傳圖片集 & ② 合併正射圖
-01: if input is drone photos then
-02:     I = nodeodm_stitch(drone_photos)            // NodeODM 自動空三拼接生成高解析度 GeoTIFF
-03: end if
-
-// ③ 小區切割 & ④ 選案例
-04: P = canvas_roi_segmentation(I, buffer = 0.5 m)  // 畫布 ROI 框選/幾何標記，自動內縮緩衝區
-05: scenario = parse_case(Q, D)                     // 用藥評估 (蟲害/除草劑) 或 收穫分析 (成熟度)
-
-// ⑤ AI Agent 決定評估指標
-06: indices, rules = Agent.decide_indices(scenario, I.camera_bands) // RGB 推薦 VARI/EXG；紅邊推薦 NDRE
-
-// ⑥ 各小區比較分析 (分區統計、對照檢核與相對優勢)
-07: for each plot roi in P:
-08:     tile_p = rectify_tile(I, roi)
-09:     mask_p = interference_mask(tile_p)          // 水面/青苔/陰影排除
-10:     f_p    = zonal_statistics(tile_p, mask_p, indices) // 連續分區統計: Mean ± SE
-11: end for
-
-12: F = aggregate(f_p by D.treatment, D.block)      // 各處理組重複區平均值與 CV 變異係數
-13: if F[UTC].pressure < rules.min_pressure then
-14:     flag_warning("UTC pressure insufficient: regulatory invalid, continuing for internal reference")
-15: end if
-
-16: eff  = rules.calculate_relative_protection(F, UTC) // 連續光譜均值差分保護度 (%)
-17: rank = order_treatments_by_efficacy(eff)
-
-// ⑦ 產報告 (證據鏈檢核、持久化與三合一呈現)
-18: cand = Agent.generate_candidates(rank, F, rules) // 條列各處理結論
-19: for each c in cand: verify_evidence(c, E)       // 檢核每條結論均綁定 ROI 數值或法規條文
-20: R    = compose_markdown_report(cand, eff, rules.report_template)
-21: persist_plot_metrics_to_sqlite(F, eff, D)        // 寫入 SQLite 支援後續秒級追問
-22: present_tripartite(dialog_summary = cand, canvas_overlay = color_code(P, eff), report = R, evidence = E)
-23: return R
+01: I = stitch_rgb_photos(H)
+02: P = generate_plot_grid(B, G)
+03: P = edit_and_confirm_grid(I, P)
+04: D = assign_treatments_by_click(P, T, UTC)
+05: K = get_supported_rgb_indices_with_references()
+06: A = Agent.recommend_indices(S, K)
+07: J = wait_for_user_index_confirmation(A)  // 顯示指標與理由，允許修改
+08: validate_analysis_inputs(I, P, D, J)
+09: F = calculate_plot_metrics(I, P, J)
+10: C = compare_plot_and_treatment_metrics(F, D)
+11: save_analysis_results(P, D, J, F, C)
+12: V = build_plot_color_overlay(P, F, J)
+13: present_comparison_view(V, F, C)
+14: return V, C
 ```
 
-#### 設計重點
-* **01–03 行（步驟 ①②）**：無縫支援原始航照自動拼圖（NodeODM）或直接載入已拼接正射影像，兼顧靈活性與即時性。
-* **04–06 行（步驟 ③④⑤）**：畫布標註後，由 Pydantic AI Agent 依選定案例與相機波段（RGB / 多光譜）動態檢索並決定最適指標。
-* **07–17 行（步驟 ⑥）**：連續光譜分區統計（Zonal Mean ± SE）與 UTC 雙軌判定，完全由純 Python 確定性工具運算，杜絕數值估算幻覺。
-* **18–23 行（步驟 ⑦）**：通過嚴格證據鏈檢核後，小區數據寫入 SQLite，並以「對話精鍊結論 + 畫布著色 + Markdown 報告」三合一聯動呈現。
+- **主流程**：只協調子函式，各自負責拼接、網格、處理指定、AI 推薦、人工確認、計算、存取或呈現。
+- **第 04 行**：使用者選取「農藥＋劑量」或「未施藥對照」後點選小區，保留未設定狀態。
+- **第 06–08 行**：AI 推薦範圍限於可用的 RGB 指標，取得使用者明確確認後才驗證分析輸入並進入計算。
+- **第 09 行**：子流程再分成影像裁切、有效像素遮罩、指標矩陣計算及小區統計等單一職責函式，實作依據為 [Rasterio](https://rasterio.readthedocs.io/en/stable/) 與 [分區統計文件](https://pythonhosted.org/rasterstats/)。
+- **第 10–13 行**：依農藥與劑量彙整小區指標、比較明確指定對照組並呈現畫布與表格，AI 不生成比較摘要或報告。
 
 ---
 
 ### 5.4 Technical Feasibility
 
-| 項目 | 現況 | 風險 / 對策 |
+| 項目 | 可行性依據 | 待驗證事項 |
 | :--- | :--- | :--- |
-| **資料** | 4RL（水稻害蟲）、Concil（除草劑）正射影像與 ground truth 已在手（$\text{GSD } 0.85 \sim 0.9\text{ cm}$） | 資料來源為公司試驗，需去識別化後放 GitHub；或只公開小區級指標 |
-| **空間標註與影像** | 前端 Canvas 支援手動框選小區 ROI 與指派處理，後端支援緩衝區內縮與水面/陰影遮罩 | 邊緣效應干擾 $\rightarrow$ 前端標註後後端自動內縮 $0.5 \sim 1\text{ m}$ 緩衝區排除邊緣植株 |
-| **指標演算法** | 採用連續光譜指標分區統計（Zonal Mean ± SE）運算，不依賴重型實例分割模型 | 運算負擔輕、本機秒級即時完成，無 GPU 訓練維護負擔 |
-| **LLM / Agent** | 採用 Pydantic AI 實作 ReAct Tool-Calling 專家循環，小區數值寫入 SQLite 支援即時追問 | 若追問查詢負擔重 $\rightarrow$ 透過 SQLite 專屬查詢工具直接調取分區數值，零重複影像 I/O |
-| **統計與判定** | 以各處理分區平均值相對於 UTC 之均值差分計算保護度，落實低壓雙軌警示機制 | 3 重複檢定力較低 $\rightarrow$ 系統主動標註 CV 變異係數與試驗不確定性說明 |
-| **時程** | 10 月 proposal $\rightarrow$ 11 月工具鏈 $\rightarrow$ 12 月 agent 整合與實驗 $\rightarrow$ 1 月 handover | 兩人分工明確（見第 6 節） |
+| **影像輸入與合併** | 已有多張 RGB 空拍照片，可透過 [NodeODM](https://github.com/OpenDroneMap/NodeODM) 產生 [正射影像](https://docs.opendronemap.org/outputs/) | 以實際照片確認 GPS 資訊、拼接成功率與處理時間 |
+| **網格與點選操作** | [Canvas](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API) 與 [等距座標](https://numpy.org/doc/stable/reference/generated/numpy.linspace.html) 可作為畫布及網格的實作基礎 | 驗證網格微調、農藥與劑量套用、未施藥對照及空白狀態 |
+| **AI 指標推薦** | [Pydantic AI](https://ai.pydantic.dev/tools/) 可連接指標查詢工具，搭配固定的公式與參考來源 | 驗證推薦可計算、理由有來源、使用者修改及確認流程 |
+| **指標與比較運算** | [VARI](https://step.esa.int/main/wp-content/help/versions/13.0.0/snap-toolboxes/eu.esa.opt.opttbx.radiometric.indices.ui/vari/VariAlgorithmSpecification.html)、[ExG](https://elibrary.asabe.org/abstract.asp?aid=27838) 與 [分區統計](https://pythonhosted.org/rasterstats/) 提供公式及計算依據 | 以實際影像核對小區數值、有效像素與對照差異，量測執行時間 |
+| **結果保存與呈現** | [SQLite](https://www.sqlite.org/docs.html) 保存結果，由前端共用同一批數值呈現畫布及表格 | 核對小區編號、處理組、著色圖例與表格數值一致 |
 
+- **第一版完成條件**：使用實際照片走完「合併 → 網格切割與處理套用 → AI 推薦並人工確認 → 指標比較 → 畫布與表格」流程。
+- **後續擴充順序**：AI 摘要與報告延後，收穫分析須等農藥影像比較流程完整跑通後才開始，人工調查與正式藥效判定另行討論。
+- **完整參考**：工具、公式及背景資料集中於根目錄 [REFERENCE.md](../../REFERENCE.md)。
