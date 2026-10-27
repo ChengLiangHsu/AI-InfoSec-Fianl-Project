@@ -123,8 +123,6 @@ algos = {
         'help': _('Temperature in Centikelvin degrees.')
     },
 
-    # more?
-
     '_TESTRB': {
         'expr': 'R + B',
         'range': (0,1)
@@ -159,10 +157,7 @@ camera_filters = [
     'RGBNReP',
     'RGBNRePL',
 
-    'L', # FLIR camera has a single LWIR band
-
-    # more?
-    # TODO: certain cameras have only two bands? eg. MAPIR NDVI BLUE+NIR
+    'L',
 ]
 
 @lru_cache(maxsize=20)
@@ -215,7 +210,6 @@ def get_camera_filters_for(expr, max_bands=3):
     pattern = re.compile("([A-Z]+?[a-z]*)")
     bands = list(set(re.findall(pattern, expr)))
     for f in camera_filters:
-        # Count bands that show up in the filter
         count = 0
         fbands = list(set(re.findall(pattern, f)))
 
@@ -223,7 +217,6 @@ def get_camera_filters_for(expr, max_bands=3):
             if b in bands:
                 count += 1
 
-        # If all bands are accounted for, this is a valid filter for this algo
         if count >= len(bands) and len(fbands) <= max_bands:
             result.append(f)
 
@@ -251,7 +244,7 @@ def get_auto_bands(orthophoto_bands, formula):
     if not algo:
         raise ValueError("Cannot find formula: " + formula)
 
-    max_bands = len(orthophoto_bands) - 1 # minus alpha
+    max_bands = len(orthophoto_bands) - 1
     filters = get_camera_filters_for(algo['expr'], max_bands)
     if not filters:
         raise ValueError(f"Cannot find filters for {algo} with max bands {max_bands}")
@@ -270,4 +263,4 @@ def get_auto_bands(orthophoto_bands, formula):
     if band_order in filters:
         return band_order, True
     else:
-        return filters[0], False # Fallback
+        return filters[0], False
