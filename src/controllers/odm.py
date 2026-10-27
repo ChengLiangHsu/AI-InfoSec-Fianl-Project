@@ -1,10 +1,11 @@
-from __future__ import annotations
-
+import asyncio
+from collections.abc import AsyncGenerator
+import json
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile
+from fastapi.responses import FileResponse, StreamingResponse
 import httpx
 
 from src.controllers.dependencies import get_db
@@ -44,15 +45,102 @@ async def create_odm_task(
     return {"result": True, "data": {"id": uuid_str, "name": name}}
 
 
+async def sync_odm_task_info(
+    task_id: str, database: Database
+) -> tuple[Project | None, dict[str, Any] | None]:
+    """向 NodeODM 查詢指定任務進度並同步持久化至資料庫。"""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(f"{NODEODM_URL}/task/{task_id}/info")
+        if resp.status_code != 200:
+            return None, None
+        info_json = resp.json()
+        await database.update_project(task_id, info_json)
+        project = await database.get_project(task_id)
+        return project, info_json
+    except Exception:
+        try:
+            cached_project = await database.get_project(task_id)
+            return cached_project, None
+        except KeyError:
+            return None, None
+
+
+def _format_sse_data(payload: dict[str, Any]) -> bytes:
+    """將字典資料包裝為標準 Server-Sent Events (SSE) 資料格式。"""
+    return f"data: {json.dumps(payload)}\n\n".encode("utf-8")
+
+
+def _is_task_finished(progress: int, status_code: int | None) -> bool:
+    """判斷 NodeODM 任務是否已完成或終止（成功、失敗或取消）。"""
+    if progress >= 100:
+        return True
+    return status_code in (30, 40, 50)
+
+
+async def generate_task_progress_events(
+    task_id: str, request: Request, database: Database
+) -> AsyncGenerator[bytes, None]:
+    """定時輪詢 NodeODM 並產生 SSE 進度事件之非同步生成器。"""
+    initial_project, initial_info = await sync_odm_task_info(task_id, database)
+    if not initial_project:
+        yield _format_sse_data({"error": f"Task not found: {task_id}"})
+        return
+
+    last_emitted_progress = initial_project.get("progress", 0)
+    initial_code = initial_info.get("status", {}).get("code") if initial_info else None
+    yield _format_sse_data(initial_project)
+
+    if _is_task_finished(last_emitted_progress, initial_code):
+        return
+
+    while True:
+        if await request.is_disconnected():
+            break
+
+        await asyncio.sleep(1.0)
+
+        current_project, current_info = await sync_odm_task_info(task_id, database)
+        if not current_project:
+            break
+
+        current_progress = current_project.get("progress", 0)
+        current_code = current_info.get("status", {}).get("code") if current_info else None
+
+        if current_progress != last_emitted_progress or _is_task_finished(current_progress, current_code):
+            last_emitted_progress = current_progress
+            yield _format_sse_data(current_project)
+
+        if _is_task_finished(current_progress, current_code):
+            break
+
+
 @router.get("/odm-task-info/{task_id}")
 async def get_odm_task_info(task_id: str, database: Database = Depends(get_db)):
     """向 NodeODM 查詢指定任務的運算進度並同步更新資料庫。"""
-    async with httpx.AsyncClient() as client:
-        r = await client.get(f"{NODEODM_URL}/task/{task_id}/info")
-    info_json = r.json()
-    await database.update_project(task_id, info_json)
-    project = await database.get_project(task_id)
+    project, _ = await sync_odm_task_info(task_id, database)
+    if not project:
+        return Response(content="Task not found", status_code=404)
     return {"result": True, "data": project}
+
+
+@router.get("/odm-task-stream/{task_id}")
+async def stream_odm_task_progress(
+    task_id: str,
+    request: Request,
+    database: Database = Depends(get_db),
+) -> StreamingResponse:
+    """透過 SSE 串流即時推播 NodeODM 任務運算進度。"""
+    stream = generate_task_progress_events(task_id, request, database)
+    return StreamingResponse(
+        stream,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/odm-task-orthophoto/{task_id}")

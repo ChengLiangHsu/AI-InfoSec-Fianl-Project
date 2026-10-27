@@ -1,16 +1,13 @@
 import io
 import logging
 from pathlib import Path
-import subprocess
-import time
 from zipfile import ZipFile
 
 import httpx
 from PIL import Image
 
 logger = logging.getLogger("nodeodm")
-NODEODM_URL = "http://localhost:3000"
-CONTAINER_NAME = "nodeodm"
+NODEODM_URL = "http://localhost:3001"
 
 
 def check_nodeodm_alive(timeout: float = 2.0) -> bool:
@@ -22,43 +19,14 @@ def check_nodeodm_alive(timeout: float = 2.0) -> bool:
         return False
 
 
-def start_nodeodm_container() -> None:
-    """嘗試啟動既有容器，若不存在則新建立容器。"""
-    res = subprocess.run(
-        ["docker", "start", CONTAINER_NAME],
-        capture_output=True,
-        text=True,
-    )
-    if res.returncode != 0:
-        subprocess.run(
-            ["docker", "run", "-d", "-p", "3000:3000", "--name", CONTAINER_NAME, "opendronemap/nodeodm"],
-            capture_output=True,
-            text=True,
-        )
-
-
-def wait_for_nodeodm_ready(max_retries: int = 30, delay: float = 1.0) -> bool:
-    """輪詢等待 NodeODM 容器就緒。"""
-    for _ in range(max_retries):
-        time.sleep(delay)
-        if check_nodeodm_alive():
-            logger.info("NodeODM 啟動成功並通過 API 驗證。")
-            return True
-    logger.error("NodeODM 啟動驗證逾時。")
-    return False
-
-
-def ensure_nodeodm_running(max_retries: int = 30, delay: float = 1.0) -> bool:
+def ensure_nodeodm_running() -> bool:
     """
-    協調確保 NodeODM 已在背景正常運作（主流程調度模式）。
+    驗證 NodeODM 是否已在運作中；若未啟動則回傳 False 阻止後端啟動。
     """
     if check_nodeodm_alive():
-        logger.info("NodeODM 已在運作中。")
+        logger.info("NodeODM 連線驗證成功，服務正常運作。")
         return True
-
-    logger.info("NodeODM 尚未啟動，正在喚醒容器...")
-    start_nodeodm_container()
-    return wait_for_nodeodm_ready(max_retries=max_retries, delay=delay)
+    return False
 
 
 async def fetch_orthophoto_from_odm(task_id: str, output_path: Path) -> bool:

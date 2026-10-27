@@ -27,6 +27,14 @@
 - **公用運算庫整合（Utility Modules）**：植生公式、光譜熱圖生成與 NodeODM 管理收納至 `src/utility/`。
 - **嚴格職責純粹之主程式進入點**：`src/main.py` 僅保留 FastAPI 實例、生命週期與控制器掛載，不進行任何非必要的符號 re-export，外部與測試端直接對齊新模組路徑。
 - **清理無用過度工程目錄**：移除專案內殘留之空的 `src/adapter` 分層目錄，落實精簡服務導向架構。
+- **精簡合規提案章節架構（Proposal Chapter Compliance）**：嚴格依循課程規範（01 摘要、02 緒論、03 相關文獻、04 深度探討、05 系統設計、07 參考文獻），移除未在規範中之 06 執行規劃與 00 專案概述章節，確保提案結構精準達標。
+- **清理說明文件衝突與統一服務啟動指令**：修復 `README.md` 衝突標記，統整 NodeODM Docker 容器標準啟動命令與更新章節索引連結至 `docs/proposal/`。
+- **泛用實測航測規格定義（Generalized UAV Dataset Spec）**：移除 4RL / Concil 等特定代號，改以具備 GSD < 1cm 與 EXIF GPS 之任意真實無人機空拍照片集作為通用標準輸入與驗證規格。
+- **概述內容整合至 README.md（Overview Consolidation）**：將團隊成員分工與泛用空拍資料規格整合至根目錄 `README.md`，使 `docs/proposal/` 專注於期末提案核心論述。
+- **獨立 SSE 任務進度串流端點（SSE Task Progress Streaming Endpoint）**：後端提供獨立 `/api/odm-task-stream/{task_id}` 路由，以 Server-Sent Events (SSE) 即時推播 NodeODM 任務進度。
+- **即時主動抓取與狀態更新（Immediate NodeODM Sync on Stream Connect）**：串流建立當下立即主動向 NodeODM 查詢最新進度、同步寫入資料庫並即刻推送首筆狀態，消除前端等待間隔。
+- **變化觸發推播與自動關閉（Change-Triggered Push with Auto Termination）**：後端以每秒頻率輪詢 NodeODM，僅在進度變更或狀態更新時推送完整 Project 模型資料，並於進度達 100% 或異常時自動優雅關閉串流。
+- **前端 Vue Composable 串流管理（useOdmProgress Composable）**：前端抽出獨立 `useOdmProgress` 模組，統一封裝 `EventSource` 監聽、生命週期清理與響應式進度綁定。
 
 ## 拒絕
 - **拒絕非標準專屬 Agent 平台**：不採用 Google Antigravity SDK 等特定生態平台，確保全開源與環境高度可攜性。
@@ -47,3 +55,11 @@
 - **拒絕殘留未使用的空分層目錄**：清理並杜絕在專案中保留無實際業務邏輯的架構模板空目錄。
 - **拒絕主程式進入點混合轉導（No Symbol Re-export in main.py）**：拒絕在 `src/main.py` 扮演通用的模組 re-export 轉導層，杜絕偽解耦。
 - **拒絕冗長學術黑話**：避免晦澀學術名詞與長篇大論。
+- **拒絕假造或預設示範資料集**：不依賴亦不內建虛構的廣西或民雄示範資料集，確保系統完全以真實上傳影像為運作基準。
+- **拒絕首頁混雜過載對話框**：首頁不於上傳前顯示多餘的自由對話視窗，避免干擾使用者進行相片上傳之首要任務。
+- **拒絕非規範之額外時程分工檔案**：不建立或維護課程規範外之 `06_execution_plan.md`，避免與實際實作狀況和標準提案規範產生歧異。
+- **拒絕非規範之 00 概述章節檔案**：不於 `docs/proposal/` 中獨立保留非課程規範之 `00_overview.md`，嚴格依循課程提案四大核心架構。
+- **拒絕殘留版本控制衝突標記**：嚴格杜絕在專案文檔與程式碼中遺留 `<<<<<<<`、`=======`、`>>>>>>>` 等未解 Git 衝突標記。
+- **拒絕前端輪詢計時器（No Frontend Polling Timers）**：全面淘汰前端 `setInterval` 每 2 秒輪詢 `get_odm_task_info` 的做法，消除無效網路請求。
+- **拒絕單一 POST 阻塞式長串流（No Bloated POST Streaming Pipeline）**：不將大檔案上傳與長時間拼圖進度綑綁於單一 POST 端點，維持上傳與進度監聽職責分離。
+- **拒絕無意義重複全量推送（No Redundant Unchanged Progress Pushes）**：進度未推進時不重複推播相同進度事件，避免浪費伺服器與客戶端 I/O 頻寬。

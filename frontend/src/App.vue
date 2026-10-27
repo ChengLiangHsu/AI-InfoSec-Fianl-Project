@@ -54,11 +54,13 @@ import {
 } from '@/components/ui/tooltip'
 import { computed, onMounted, ref, watch } from 'vue'
 import AskAgent from './components/AskAgent.vue'
-import GeminiHomeChat from './components/GeminiHomeChat.vue'
+import DroneHomeUpload from './components/DroneHomeUpload.vue'
 import { useChatAgent } from './lib/useChatAgent'
+import { useOdmProgress } from './lib/useOdmProgress'
 import exifr from 'exifr'
 
 const { clearChat } = useChatAgent()
+const { listenProgress } = useOdmProgress()
 
 async function handleGoHome() {
   selectedProject.value = null
@@ -135,38 +137,8 @@ async function handleFileUpload(event: Event) {
     }
   }
 }
-async function hadleCreateProject(event: Event) {
-  if (uploadList.value.length === 0) {
-    alert("請先上傳檔案")
-    return
-  }
-  const formData = new FormData(event.target)
-  isCreatingProject.value = true
-  const response = await fetch("/api/odm-task", {
-    method: "POST",
-    body: formData,
-  });
-  const data = await response.json();
-  if (!response.ok) {
-    alert("建立專案失敗")
-    isCreatingProject.value = false
-    return
-  }
-  projects.value = await fetch("/api/odm-task-list").then((res) => res.json()).then((res) => res.data)
-  selectedProject.value = projects.value.find((project) => project.id === data.data["id"])
-  processingProject.value = selectedProject.value || null
-  const timer = setInterval(async () => {
-    const res = await fetch(`/api/odm-task-info/${data.data["id"]}`)
-    const resData = await res.json()
-    processingProject.value.progress = resData.data.progress
-    if (resData.data.progress === 100) {
-      clearInterval(timer)
-      isCreatingProject.value = false
-    }
-  }, 2000)
-}
-
 async function onProjectCreated(newProj: Project) {
+  isCreatingProject.value = true
   try {
     const listRes = await fetch("/api/odm-task-list")
     const listData = await listRes.json()
@@ -181,25 +153,22 @@ async function onProjectCreated(newProj: Project) {
   selectedProject.value = found
   processingProject.value = found
 
-  const timer = setInterval(async () => {
-    try {
-      const res = await fetch(`/api/odm-task-info/${newProj.id}`)
-      const resData = await res.json()
-      if (resData.data) {
-        if (selectedProject.value?.id === newProj.id) {
-          selectedProject.value.progress = resData.data.progress
-        }
-        if (processingProject.value?.id === newProj.id) {
-          processingProject.value.progress = resData.data.progress
-        }
-        if (resData.data.progress === 100) {
-          clearInterval(timer)
-        }
+  listenProgress(newProj.id, {
+    onUpdate: (updated) => {
+      if (selectedProject.value?.id === newProj.id && typeof updated.progress === 'number') {
+        selectedProject.value.progress = updated.progress
       }
-    } catch {
-      clearInterval(timer)
-    }
-  }, 2000)
+      if (processingProject.value?.id === newProj.id && typeof updated.progress === 'number') {
+        processingProject.value.progress = updated.progress
+      }
+    },
+    onComplete: () => {
+      isCreatingProject.value = false
+    },
+    onError: () => {
+      isCreatingProject.value = false
+    },
+  })
 }
 
 
@@ -237,14 +206,20 @@ onMounted(async () => {
   projects.value = data.data
   processingProject.value = projects.value.find((p) => p.progress !== 100) || null
   if (processingProject.value) {
-    const timer = setInterval(async () => {
-      const res = await fetch(`/api/odm-task-info/${processingProject.value?.id}`)
-      const resData = await res.json()
-      processingProject.value.progress = resData.data.progress
-      if (resData.data.progress === 100) {
-        clearInterval(timer)
-      }
-    }, 2000)
+    const targetId = processingProject.value.id
+    listenProgress(targetId, {
+      onUpdate: (updated) => {
+        if (processingProject.value?.id === targetId && typeof updated.progress === 'number') {
+          processingProject.value.progress = updated.progress
+        }
+        if (selectedProject.value?.id === targetId && typeof updated.progress === 'number') {
+          selectedProject.value.progress = updated.progress
+        }
+      },
+      onComplete: () => {
+        isCreatingProject.value = false
+      },
+    })
   }
 })
 
@@ -429,7 +404,7 @@ watch(selectedProject, () => {
         </Card>
       </div>
       <div v-if="!selectedProject" class="h-[calc(100vh-1rem)] w-full">
-        <GeminiHomeChat @project-created="onProjectCreated" />
+        <DroneHomeUpload @project-created="onProjectCreated" />
       </div>
     </SidebarInset>
   </SidebarProvider>

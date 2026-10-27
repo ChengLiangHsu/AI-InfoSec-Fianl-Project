@@ -22,7 +22,7 @@ THIS_DIR = Path(__file__).parent
 async def lifespan(_app: fastapi.FastAPI):
     """應用程式生命週期管理：確認 NodeODM 就緒並掛載全域資料庫連線。"""
     if not ensure_nodeodm_running():
-        raise RuntimeError("NodeODM 啟動失敗，中止後端服務。")
+        raise RuntimeError("NodeODM 尚未啟動，中止後端服務。請先執行 'docker run -d -p 3001:3000 --name nodeodm opendronemap/nodeodm' 啟動容器。")
     async with Database.connect() as db:
         yield {"db": db}
 
