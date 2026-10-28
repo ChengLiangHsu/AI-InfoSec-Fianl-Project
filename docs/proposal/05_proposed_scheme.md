@@ -150,7 +150,3 @@ Output: Colored plot canvas V, plot and treatment comparison tables C
 | **AI 指標推薦** | [Pydantic AI](https://ai.pydantic.dev/tools/) 可連接指標查詢工具，搭配固定的公式與參考來源 | 驗證推薦可計算、理由有來源、使用者修改及確認流程 |
 | **指標與比較運算** | [VARI](https://step.esa.int/main/wp-content/help/versions/13.0.0/snap-toolboxes/eu.esa.opt.opttbx.radiometric.indices.ui/vari/VariAlgorithmSpecification.html)、[ExG](https://elibrary.asabe.org/abstract.asp?aid=27838) 與 [分區統計](https://pythonhosted.org/rasterstats/) 提供公式及計算依據 | 以實際影像核對小區數值、有效像素與對照差異，量測執行時間 |
 | **結果保存與呈現** | [SQLite](https://www.sqlite.org/docs.html) 保存結果，由前端共用同一批數值呈現畫布及表格 | 核對小區編號、處理組、著色圖例與表格數值一致 |
-
-- **第一版完成條件**：使用實際照片走完「合併 → 網格切割與處理套用 → AI 推薦並人工確認 → 指標比較 → 畫布與表格」流程。
-- **後續擴充順序**：AI 摘要與報告延後，收穫分析須等農藥影像比較流程完整跑通後才開始，人工調查與正式藥效判定另行討論。
-- **完整參考**：工具、公式及背景資料集中於根目錄 [REFERENCE.md](../../REFERENCE.md)。

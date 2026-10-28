@@ -119,3 +119,12 @@
 - [Docker 官方文件](https://docs.docker.com/)
 - [Docker CLI run 規範指南](https://docs.docker.com/reference/cli/docker/container/run/)
 
+### 第三章相關文獻與研究缺口佐證 (Related Work References)
+- [Shinoda et al.（2025）：AgroBench: Vision-Language Model Benchmark in Agriculture (ICCV 2025)](https://arxiv.org/abs/2412.18432)
+- [Zhang et al.（2025）：AgriDoctor: A Multimodal Intelligent Assistant for Agriculture (arXiv:2509.17044)](https://arxiv.org/abs/2509.17044)
+- [Vision-language models for zero-shot weed detection and visual reasoning in UAV-based precision agriculture (Front. Plant Sci. 2025)](https://doi.org/10.3389/fpls.2025.1735096)
+- [Qu et al.（2023）：A latent scale model to minimize subjectivity in the analysis of visual rating data (Front. Plant Sci.)](https://doi.org/10.3389/fpls.2023.1135918)
+- [EPPO Standard PP 1/152(4)：Design and analysis of efficacy evaluation trials](https://www.eppo.int/RESOURCES/eppo_standards/standards_pp1)
+- [Semi-Automated Field Plot Segmentation From UAS Imagery for Experimental Agriculture (Front. Plant Sci. 2020)](https://doi.org/10.3389/fpls.2020.591886)
+
+

@@ -52,8 +52,14 @@
 - **小區指標差異雙軌解讀機制（Dual-Track Interpretation for Plot Discrepancy）**：同農藥劑量之小區出現明顯指標差異時，以 3 重複平均值平抑田間微地形與土壤自然異質性，同時保留個別小區原始數值供使用者回看正射影像與噴灑設定排查異常原因，不自動刪除離群小區。
 - **極簡統計比較呈現（Minimalist Descriptive Statistics）**：結果畫面僅呈現各小區原始指標與處理組平均值，第一版不引入標準差（SD）、變異數分析（ANOVA）或顯著性檢定。
 - **第四章 Q3 深度理解問題重構（Deep Understanding Questions Restructuring）**：嚴格依循「以 RGB 空拍影像比較試驗小區」專案主軸，依課程規範涵蓋 Why、Comparison、What-if、Trade-off、Failure Case、Design Decision、Evidence、Real-world Scenario 等面向，設立 10 個具備推論深度與專業答題要點的領域問題。
+- **第三章文獻整理摘要表 1/2 配比（Article Summary Table Balance）**：文獻摘要表精選 6 篇具代表性核心文獻（3 篇 AI 技術多模態/Agent [1, 2, 3] + 3 篇領域試驗設計/小區分割 [12, 18, 21]），嚴格貫徹 1/2 AI 技術與 1/2 領域知識之評核規範。
+- **第三章研究切入點邏輯鏈定調（Research Gap Logic Chain）**：以「通用農業 AI 欠缺試驗結構與公式 ＋ 純遙測工具欠缺人機協同與指標理由說明」為矛盾，切入「互動式小區配置＋AI 指標推薦協調＋雙向可追溯影像指標比較」專用領域智慧代理人（Domain AI Agent）。
+- **第二章三大創新點與兩大貢獻（Introduction Innovation & Contributions）**：緒論確立三大創新（人機協同網格配置、AI 推薦指標附帶物理理由、試驗規範級重複去平均與雙向可溯性）及兩大貢獻（開源輕量本機 Agent 系統架構、大幅降低田間試驗客觀評估門檻）。
+- **第一章實驗評估與預期成果規格（Abstract Experiments & Expected Findings）**：以真實田間無人機 RGB 空拍影像（GSD < 1 cm/px）為基準，對比傳統人工目測與全田粗算 Baseline，評估小區處理效率、3 重複 Treatment Mean 去平均平抑田間變異效果與雙向可追溯性。
+- **系統設計規格書嚴格對齊九大核心項目（DESIGN.md 9 Core Sections Alignment）**：DESIGN.md 嚴格依據課程規範 Table B 限制為且僅包含 9 大核心章節（Architecture、Components、Data Flow、AI Model、Domain Knowledge、Algorithm、Implementation Mapping、Results、Limitations），完全杜絕多餘章節。
 
 ## 拒絕
+- **拒絕 DESIGN.md 擴充非規範獨立章節**：不於 DESIGN.md 中新增額外獨立的 Problem、Requirements 或 How to Run 章節，How to Run 集中於 README.md，Problem/Requirements 歸屬提案章節與需求清單。
 - **暫不納入文獻查閱功能**：目前的 AI 指標深入解釋不加入預選文獻、線上搜尋或文獻讀取流程。
 - **拒絕未確認即啟動分析**：AI 推薦指標後，不得在使用者明確確認前自動開始各小區指標計算與比較。
 - **拒絕空白小區自動成為對照組**：不得將尚未設定處理的小區自動判定為未施藥對照。
