@@ -67,11 +67,12 @@ graph TD
 | :--- | :--- | :--- |
 | 應用程式入口 | `src/main.py` | 僅建立應用程式、管理生命週期與掛載控制器 |
 | 上傳與拼接任務 | `src/controllers/odm.py`、`src/utility/nodeodm.py` | 分別處理請求與 NodeODM 任務協調 |
+| 串流進度管理 | `src/controllers/odm.py`、`frontend/src/lib/useOdmProgress.ts` | 以 SSE 串流即時推播拼圖進度與前端響應式綁定 |
 | AI 指標推薦 | `src/agents/pydantic_agent.py` | 推薦指標、提供理由與來源，遵守使用者確認流程 |
-| 網格與處理對應 | `src/utility/plots.py`（規劃新增） | 生成小區座標與維護小區處理對應所需的純運算 |
+| 網格繪製與點選 | `frontend/src/App.vue` (Canvas API) | 前端畫布互動框選、等距網格生成、微調與點選套用處理組 |
 | 指標與影像運算 | `src/utility/formulas.py`、`src/utility/spectral.py` | 管理公式及執行影像指標運算，擴充分區統計與處理組比較 |
-| 資料存取 | `src/database.py` | 集中保存任務、小區、處理設定與分析結果 |
-| 前端畫面 | `frontend/src/` | 提供網格與點選操作、指標確認、畫布著色及比較表 |
+| 資料存取 | `src/database.py` | 集中保存任務、小區網格幾何、處理設定與分析結果 |
+| 前端呈現 | `frontend/src/App.vue` | 提供畫布著色疊加圖、圖例與雙向連動數值比較表 |
 
 ---
 
@@ -111,33 +112,42 @@ flowchart TD
 ### 5.3 Pseudocode
 
 ```text
-Algorithm 1: RGB 空拍小區指標比較
-Input : RGB photos H, trial boundary B, grid dimensions G,
-        treatment options T (pesticide, dose), explicit control option UTC,
-        assessment purpose S
-Output: Colored plot canvas V, plot and treatment comparison tables C
+Algorithm 1: RGB 空拍小區指標比較與可重現評估
+Input : 
+    H   : 使用者上傳之 RGB 空拍照片集 (JPG/PNG/JPEG, GSD < 1cm)
+    B   : 使用者框選之試驗田外邊界幾何多邊形
+    G   : 網格行列維度 (rows, cols)
+    T   : 處理組選項集 { (pesticide_1, dose_1), ... }
+    UTC : 未施藥對照組 (CK)
+    S   : 使用者指定之評估目的 (如殺菌、除草、生理逆境)
+Output: 
+    V   : 依指標數值著色之畫布疊加層 (Plot Color Overlay)
+    C   : 小區明細與處理組彙整比較表 (Comparison Tables)
 
-01: I = stitch_rgb_photos(H)
-02: P = generate_plot_grid(B, G)
-03: P = edit_and_confirm_grid(I, P)
-04: D = assign_treatments_by_click(P, T, UTC)
-05: K = get_supported_rgb_indices_with_references()
-06: A = Agent.recommend_indices(S, K)
-07: J = wait_for_user_index_confirmation(A)  // 顯示指標與理由，允許修改
-08: validate_analysis_inputs(I, P, D, J)
-09: F = calculate_plot_metrics(I, P, J)
-10: C = compare_plot_and_treatment_metrics(F, D)  // 依處理組計算重複平均值，保留小區明細
-11: save_analysis_results(P, D, J, F, C)
-12: V = build_plot_color_overlay(P, F, J)
-13: present_comparison_view(V, F, C)
-14: return V, C
+01: I = stitch_orthophoto_via_nodeodm(H)
+02: P_raw = generate_regular_grid(B, G)
+03: P = interactive_canvas_adjust_and_confirm(I, P_raw)
+04: D = assign_treatments_by_user_clicks(P, T, UTC)
+05: K = query_supported_rgb_indices()
+06: A = PydanticAgent.recommend_indices(S, K)
+07: J = wait_for_user_explicit_confirmation(A)
+08: validate_spatial_and_treatment_inputs(I, P, D, J)
+09: for each plot p in P do:
+10:     pixels_p = extract_masked_roi_pixels(I, p)
+11:     F[p] = calculate_zonal_spectral_metric(pixels_p, J)
+12: end for
+13: C_treatments = aggregate_treatment_means(F, D)  // 計算各「農藥＋劑量」組平均值
+14: C_diff = compute_differences_against_control(C_treatments, UTC)
+15: persist_trial_results_to_sqlite(P, D, J, F, C_treatments, C_diff)
+16: V = render_color_coded_canvas_overlay(P, F, J)
+17: return V, C_treatments, C_diff
 ```
 
-- **主流程**：只協調子函式，各自負責拼接、網格、處理指定、AI 推薦、人工確認、計算、存取或呈現。
-- **第 04 行**：使用者選取「農藥＋劑量」或「未施藥對照」後點選小區，保留未設定狀態。
-- **第 06–08 行**：AI 推薦範圍限於可用的 RGB 指標，取得使用者明確確認後才驗證分析輸入並進入計算。
-- **第 09 行**：子流程再分成影像裁切、有效像素遮罩、指標矩陣計算及小區統計等單一職責函式，實作依據為 [Rasterio](https://rasterio.readthedocs.io/en/stable/) 與 [分區統計文件](https://pythonhosted.org/rasterstats/)。
-- **第 10–13 行**：依農藥與劑量彙整小區指標（計算重複平均值，典型為 3 重複）、比較明確指定對照組並呈現畫布與表格，AI 不生成比較摘要或報告。
+- **主流程調度模式**：主函式僅負責協調整體執行流程與調度子函式，深層業務邏輯封裝於單一職責子模組中。
+- **第 01–04 行**：NodeODM 拼圖完成後，使用者於前端畫布框選田界、生成網格並手動微調，點選指派「農藥＋劑量」或「未施藥對照 (UTC)」，未指派小區維持空白。
+- **第 05–08 行**：Pydantic AI 代理人依評估目的推薦 RGB 適用指標（VARI、ExG）並詳述物理理由；經使用者於前端彈窗明確確認後，方啟動資料驗證。
+- **第 09–12 行**：逐小區萃取有效植被像素（排除裸土背景），透過純函式計算分區光譜指標統計值。
+- **第 13–17 行**：依試驗規範計算同處理 3 重複小區平均值（Treatment Mean）與對照組差異，寫入 SQLite 持久化保存，並於前端畫布同步呈現著色熱圖與雙向可溯數值表。
 
 ---
 

@@ -140,7 +140,7 @@ Input :
     B   : 使用者框選之試驗田外邊界幾何多邊形
     G   : 網格行列維度 (rows, cols)
     T   : 處理組選項集 { (pesticide_1, dose_1), ... }
-    UTC : 對照組
+    UTC : 未施藥對照組 (CK)
     S   : 使用者指定之評估目的 (如殺菌、除草、生理逆境)
 Output: 
     V   : 依指標數值著色之畫布疊加層 (Plot Color Overlay)

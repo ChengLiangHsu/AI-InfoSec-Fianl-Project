@@ -127,4 +127,9 @@
 - [EPPO Standard PP 1/152(4)：Design and analysis of efficacy evaluation trials](https://www.eppo.int/RESOURCES/eppo_standards/standards_pp1)
 - [Semi-Automated Field Plot Segmentation From UAS Imagery for Experimental Agriculture (Front. Plant Sci. 2020)](https://doi.org/10.3389/fpls.2020.591886)
 
+### 提案章節與規格書一致性審查 (Proposal & DESIGN.md Consistency)
+- **課程作業依據**：[期末專題提案作業規範 (COURSE.md)](docs/proposal/COURSE.md)
+- **核心演算法與虛擬碼**：依循單一職責模式與確定性遙測統計，同步規範於 `05_proposed_scheme.md` 與 `DESIGN.md`。
+- **參考文獻完整索引**：[6. References 參考文獻 (06_references.md)](docs/proposal/06_references.md) 涵蓋 24 篇雙向驗證文獻。
+
 

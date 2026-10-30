@@ -57,6 +57,9 @@
 - **第二章三大創新點與兩大貢獻（Introduction Innovation & Contributions）**：緒論確立三大創新（人機協同網格配置、AI 推薦指標附帶物理理由、試驗規範級重複去平均與雙向可溯性）及兩大貢獻（開源輕量本機 Agent 系統架構、大幅降低田間試驗客觀評估門檻）。
 - **第一章實驗評估與預期成果規格（Abstract Experiments & Expected Findings）**：以真實田間無人機 RGB 空拍影像（GSD < 1 cm/px）為基準，對比傳統人工目測與全田粗算 Baseline，評估小區處理效率、3 重複 Treatment Mean 去平均平抑田間變異效果與雙向可追溯性。
 - **系統設計規格書嚴格對齊九大核心項目（DESIGN.md 9 Core Sections Alignment）**：DESIGN.md 嚴格依據課程規範 Table B 限制為且僅包含 9 大核心章節（Architecture、Components、Data Flow、AI Model、Domain Knowledge、Algorithm、Implementation Mapping、Results、Limitations），完全杜絕多餘章節。
+- **提案章節全量合規校準（Proposal Consistency Across Chapters）**：第 1 至 6 章與 DESIGN.md 嚴格對齊一致性規範，全面移除 NDRE、將小區切割統一為人機協同網格標註、將第一版成果定調為著色畫布與數值比較表（AI 摘要與報告生成列為後續工作）。
+- **參考文獻雙向完整對照（Bidirectional References Alignment）**：重整 `06_references.md` 為 24 篇有效核心文獻，正文引用與參考文獻編號維持 100% 雙向對應，納入 VARI、ExG、FAIR、Peña、Xia、Jay、TACTRI 等實測學理來源。
+- **演算法與工程模組規格統一（Algorithm & Module Mapping Synchronization）**：第 5 章與 DESIGN.md 之 Pseudocode 同步為 17 行完整迴圈版本，網格繪製與點選套用明確對齊前端 Canvas 與 database.py，杜絕未規劃的虛構模組。
 
 ## 拒絕
 - **拒絕 DESIGN.md 擴充非規範獨立章節**：不於 DESIGN.md 中新增額外獨立的 Problem、Requirements 或 How to Run 章節，How to Run 集中於 README.md，Problem/Requirements 歸屬提案章節與需求清單。
@@ -93,4 +96,6 @@
 - **拒絕自動剔除離群重複小區**：不因同處理小區指標差異過大而擅自刪除極端值，確保資料完整性與可稽核性。
 - **拒絕將軟體防呆與表單規則列入 Q3（No Software Validation in Deep Research）**：嚴格杜絕將空白欄位檢查、未檢核 GSD、程式資料一致性等軟體實作細節列為領域深度理解問題，確保 Q3 專注於農業遙測與田間試驗學科本質。
 - **拒絕 Q1 充斥抽象黑話與過度修飾**：第四章 Q1 杜絕脫離具體軟體互動的抽象架構黑話，第三面向一律落實為高中生可理解之具體「系統行為」。
+- **拒絕於提案前言宣稱未納入之自動盲切與報告生成**：杜絕在摘要與緒論中使用「自動切割小區」與「自動產出藥效報告」等誇大或牴觸第一版決策之宣稱。
+- **拒絕正文出現孤立參考文獻與幽靈引用**：杜絕在文獻清單中保留未被正文引用的冗餘文獻，亦杜絕正文提及核心學理卻未納入正式參考文獻之脫節現象。
 
