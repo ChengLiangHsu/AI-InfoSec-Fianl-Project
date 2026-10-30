@@ -70,8 +70,8 @@ graph TD
 | 串流進度管理 | `src/controllers/odm.py`、`frontend/src/lib/useOdmProgress.ts` | 以 SSE 串流即時推播拼圖進度與前端響應式綁定 |
 | AI 指標推薦與對話 | `src/controllers/conversation.py`、`src/agents/pydantic_agent.py` | 接收試驗設定、推薦指標、提供理由與來源，遵守使用者確認流程 |
 | 網格繪製與點選 | `frontend/src/App.vue` (Canvas API) | 前端畫布互動框選、等距網格生成、微調與點選套用處理組 |
-| 指標與影像運算 | `src/utility/formulas.py`、`src/utility/spectral.py` | 管理公式及執行影像指標運算，擴充分區統計與處理組比較 |
-| 資料存取 | `src/database.py` | 集中保存任務、小區網格幾何、處理設定與分析結果 |
+| 應用業務流程 | `src/usecases/` | 封裝 NodeODM 任務管理與 AI 對話串流等業務用例 |
+| 資料存取與實體 | `src/repositories/`、`src/entities/` | 集中保存任務、小區網格幾何、處理設定與分析結果 |
 | 前端呈現 | `frontend/src/App.vue` | 提供畫布著色疊加圖、圖例與雙向連動數值比較表 |
 
 ---
