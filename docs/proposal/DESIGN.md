@@ -81,7 +81,7 @@ graph TD
 
 ### 3.1 核心資料流向
 1. **上傳與拼圖**：前端上傳多張 RGB 照片 $\rightarrow$ 後端傳遞至 NodeODM 容器 $\rightarrow$ NodeODM 輸出 `orthophoto.tif` $\rightarrow$ 透過 SSE 推送完成事件。
-2. **小區標註**：前端載入正射圖底圖 $\rightarrow$ 使用者繪製邊界並指定行列 $\rightarrow$ 前端計算小區多邊形頂點 $\rightarrow$ 使用者點選指派「農藥＋劑量」或「未施藥對照 (CK)」。
+2. **小區標註**：前端載入正射圖底圖 $\rightarrow$ 使用者繪製邊界並指定行列 $\rightarrow$ 前端計算小區多邊形頂點 $\rightarrow$ 使用者點選指派「處理描述」或「對照組 (CK)」。
 3. **AI 推薦與確認**：使用者指定試驗評估目的 $\rightarrow$ 後端傳遞至 Pydantic AI Agent $\rightarrow$ Agent 推薦指標並說明物理理由 $\rightarrow$ 前端彈出確認框 $\rightarrow$ 使用者明確確認。
 4. **指標計算與比較**：後端呼叫 `spectral.py` 讀取小區內像素 $\rightarrow$ 計算植生指標矩陣 $\rightarrow$ 依處理組計算 3 重複平均值 $\rightarrow$ 存入 SQLite $\rightarrow$ 前端呈現著色畫布與比較表。
 
@@ -102,7 +102,7 @@ graph TD
   class IndexRecommendation(BaseModel):
       index_name: str = Field(description="推薦的植生指標名稱，如 VARI 或 ExG")
       formula: str = Field(description="光譜計算公式")
-      reasoning: str = Field(description="依據試驗目的所提供的物理現象判讀理由")
+      reasoning: str = Field(description="依據試驗目的所提供的生理現象判讀理由")
       reference: str = Field(description="權威科學文獻來源連結")
   ```
 * **防脫軌提示詞約束**：嚴格約束 AI 模型僅能由系統內建之 RGB 指標清單中進行挑選，嚴禁推薦無對應波段之多光譜指標（如 NDRE）。
@@ -122,10 +122,10 @@ graph TD
 系統將農業植保與田間試驗學科規範轉化為確定性的軟體邏輯：
 
 1. **空間異質性與重複試驗 (Replications)**：
-   農田存在土壤肥力與微地形之天然異質性。依據 [EPPO PP 1/152](https://www.eppo.int/RESOURCES/eppo_standards/standards_pp1) 標準，系統強制支援 3 至 4 次重複配置，以同組「農藥＋劑量」之小區去平均值（Treatment Mean）作為統計基準：
+   農田存在土壤肥力與微地形之天然異質性。依據 [EPPO PP 1/152](https://www.eppo.int/RESOURCES/eppo_standards/standards_pp1) 標準，系統強制支援 3 至 4 次重複配置，以同組「處理＋劑量」之小區去平均值（Treatment Mean）作為統計基準：
    $$\text{Treatment Mean} = \frac{1}{N} \sum_{i=1}^{N} \text{Metric}_{\text{Plot}_i}$$
 2. **小區邊際效應防護 (Buffer Zone)**：
-   小區邊界預設支援幾何向內縮減（Buffer Zone），消除噴藥飄移與相鄰行走道裸土像素混雜干擾（[UMN Field Research Guide](https://extension.umn.edu/courses-and-events/for-professionals/on-farm-research/how-to-do-research-on-your-farm)）。
+   小區邊界預設支援幾何向內縮減（Buffer Zone），消除處理偏差與相鄰行走道裸土像素混雜干擾（[UMN Field Research Guide](https://extension.umn.edu/courses-and-events/for-professionals/on-farm-research/how-to-do-research-on-your-farm)）。
 3. **雙軌解讀機制 (Dual-Track Interpretation)**：
    依據 [NIST 異常觀測處理原則](https://www.itl.nist.gov/div898/handbook/eda/section3/eda35h.htm)，當同處理小區數值跳動過大時，系統**嚴禁擅自剔除離群值**；總體趨勢參考 Treatment Mean，個別小區保留於比較表並提供點擊連動回查原始空拍照，以排查局部積水、噴藥死角或真實抗藥性。
 
@@ -140,8 +140,8 @@ Input :
     B   : 使用者框選之試驗田外邊界幾何多邊形
     G   : 網格行列維度 (rows, cols)
     T   : 處理組選項集 { (pesticide_1, dose_1), ... }
-    UTC : 未施藥對照標記 (CK)
-    S   : 使用者指定之評估目的 (如殺菌、除草)
+    UTC : 對照組
+    S   : 使用者指定之評估目的 (如殺菌、除草、生理逆境)
 Output: 
     V   : 依指標數值著色之畫布疊加層 (Plot Color Overlay)
     C   : 小區明細與處理組彙整比較表 (Comparison Tables)
@@ -185,13 +185,13 @@ Output:
 ## 8. Results (預期成果)
 
 * **大幅節省田間調查耗時**：人機協同網格生成將數十個小區的幾何切分自數小時人工標記縮短至 3 分鐘內完成。
-* **高重現性與客觀性**：純 Python 確定性演算法計算，相同空拍影像具備 100% 數值一致性，杜絕人為打分疲勞與心理偏差（[Qu et al., 2023](https://doi.org/10.3389/fpls.2023.1135918)）。
+* **高重現性與客觀性**：純 Python 確定性演算法計算，相同空拍影像具備 100% 數值一致性，杜絕人為調查疲勞與心理主觀偏差，影響數據結果判斷（[Qu et al., 2023](https://doi.org/10.3389/fpls.2023.1135918)）。
 * **可稽核之試驗依據**：畫布圖例與數值表具備雙向追溯連動，可隨時核對極端值對應的局部田區影像特徵。
 
 ---
 
 ## 9. Limitations (系統限制與邊界)
 
-* **光譜資訊邊界**：第一版僅採用 RGB 可見光相機，在作物生長後期高覆蓋度時存在光譜飽和效應（Q3 問題 1），且無法如近紅外波段在感染超早期察覺細胞損害（Q3 問題 2）。
+* **光譜資訊邊界**：第一版僅採用 RGB 可見光相機，在作物生長後期高覆蓋度時存在光譜飽和效應（Q3 問題 1），且無法如近紅外波段在感染早期察覺植物異常生理所反應出的光譜結果（Q3 問題 2）。
 * **非正式法定藥效**：系統目前輸出為「影像指標差異比較」，尚未結合田間害物株數調查與 Abbott's 藥效校正公式，不得直接視為法定登記之藥效百分比（[TACTRI 法規指引](https://www.tactri.gov.tw/)）。
 * **氣候與光照依賴**：正射拼圖品質高度依賴拍攝當下的均勻漫射光照；強烈直射日光或雲層陰影可能造成局部光譜梯度偏差（[OpenDroneMap 航拍指南](https://docs.opendronemap.org/flying/)）。
