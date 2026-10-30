@@ -31,7 +31,7 @@ graph TD
     end
 
     subgraph DATA ["資料存取層 (Persistence Layer)"]
-        D1["SQLite 持久化倉儲<br/>(src/repositories/)"]
+        D1["SQLite 集中資料庫<br/>(src/database.py)"]
         D2["正射影像檔案儲存 (GeoTIFF / PNG)"]
     end
 
@@ -71,9 +71,7 @@ graph TD
 | [`src/utility/spectral.py`](src/utility/spectral.py) | 實作 VARI、ExG 光譜矩陣純函數運算與背景土壤/水面遮罩生成 | [NumPy](https://numpy.org/)、[Pillow](https://pillow.readthedocs.io/) |
 | [`src/utility/formulas.py`](src/utility/formulas.py) | 集中管理光譜公式定義、物理現象解說字典與對照組差異計算邏輯 | Python 標準庫 |
 | [`src/utility/nodeodm.py`](src/utility/nodeodm.py) | 封裝 NodeODM HTTP REST API 通訊（新建任務、狀態輪詢、下載結果） | [httpx](https://www.python-httpx.org/) |
-| [`src/usecases/`](src/usecases/) | 封裝應用層業務流程（OdmUseCase 任務管理、ConversationUseCase 串流），解耦傳輸與核心邏輯 | Clean Architecture |
-| [`src/repositories/`](src/repositories/) | 集中管理 SQLite 連線、SQLModel 資料表模型映射與專責倉儲持久化操作 | [SQLModel](https://sqlmodel.tiangolo.com/)、[SQLite](https://www.sqlite.org/) |
-| [`src/entities/`](src/entities/) | 定義純 Python Dataclass 領域資料物件（Project, PlotGrid, Message），無外部依賴 | Python 標準庫 |
+| [`src/database.py`](src/database.py) | 集中管理 SQLite 連線、SQLModel 資料庫模型映射與非同步 CRUD 操作 | [SQLModel](https://sqlmodel.tiangolo.com/)、[SQLite](https://www.sqlite.org/) |
 | [`frontend/src/App.vue`](frontend/src/App.vue) | 單一頁面主視圖，整合上傳、Canvas 網格微調、農藥套用、指標確認與比較表 | [Vue 3](https://vuejs.org/)、[Canvas API](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API) |
 | [`frontend/src/lib/useOdmProgress.ts`](frontend/src/lib/useOdmProgress.ts) | 獨立 Vue Composable，專責管理 EventSource SSE 連線、狀態解析與資源釋放 | [WHATWG EventSource](https://developer.mozilla.org/en-US/docs/Web/API/EventSource) |
 
@@ -178,9 +176,7 @@ Output:
 | 代理人指標推薦 | [`src/agents/pydantic_agent.py`](src/agents/pydantic_agent.py) | `agent`, `recommend_spectral_indices()` |
 | 光譜指標計算 | [`src/utility/spectral.py`](src/utility/spectral.py) | `compute_vari()`, `compute_exg()` |
 | 公式定義與理由 | [`src/utility/formulas.py`](src/utility/formulas.py) | `SUPPORTED_INDICES`, `FORMULA_EXPLANATIONS` |
-| 應用層業務用例 | [`src/usecases/`](src/usecases/) | `OdmUseCase`, `ConversationUseCase` |
-| 資料倉儲與 Schema | [`src/repositories/`](src/repositories/) | `init_db()`, `ProjectRepository`, `PlotGridRepository` |
-| 領域實體定義 | [`src/entities/`](src/entities/) | `Project`, `PlotGrid`, `ConversationMessage` |
+| 資料存取與 Schema | [`src/database.py`](src/database.py) | `create_db_and_tables()`, `TrialTask`, `PlotGrid` |
 | 前端畫布與互動 | [`frontend/src/App.vue`](frontend/src/App.vue) | `drawGrid()`, `handleCanvasClick()`, `confirmIndices()` |
 | SSE 串流前端接收 | [`frontend/src/lib/useOdmProgress.ts`](frontend/src/lib/useOdmProgress.ts) | `useOdmProgress()` |
 

@@ -7,7 +7,7 @@ import httpx
 from PIL import Image
 
 logger = logging.getLogger("nodeodm")
-NODEODM_URL = "http://localhost:3001"
+NODEODM_URL = "http://localhost:3002"
 
 
 def check_nodeodm_alive(timeout: float = 2.0) -> bool:

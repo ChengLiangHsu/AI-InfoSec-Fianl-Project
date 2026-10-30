@@ -137,11 +137,15 @@
 - [Single Responsibility Principle (SRP)](https://en.wikipedia.org/wiki/Single-responsibility_principle)
 - **採用架構**：後端嚴格落實 Entities（領域純實體）、UseCases（應用業務流程）、Repositories（SQLModel 持久化倉儲）與 Controllers（FastAPI 路由協調）四層架構。
 
-### Python Dataclasses & Coroutines (PEP 492 / async def)
+### Python Dataclasses & Asyncio Concurrency
 - [Python 官方文件 - dataclasses (Data Classes)](https://docs.python.org/3/library/dataclasses.html)
-- [Python 官方文件 - Coroutines and Tasks (async def / await)](https://docs.python.org/3/reference/compound_stmts.html#async-def)
-- [PEP 492 – Coroutines with async and await syntax](https://peps.python.org/pep-0492/)
-- **非同步策略**：Entity 層以純 dataclass 實現零依賴；倉儲層直接宣告原生 `async def` 提供協程介面，不依賴 `asyncio` 模組或執行緒切換，代碼極簡。
+- [Python 官方文件 - asyncio.to_thread (Running in Threads)](https://docs.python.org/3/library/asyncio-task.html#asyncio.to_thread)
+- **非同步策略**：Entity 層以純 dataclass 實現零依賴；倉儲層以 Python 內建 `asyncio.to_thread` 調度同步 SQLModel Session 操作，達成無阻塞非同步介面。
+
+
+
+- [Python 官方文件 - typing.Protocol (PEP 544 結構化子型別)](https://docs.python.org/3/library/typing.html#typing.Protocol)
+- **採用架構**：UseCase 業務層以 `TaskUseCase` 作為聚合核心，透過 `TaskPort` 與 `PlotPort` 宣告倉儲契約；各倉儲實作類別（`TaskRepository`、`PlotGridRepository`）實作對應 Port 並由建構子注入 `Session`，落實依賴反轉與資源生命週期解耦。
 
 
 

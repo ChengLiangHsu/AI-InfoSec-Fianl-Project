@@ -31,9 +31,9 @@
 - **第一版結果畫面**：提供依指標數值著色的畫布、各小區數值比較表及各「農藥＋劑量」組的彙整與對照差異。
 - **小區指標持久化（SQLite Plot Metrics Storage）**：保存小區設定、確認的指標與計算結果以供結果畫面讀取，Agent 對話追問工具留待後續階段討論。
 - **Clean Architecture 四層架構分層（Clean Architecture Layering）**：後端採用實體（Entities）、用例（Use Cases）、倉儲（Repositories）與控制器（Controllers）四層架構，嚴格劃分關注點邊界與依賴倒置原則。
-- **純領域資料實體（Dataclass Entities）**：於 `src/entities/` 使用 Python 原生 `dataclass` 定義純領域物件（`Task`、`ConversationMessage`、`PlotGrid`），不依賴任何外部 ORM 或資料庫套件，命名與 NodeODM 規格全面對齊。
-- **SQLModel 專責倉儲持久化（SQLModel Dedicated Repositories）**：於 `src/repositories/` 定義 SQLModel 資料表模型，並透過領域專責倉儲類別（`TaskRepository`、`ConversationRepository`、`PlotGridRepository`）封裝 SQLite 資料存取邏輯。
-- **原生非同步介面宣告（Native async def Execution）**：倉儲方法直接宣告為原生 `async def`，不依賴 `asyncio` 模組或執行緒調度包裝，代碼精簡直觀且與上層 async 呼叫端自然對接。
+- **純領域資料實體（Dataclass Entities）**：於 `src/entities/` 使用 Python 原生 `dataclass` 定義純領域物件（`Project`、`ConversationMessage`、`PlotGrid`），不依賴任何外部 ORM 或資料庫套件。
+- **SQLModel 專責倉儲持久化（SQLModel Dedicated Repositories）**：於 `src/repositories/` 定義 SQLModel 資料表模型，並透過領域專責倉儲類別（`ProjectRepository`、`ConversationRepository`、`PlotGridRepository`）封裝 SQLite 資料存取邏輯。
+- **標準非同步執行緒調度（Standard asyncio.to_thread Execution）**：倉儲方法以 `async def` 封裝，內部透過 Python 標準函式庫 `asyncio.to_thread` 調度同步 SQLModel Session 查詢，不引入 anyio，確保主事件迴圈無阻塞。
 - **領域聚合應用層用例（Domain Aggregated Use Cases）**：於 `src/usecases/` 建立 `OdmUseCase` 與 `ConversationUseCase` 聚合業務流程，控制器僅負責參數驗證與調度 Use Case。
 - **全面刪除測試與嚴格受控（Total Test Deletion & Permission Control）**：依開發者明確指令刪除專案內所有既有測試檔案，未獲明確許可前嚴禁新增任何測試。
 - **模組分層命名結構（Controllers / UseCases / Repositories / Entities / Agents / Utility）**：FastAPI 路由統一歸入 `src/controllers/`，業務流程歸入 `src/usecases/`，資料持久化歸入 `src/repositories/`，純資料物件歸入 `src/entities/`，Pydantic AI 代理人歸入 `src/agents/`，公式與影像輔助運算歸入 `src/utility/`。
@@ -67,7 +67,7 @@
 - **文獻精簡至 23 篇雙向引用閉環（23 Core References Bidirectional Alignment）**：移除未於正文編號引用的文獻 [7]，全量重整 01 至 06 章與 DESIGN.md 引用編號（[8..24] 映射為 [7..23]），達成 100% 雙向對應。
 - **實體與控制器模組規格校準（Schema & Controller Mapping Synchronization）**：統一小區實體命名為 `PlotGrid`、資料庫初始化函式對齊 `init_db()`，並於第 5 章補入 `src/controllers/conversation.py` 控制器。
 - **README Demo 成果介面更新（README Demo Orthophoto UI Update）**：README.md 之 Demo 圖片統一以最新正射影像成果主畫面呈現，包含專案資訊卡片（田間航拍_1027_1153、65 張、100% 已完成）、RGB 原始拼接影像、懸浮光譜演算法切換器（VARI/EXG 等）及展開的側邊欄導覽，維持既有 Markdown 圖片語法直接覆蓋更新。
-- **維持本機 SQLite 專案中繼資料持久化（SQLite Project Metadata Persistence）**：後端維持在專案根目錄之 `database.sqlite` 中持久化記錄航拍任務 ID、名稱、照片數量與運算進度，作為專案元資訊之單一事實來源（Single Source of Truth），以支援對話歷史關聯、小區指標綁定及離線清單查詢。
+- **維持本機 SQLite 專案中繼資料持久化（SQLite Project Metadata Persistence）**：後端維持在 `src/repositories/` 中持久化記錄航拍任務 ID、名稱、照片數量與運算進度，作為專案元資訊之單一事實來源（Single Source of Truth），以支援對話歷史關聯、小區指標綁定及離線清單查詢。
 
 ## 拒絕
 - **拒絕 DESIGN.md 擴充非規範獨立章節**：不於 DESIGN.md 中新增額外獨立的 Problem、Requirements 或 How to Run 章節，How to Run 集中於 README.md，Problem/Requirements 歸屬提案章節與需求清單。
@@ -87,7 +87,7 @@
 - **拒絕重型分割模型**：不採用 SAM 2.1、YOLO-seg 等深度學習實例分割模型。
 - **拒絕複雜統計引擎**：不引入 ANOVA 與 Tukey HSD 等複雜推論統計模型。
 - **拒絕實體層混雜 ORM 宣告（No ORM in Entity Layer）**：`src/entities/` 嚴格禁止使用 SQLModel 或 SQLAlchemy 表格宣告，維持純 dataclass 領域物件。
-- **拒絕冗贅執行緒包裝（No Redundant Thread Wrapper）**：倉儲層非同步方法直接以原生 `async def` 實作，不引入 `asyncio.to_thread` 或 `anyio` 外部調度。
+- **拒絕非標準庫背景執行緒包裝（No Third-Party Thread Offloading）**：倉儲層非同步調度不使用 anyio 等外部套件，一律採用 Python 原生 `asyncio.to_thread`。
 - **拒絕未獲許可撰寫或保留測試（No Tests Without Permission）**：全面清空測試目錄，未經開發者明確指令前禁止撰寫或建立任何測試程式碼。
 - **拒絕殘留未使用的空分層目錄**：清理並杜絕在專案中保留無實際業務邏輯的架構模板空目錄。
 - **拒絕主程式進入點混合轉導（No Symbol Re-export in main.py）**：拒絕在 `src/main.py` 扮演通用的模組 re-export 轉導層，杜絕偽解耦。
@@ -109,4 +109,6 @@
 - **拒絕 Demo 截圖殘留未排版 JSON 與過載對話遮蔽（No Raw JSON & UI Clutter in Demo）**：Demo 截圖不得呈現舊版未排版之 JSON 原始碼、未命名字串或遮蔽演算法選單的對話框，確保展示乾淨俐落之正式成果畫面。
 - **拒絕 README Demo 圖片增加冗贅圖說標記**：不於 README.md 的 demo 圖片下方增加額外繁瑣圖說說明，維持極簡 `![DEMO 主畫面](docs/assets/demo.png)` 引用。
 - **拒絕完全依賴 NodeODM 作為專案儲存媒介（No NodeODM-Only Storage Dependency）**：不將專案清單與狀態完全委託給 NodeODM API，避免因 Docker 容器重啟、清理暫存或伺服器中斷而造成專案中繼資料與分析關聯遺失。
+
+- **拒絕 UseCase 直接耦合具體 Repository 實體（No Concrete Repo Coupling in UseCase）**：`src/usecases/` 嚴禁直接引用或依賴具體的 `TaskRepository` 實作類別或全域 `agent` 單例，強制一律透過建構子注入抽象 Port 與 Agent 實例。
 
