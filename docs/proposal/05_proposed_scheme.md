@@ -68,7 +68,7 @@ graph TD
 | 應用程式入口 | `src/main.py` | 僅建立應用程式、管理生命週期與掛載控制器 |
 | 上傳與拼接任務 | `src/controllers/odm.py`、`src/utility/nodeodm.py` | 分別處理請求與 NodeODM 任務協調 |
 | 串流進度管理 | `src/controllers/odm.py`、`frontend/src/lib/useOdmProgress.ts` | 以 SSE 串流即時推播拼圖進度與前端響應式綁定 |
-| AI 指標推薦 | `src/agents/pydantic_agent.py` | 推薦指標、提供理由與來源，遵守使用者確認流程 |
+| AI 指標推薦與對話 | `src/controllers/conversation.py`、`src/agents/pydantic_agent.py` | 接收試驗設定、推薦指標、提供理由與來源，遵守使用者確認流程 |
 | 網格繪製與點選 | `frontend/src/App.vue` (Canvas API) | 前端畫布互動框選、等距網格生成、微調與點選套用處理組 |
 | 指標與影像運算 | `src/utility/formulas.py`、`src/utility/spectral.py` | 管理公式及執行影像指標運算，擴充分區統計與處理組比較 |
 | 資料存取 | `src/database.py` | 集中保存任務、小區網格幾何、處理設定與分析結果 |

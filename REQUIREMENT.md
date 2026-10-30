@@ -52,14 +52,17 @@
 - **小區指標差異雙軌解讀機制（Dual-Track Interpretation for Plot Discrepancy）**：同農藥劑量之小區出現明顯指標差異時，以 3 重複平均值平抑田間微地形與土壤自然異質性，同時保留個別小區原始數值供使用者回看正射影像與噴灑設定排查異常原因，不自動刪除離群小區。
 - **極簡統計比較呈現（Minimalist Descriptive Statistics）**：結果畫面僅呈現各小區原始指標與處理組平均值，第一版不引入標準差（SD）、變異數分析（ANOVA）或顯著性檢定。
 - **第四章 Q3 深度理解問題重構（Deep Understanding Questions Restructuring）**：嚴格依循「以 RGB 空拍影像比較試驗小區」專案主軸，依課程規範涵蓋 Why、Comparison、What-if、Trade-off、Failure Case、Design Decision、Evidence、Real-world Scenario 等面向，設立 10 個具備推論深度與專業答題要點的領域問題。
-- **第三章文獻整理摘要表 1/2 配比（Article Summary Table Balance）**：文獻摘要表精選 6 篇具代表性核心文獻（3 篇 AI 技術多模態/Agent [1, 2, 3] + 3 篇領域試驗設計/小區分割 [12, 18, 21]），嚴格貫徹 1/2 AI 技術與 1/2 領域知識之評核規範。
+- **第三章文獻整理摘要表 1/2 配比（Article Summary Table Balance）**：文獻摘要表精選 6 篇具代表性核心文獻（3 篇 AI 技術多模態/Agent [1, 2, 3] + 3 篇領域試驗設計/小區分割 [11, 17, 20]），嚴格貫徹 1/2 AI 技術與 1/2 領域知識之評核規範。
 - **第三章研究切入點邏輯鏈定調（Research Gap Logic Chain）**：以「通用農業 AI 欠缺試驗結構與公式 ＋ 純遙測工具欠缺人機協同與指標理由說明」為矛盾，切入「互動式小區配置＋AI 指標推薦協調＋雙向可追溯影像指標比較」專用領域智慧代理人（Domain AI Agent）。
 - **第二章三大創新點與兩大貢獻（Introduction Innovation & Contributions）**：緒論確立三大創新（人機協同網格配置、AI 推薦指標附帶物理理由、試驗規範級重複去平均與雙向可溯性）及兩大貢獻（開源輕量本機 Agent 系統架構、大幅降低田間試驗客觀評估門檻）。
 - **第一章實驗評估與預期成果規格（Abstract Experiments & Expected Findings）**：以真實田間無人機 RGB 空拍影像（GSD < 1 cm/px）為基準，對比傳統人工目測與全田粗算 Baseline，評估小區處理效率、3 重複 Treatment Mean 去平均平抑田間變異效果與雙向可追溯性。
 - **系統設計規格書嚴格對齊九大核心項目（DESIGN.md 9 Core Sections Alignment）**：DESIGN.md 嚴格依據課程規範 Table B 限制為且僅包含 9 大核心章節（Architecture、Components、Data Flow、AI Model、Domain Knowledge、Algorithm、Implementation Mapping、Results、Limitations），完全杜絕多餘章節。
 - **提案章節全量合規校準（Proposal Consistency Across Chapters）**：第 1 至 6 章與 DESIGN.md 嚴格對齊一致性規範，全面移除 NDRE、將小區切割統一為人機協同網格標註、將第一版成果定調為著色畫布與數值比較表（AI 摘要與報告生成列為後續工作）。
-- **參考文獻雙向完整對照（Bidirectional References Alignment）**：重整 `06_references.md` 為 24 篇有效核心文獻，正文引用與參考文獻編號維持 100% 雙向對應，納入 VARI、ExG、FAIR、Peña、Xia、Jay、TACTRI 等實測學理來源。
+- **參考文獻雙向完整對照（Bidirectional References Alignment）**：重整 `06_references.md` 為 23 篇有效核心文獻，正文引用與參考文獻編號維持 100% 雙向對應，納入 VARI、FAIR、Peña、Xia、Jay、TACTRI 等實測學理來源。
 - **演算法與工程模組規格統一（Algorithm & Module Mapping Synchronization）**：第 5 章與 DESIGN.md 之 Pseudocode 同步為 17 行完整迴圈版本，網格繪製與點選套用明確對齊前端 Canvas 與 database.py，杜絕未規劃的虛構模組。
+- **文獻精簡至 23 篇雙向引用閉環（23 Core References Bidirectional Alignment）**：移除未於正文編號引用的文獻 [7]，全量重整 01 至 06 章與 DESIGN.md 引用編號（[8..24] 映射為 [7..23]），達成 100% 雙向對應。
+- **實體與控制器模組規格校準（Schema & Controller Mapping Synchronization）**：統一小區實體命名為 `PlotGrid`、資料庫初始化函式對齊 `create_db_and_tables()`，並於第 5 章補入 `src/controllers/conversation.py` 控制器。
+- **README Demo 成果介面更新（README Demo Orthophoto UI Update）**：README.md 之 Demo 圖片統一以最新正射影像成果主畫面呈現，包含專案資訊卡片（田間航拍_1027_1153、65 張、100% 已完成）、RGB 原始拼接影像、懸浮光譜演算法切換器（VARI/EXG 等）及展開的側邊欄導覽，維持既有 Markdown 圖片語法直接覆蓋更新。
 
 ## 拒絕
 - **拒絕 DESIGN.md 擴充非規範獨立章節**：不於 DESIGN.md 中新增額外獨立的 Problem、Requirements 或 How to Run 章節，How to Run 集中於 README.md，Problem/Requirements 歸屬提案章節與需求清單。
@@ -98,4 +101,6 @@
 - **拒絕 Q1 充斥抽象黑話與過度修飾**：第四章 Q1 杜絕脫離具體軟體互動的抽象架構黑話，第三面向一律落實為高中生可理解之具體「系統行為」。
 - **拒絕於提案前言宣稱未納入之自動盲切與報告生成**：杜絕在摘要與緒論中使用「自動切割小區」與「自動產出藥效報告」等誇大或牴觸第一版決策之宣稱。
 - **拒絕正文出現孤立參考文獻與幽靈引用**：杜絕在文獻清單中保留未被正文引用的冗餘文獻，亦杜絕正文提及核心學理卻未納入正式參考文獻之脫節現象。
+- **拒絕 Demo 截圖殘留未排版 JSON 與過載對話遮蔽（No Raw JSON & UI Clutter in Demo）**：Demo 截圖不得呈現舊版未排版之 JSON 原始碼、未命名字串或遮蔽演算法選單的對話框，確保展示乾淨俐落之正式成果畫面。
+- **拒絕 README Demo 圖片增加冗贅圖說標記**：不於 README.md 的 demo 圖片下方增加額外繁瑣圖說說明，維持極簡 `![DEMO 主畫面](docs/assets/demo.png)` 引用。
 

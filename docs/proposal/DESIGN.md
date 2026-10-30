@@ -176,7 +176,7 @@ Output:
 | 代理人指標推薦 | [`src/agents/pydantic_agent.py`](src/agents/pydantic_agent.py) | `agent`, `recommend_spectral_indices()` |
 | 光譜指標計算 | [`src/utility/spectral.py`](src/utility/spectral.py) | `compute_vari()`, `compute_exg()` |
 | 公式定義與理由 | [`src/utility/formulas.py`](src/utility/formulas.py) | `SUPPORTED_INDICES`, `FORMULA_EXPLANATIONS` |
-| 資料存取與 Schema | [`src/database.py`](src/database.py) | `init_db()`, `TrialTask`, `PlotRecord` |
+| 資料存取與 Schema | [`src/database.py`](src/database.py) | `create_db_and_tables()`, `TrialTask`, `PlotGrid` |
 | 前端畫布與互動 | [`frontend/src/App.vue`](frontend/src/App.vue) | `drawGrid()`, `handleCanvasClick()`, `confirmIndices()` |
 | SSE 串流前端接收 | [`frontend/src/lib/useOdmProgress.ts`](frontend/src/lib/useOdmProgress.ts) | `useOdmProgress()` |
 
