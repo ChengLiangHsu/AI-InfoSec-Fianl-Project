@@ -38,6 +38,8 @@
 ### SQLModel & SQLite
 - [SQLModel 官方文件](https://sqlmodel.tiangolo.com/)
 - [SQLite 官方文件](https://www.sqlite.org/docs.html)
+- [SQLite Single-file Architecture：適用於本地代理人應用與中繼資料持久化之獨立儲存規範](https://www.sqlite.org/about.html)
+- **採用架構**：以本機 SQLite 作為專案任務中繼資料、對話歷史與小區指標之單一事實來源，將運算引擎（NodeODM）與業務資料生命週期解耦。
 
 ### Rasterio & GeoTIFF
 - [Rasterio 官方文件](https://rasterio.readthedocs.io/en/stable/)

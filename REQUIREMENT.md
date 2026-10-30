@@ -63,6 +63,7 @@
 - **文獻精簡至 23 篇雙向引用閉環（23 Core References Bidirectional Alignment）**：移除未於正文編號引用的文獻 [7]，全量重整 01 至 06 章與 DESIGN.md 引用編號（[8..24] 映射為 [7..23]），達成 100% 雙向對應。
 - **實體與控制器模組規格校準（Schema & Controller Mapping Synchronization）**：統一小區實體命名為 `PlotGrid`、資料庫初始化函式對齊 `create_db_and_tables()`，並於第 5 章補入 `src/controllers/conversation.py` 控制器。
 - **README Demo 成果介面更新（README Demo Orthophoto UI Update）**：README.md 之 Demo 圖片統一以最新正射影像成果主畫面呈現，包含專案資訊卡片（田間航拍_1027_1153、65 張、100% 已完成）、RGB 原始拼接影像、懸浮光譜演算法切換器（VARI/EXG 等）及展開的側邊欄導覽，維持既有 Markdown 圖片語法直接覆蓋更新。
+- **維持本機 SQLite 專案中繼資料持久化（SQLite Project Metadata Persistence）**：後端維持在 `src/database.py` 中持久化記錄航拍任務 ID、名稱、照片數量與運算進度，作為專案元資訊之單一事實來源（Single Source of Truth），以支援對話歷史關聯、小區指標綁定及離線清單查詢。
 
 ## 拒絕
 - **拒絕 DESIGN.md 擴充非規範獨立章節**：不於 DESIGN.md 中新增額外獨立的 Problem、Requirements 或 How to Run 章節，How to Run 集中於 README.md，Problem/Requirements 歸屬提案章節與需求清單。
@@ -103,4 +104,5 @@
 - **拒絕正文出現孤立參考文獻與幽靈引用**：杜絕在文獻清單中保留未被正文引用的冗餘文獻，亦杜絕正文提及核心學理卻未納入正式參考文獻之脫節現象。
 - **拒絕 Demo 截圖殘留未排版 JSON 與過載對話遮蔽（No Raw JSON & UI Clutter in Demo）**：Demo 截圖不得呈現舊版未排版之 JSON 原始碼、未命名字串或遮蔽演算法選單的對話框，確保展示乾淨俐落之正式成果畫面。
 - **拒絕 README Demo 圖片增加冗贅圖說標記**：不於 README.md 的 demo 圖片下方增加額外繁瑣圖說說明，維持極簡 `![DEMO 主畫面](docs/assets/demo.png)` 引用。
+- **拒絕完全依賴 NodeODM 作為專案儲存媒介（No NodeODM-Only Storage Dependency）**：不將專案清單與狀態完全委託給 NodeODM API，避免因 Docker 容器重啟、清理暫存或伺服器中斷而造成專案中繼資料與分析關聯遺失。
 
