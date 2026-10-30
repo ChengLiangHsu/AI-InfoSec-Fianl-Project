@@ -57,7 +57,7 @@
 1. **安裝並啟動 Docker**。
 2. **啟動 NodeODM 容器**：
    ```bash
-   docker run --rm -p 3000:3000 opendronemap/nodeodm
+   docker run --rm -p 3002:3000 opendronemap/nodeodm
    ```
 
 ---

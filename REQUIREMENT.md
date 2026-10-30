@@ -30,13 +30,17 @@
 - **第一版僅比較影像指標**：比較各小區及各「農藥＋劑量」組的 RGB 指標與明確指定對照組的差異，人工調查資料、藥效百分比與法定效力判定列為後續待確認項目。
 - **第一版結果畫面**：提供依指標數值著色的畫布、各小區數值比較表及各「農藥＋劑量」組的彙整與對照差異。
 - **小區指標持久化（SQLite Plot Metrics Storage）**：保存小區設定、確認的指標與計算結果以供結果畫面讀取，Agent 對話追問工具留待後續階段討論。
-- **main.py 模組化服務導向拆分（Modular Service-Oriented Architecture）**：將單一主程式拆分為獨立路由（Routers）、Agent 服務、影像處理服務與資料存取模組，main.py 僅負責主流程調度與應用程式入口。
-- **統一資料存取層至 src/database.py**：將資料庫存取集中管理於 `src/database.py`，維持相容非同步介面以確保測試與現有資料庫平滑銜接。
-- **模組分層命名結構（Controllers / Agents / Utility）**：FastAPI 路由統一歸入 `src/controllers/`，Pydantic AI 代理人與工具歸入 `src/agents/`，公式與影像輔助運算歸入 `src/utility/`。
-- **Agent 模組命名與組織（src/agents/pydantic_agent.py）**：將 Pydantic AI 代理人核心、System Prompt 與關聯 Tools 集中於 `src/agents/pydantic_agent.py`，並於 `__init__.py` 統一導出。
+- **Clean Architecture 四層架構分層（Clean Architecture Layering）**：後端採用實體（Entities）、用例（Use Cases）、倉儲（Repositories）與控制器（Controllers）四層架構，嚴格劃分關注點邊界與依賴倒置原則。
+- **純領域資料實體（Dataclass Entities）**：於 `src/entities/` 使用 Python 原生 `dataclass` 定義純領域物件（`Task`、`ConversationMessage`、`PlotGrid`），不依賴任何外部 ORM 或資料庫套件，命名與 NodeODM 規格全面對齊。
+- **SQLModel 專責倉儲持久化（SQLModel Dedicated Repositories）**：於 `src/repositories/` 定義 SQLModel 資料表模型，並透過領域專責倉儲類別（`TaskRepository`、`ConversationRepository`、`PlotGridRepository`）封裝 SQLite 資料存取邏輯。
+- **原生非同步介面宣告（Native async def Execution）**：倉儲方法直接宣告為原生 `async def`，不依賴 `asyncio` 模組或執行緒調度包裝，代碼精簡直觀且與上層 async 呼叫端自然對接。
+- **領域聚合應用層用例（Domain Aggregated Use Cases）**：於 `src/usecases/` 建立 `OdmUseCase` 與 `ConversationUseCase` 聚合業務流程，控制器僅負責參數驗證與調度 Use Case。
+- **全面刪除測試與嚴格受控（Total Test Deletion & Permission Control）**：依開發者明確指令刪除專案內所有既有測試檔案，未獲明確許可前嚴禁新增任何測試。
+- **模組分層命名結構（Controllers / UseCases / Repositories / Entities / Agents / Utility）**：FastAPI 路由統一歸入 `src/controllers/`，業務流程歸入 `src/usecases/`，資料持久化歸入 `src/repositories/`，純資料物件歸入 `src/entities/`，Pydantic AI 代理人歸入 `src/agents/`，公式與影像輔助運算歸入 `src/utility/`。
+- **Agent 模組命名與組織（src/agents/pydantic_agent.py）**：將 Pydantic AI 代理人核心、System Prompt 與關聯 Tools 集中於 `src/agents/pydantic_agent.py`，並依賴專責倉儲介面。
 - **控制器專責拆分（Controllers Division）**：對話歷史與 Agent 串流互動收錄於 `src/controllers/conversation.py`，航拍任務與影像生成收錄於 `src/controllers/odm.py`。
 - **公用運算庫整合（Utility Modules）**：植生公式、光譜熱圖生成與 NodeODM 管理收納至 `src/utility/`。
-- **嚴格職責純粹之主程式進入點**：`src/main.py` 僅保留 FastAPI 實例、生命週期與控制器掛載，不進行任何非必要的符號 re-export，外部與測試端直接對齊新模組路徑。
+- **嚴格職責純粹之主程式進入點**：`src/main.py` 僅保留 FastAPI 實例、生命週期與控制器掛載，不進行任何非必要的符號 re-export，外部調用端直接對齊新模組路徑。
 - **清理無用過度工程目錄**：移除專案內殘留之空的 `src/adapter` 分層目錄，落實精簡服務導向架構。
 - **精簡合規提案章節架構（Proposal Chapter Compliance）**：嚴格依循課程規範（01 摘要、02 緒論、03 相關文獻、04 深度探討、05 系統設計、07 參考文獻），移除未在規範中之 06 執行規劃與 00 專案概述章節，確保提案結構精準達標。
 - **清理說明文件衝突與統一服務啟動指令**：修復 `README.md` 衝突標記，統整 NodeODM Docker 容器標準啟動命令與更新章節索引連結至 `docs/proposal/`。
@@ -59,11 +63,11 @@
 - **系統設計規格書嚴格對齊九大核心項目（DESIGN.md 9 Core Sections Alignment）**：DESIGN.md 嚴格依據課程規範 Table B 限制為且僅包含 9 大核心章節（Architecture、Components、Data Flow、AI Model、Domain Knowledge、Algorithm、Implementation Mapping、Results、Limitations），完全杜絕多餘章節。
 - **提案章節全量合規校準（Proposal Consistency Across Chapters）**：第 1 至 6 章與 DESIGN.md 嚴格對齊一致性規範，全面移除 NDRE、將小區切割統一為人機協同網格標註、將第一版成果定調為著色畫布與數值比較表（AI 摘要與報告生成列為後續工作）。
 - **參考文獻雙向完整對照（Bidirectional References Alignment）**：重整 `06_references.md` 為 23 篇有效核心文獻，正文引用與參考文獻編號維持 100% 雙向對應，納入 VARI、FAIR、Peña、Xia、Jay、TACTRI 等實測學理來源。
-- **演算法與工程模組規格統一（Algorithm & Module Mapping Synchronization）**：第 5 章與 DESIGN.md 之 Pseudocode 同步為 17 行完整迴圈版本，網格繪製與點選套用明確對齊前端 Canvas 與 database.py，杜絕未規劃的虛構模組。
+- **演算法與工程模組規格統一（Algorithm & Module Mapping Synchronization）**：第 5 章與 DESIGN.md 之 Pseudocode 同步為 17 行完整迴圈版本，網格繪製與點選套用明確對齊前端 Canvas 與倉儲層，杜絕未規劃的虛構模組。
 - **文獻精簡至 23 篇雙向引用閉環（23 Core References Bidirectional Alignment）**：移除未於正文編號引用的文獻 [7]，全量重整 01 至 06 章與 DESIGN.md 引用編號（[8..24] 映射為 [7..23]），達成 100% 雙向對應。
-- **實體與控制器模組規格校準（Schema & Controller Mapping Synchronization）**：統一小區實體命名為 `PlotGrid`、資料庫初始化函式對齊 `create_db_and_tables()`，並於第 5 章補入 `src/controllers/conversation.py` 控制器。
+- **實體與控制器模組規格校準（Schema & Controller Mapping Synchronization）**：統一小區實體命名為 `PlotGrid`、資料庫初始化函式對齊 `init_db()`，並於第 5 章補入 `src/controllers/conversation.py` 控制器。
 - **README Demo 成果介面更新（README Demo Orthophoto UI Update）**：README.md 之 Demo 圖片統一以最新正射影像成果主畫面呈現，包含專案資訊卡片（田間航拍_1027_1153、65 張、100% 已完成）、RGB 原始拼接影像、懸浮光譜演算法切換器（VARI/EXG 等）及展開的側邊欄導覽，維持既有 Markdown 圖片語法直接覆蓋更新。
-- **維持本機 SQLite 專案中繼資料持久化（SQLite Project Metadata Persistence）**：後端維持在 `src/database.py` 中持久化記錄航拍任務 ID、名稱、照片數量與運算進度，作為專案元資訊之單一事實來源（Single Source of Truth），以支援對話歷史關聯、小區指標綁定及離線清單查詢。
+- **維持本機 SQLite 專案中繼資料持久化（SQLite Project Metadata Persistence）**：後端維持在專案根目錄之 `database.sqlite` 中持久化記錄航拍任務 ID、名稱、照片數量與運算進度，作為專案元資訊之單一事實來源（Single Source of Truth），以支援對話歷史關聯、小區指標綁定及離線清單查詢。
 
 ## 拒絕
 - **拒絕 DESIGN.md 擴充非規範獨立章節**：不於 DESIGN.md 中新增額外獨立的 Problem、Requirements 或 How to Run 章節，How to Run 集中於 README.md，Problem/Requirements 歸屬提案章節與需求清單。
@@ -82,9 +86,9 @@
 - **拒絕 RAG 向量架構**：不使用向量資料庫（Vector DB）與 RAG 檢索流程。
 - **拒絕重型分割模型**：不採用 SAM 2.1、YOLO-seg 等深度學習實例分割模型。
 - **拒絕複雜統計引擎**：不引入 ANOVA 與 Tukey HSD 等複雜推論統計模型。
-- **拒絕邊緣試驗資料**：不納入小麥赤黴病（FHB）與水稻育苗箱計數等非核心資料。
-- **拒絕過度工程 Clean Architecture**：不採用 entity/usecase/adapter/port 分層，改採模組化服務導向架構。
-- **拒絕龐大單檔單體架構**：不將路由、Agent 工具、影像演算法與資料庫邏輯混雜於單一 main.py 中。
+- **拒絕實體層混雜 ORM 宣告（No ORM in Entity Layer）**：`src/entities/` 嚴格禁止使用 SQLModel 或 SQLAlchemy 表格宣告，維持純 dataclass 領域物件。
+- **拒絕冗贅執行緒包裝（No Redundant Thread Wrapper）**：倉儲層非同步方法直接以原生 `async def` 實作，不引入 `asyncio.to_thread` 或 `anyio` 外部調度。
+- **拒絕未獲許可撰寫或保留測試（No Tests Without Permission）**：全面清空測試目錄，未經開發者明確指令前禁止撰寫或建立任何測試程式碼。
 - **拒絕殘留未使用的空分層目錄**：清理並杜絕在專案中保留無實際業務邏輯的架構模板空目錄。
 - **拒絕主程式進入點混合轉導（No Symbol Re-export in main.py）**：拒絕在 `src/main.py` 扮演通用的模組 re-export 轉導層，杜絕偽解耦。
 - **拒絕冗長學術黑話**：避免晦澀學術名詞與長篇大論。

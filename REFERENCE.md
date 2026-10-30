@@ -131,9 +131,17 @@
 - [EPPO Standard PP 1/152(4)：Design and analysis of efficacy evaluation trials](https://www.eppo.int/RESOURCES/eppo_standards/standards_pp1)
 - [Semi-Automated Field Plot Segmentation From UAS Imagery for Experimental Agriculture (Front. Plant Sci. 2020)](https://doi.org/10.3389/fpls.2020.591886)
 
-### 提案章節與規格書一致性審查 (Proposal & DESIGN.md Consistency)
-- **課程作業依據**：[期末專題提案作業規範 (COURSE.md)](docs/proposal/COURSE.md)
-- **核心演算法與虛擬碼**：依循單一職責模式與確定性遙測統計，同步規範於 `05_proposed_scheme.md` 與 `DESIGN.md`。
-- **參考文獻完整索引**：[6. References 參考文獻 (06_references.md)](docs/proposal/06_references.md) 涵蓋 23 篇雙向驗證文獻。
+### Clean Architecture (整潔架構)
+- [The Clean Architecture by Robert C. Martin (Uncle Bob)](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)
+- [Martin Fowler - Repository Pattern](https://martinfowler.com/eaaCatalog/repository.html)
+- [Single Responsibility Principle (SRP)](https://en.wikipedia.org/wiki/Single-responsibility_principle)
+- **採用架構**：後端嚴格落實 Entities（領域純實體）、UseCases（應用業務流程）、Repositories（SQLModel 持久化倉儲）與 Controllers（FastAPI 路由協調）四層架構。
+
+### Python Dataclasses & Coroutines (PEP 492 / async def)
+- [Python 官方文件 - dataclasses (Data Classes)](https://docs.python.org/3/library/dataclasses.html)
+- [Python 官方文件 - Coroutines and Tasks (async def / await)](https://docs.python.org/3/reference/compound_stmts.html#async-def)
+- [PEP 492 – Coroutines with async and await syntax](https://peps.python.org/pep-0492/)
+- **非同步策略**：Entity 層以純 dataclass 實現零依賴；倉儲層直接宣告原生 `async def` 提供協程介面，不依賴 `asyncio` 模組或執行緒切換，代碼極簡。
+
 
 
