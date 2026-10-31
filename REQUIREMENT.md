@@ -80,6 +80,11 @@
 - **允許拋出 httpx 例外與 Presenter 集中攔截（Allow HTTPX Exceptions with Presenter Handling）**：Requester 允許直接拋出 `httpx.HTTPStatusError` 與 `httpx.RequestError` 例外，由 FastAPI Presenter 全域例外處理器統一攔截並包裝為標準錯誤格式，回傳訊息須明確標註為 NodeODM 服務錯誤（包含狀態碼、錯誤原因或連線失敗說明）。
 - **OdmRequester 實體內部自主管理連線客戶端（Self-Managed HTTP Client in OdmRequester）**：於 `src/requesters/odm.py` 實作 `OdmRequester`，建構子僅保留 Base URL 設定（預設 `http://localhost:3002`），連線客戶端 `httpx.AsyncClient` 由實例內部自主建立與維護，不強制自外部注入 client 參數，簡化實例化流程。
 - **階層式差異化操作超時機制（Tiered Operation Timeouts）**：針對大檔影像上傳與正射成果下載提供預設 120 秒超時，節點探針與狀態查詢提供預設 10 秒超時，並允許呼叫端傳入自訂超時或任務 options 參數。
+- **優先修復既有後端對接斷點（Prioritize Backend-Frontend Alignment Fix）**：優先將控制器（Controllers）與 Pydantic AI Agent 完整對齊至 `TaskUseCase` 與 `TaskRepository`，確保現有前端功能（空拍相片上傳、NodeODM 正射拼接、SSE 即時進度、光譜圖切換、AskAgent 多模態對話）完全正常運作。
+- **標準請求生命週期依賴注入（Request-Scoped Dependency Injection via Depends）**：在 `src/controllers/dependencies.py` 透過 FastAPI `Depends(get_session)` 動態解析 `TaskRepository` 與 `TaskUseCase`，確保每個 HTTP 請求具備獨立的資料庫 Session 生命週期與自動釋放機制。
+- **嚴格任務專屬對話持久化（Strict Task-Scoped Dialogue Persistence）**：對話歷史僅限於已建立或選定之特定航拍任務（Task ID）寫入 SQLite `tasks.messages` 欄位；首頁未選定專案時不進行資料庫持久化，確保任務與對話生命週期單一歸屬。
+- **正射成果下載與解壓職責分離（Decoupled Asset Download and Extraction）**：正射成果資產統一透過 `OdmRequester.download_task_assets` 經由 HTTP 下載位元組，再委由 `src/utility/nodeodm.py` 純影像工具函式進行解壓縮與 GeoTIFF 轉 PNG 處理，落實外部通訊與影像運算之關注點分離。
+- **單一任務控制器整合（Unified Task Controller Consolidation）**：將原先分散之 `conversation.py` 與 `odm.py` 整合為單一 `src/controllers/task.py`，由單一 `task_router` 集中維護航拍任務生命週期、NodeODM 任務調度、正射與光譜影像產出、以及任務關聯對話互動，直接對齊 `TaskUseCase` 業務聚合邊界。
 
 ## 拒絕
 - **拒絕 DESIGN.md 擴充非規範獨立章節**：不於 DESIGN.md 中新增額外獨立的 Problem、Requirements 或 How to Run 章節，How to Run 集中於 README.md，Problem/Requirements 歸屬提案章節與需求清單。
@@ -134,3 +139,8 @@
 - **拒絕過度工程之非同步上下文管理器（No Overengineered Async Context Manager in Requester）**：Requester 內部直接調用持久化 `httpx.AsyncClient`，不強制封裝 `__aenter__` 與 `__aexit__` 等上下文管理器樣板代碼，維持 API 調用介面之極簡性。
 - **拒絕外部注入 client 造成介面繁瑣（No Redundant Client Injection Parameter）**：`OdmRequester` 建構子不暴露多餘的 `client: httpx.AsyncClient` 參數，避免調用端增加不必要的生命週期傳遞負擔。
 - **拒絕未宣告於 Port 介面之冗餘關閉方法（No Redundant Close Method in Requester）**：`OdmPort` 未宣告 `close()` 契約，`OdmRequester` 嚴禁保留多餘的連線關閉方法，確保實作類別與介面契約嚴格 100% 對齊。
+- **拒絕在未修復既有介面時提前擴充新功能（No Premature Feature Expansion Before Fix）**：在既有航拍上傳、進度監聽與對話互動尚未修復並驗證跑通前，不提前引入小區畫布或非必要之新功能端點。
+- **拒絕全域 Application State 共享資料庫連線（No Shared DB Session in App State）**：嚴禁在 `lifespan` 或 `app.state` 建立共用的資料庫 Session 或單例 UseCase，杜絕多請求併發時的 SQLite 執行緒競爭或狀態污染。
+- **拒絕首頁無專案對話寫入資料庫（No Unbound Home Dialogue in DB）**：拒絕在資料庫建立虛擬 home 任務紀錄或儲存未綁定任務之臨時對話，杜絕無效資料堆積。
+- **拒絕 Utility 模組直接發起 HTTP 請求（No Direct HTTP Calls in Utility）**：影像處理與數學公式等公用模組（Utility）嚴禁直接調用外部網路請求，外部通訊統一經由 Port 與 Requester 處理。
+- **拒絕過度拆分碎片化控制器（No Fragmented Multi-Controllers for Task Domain）**：拒絕將屬於同一 Task 聚合領域之航拍任務與對話歷程人為拆分為多個獨立的控制器檔案，避免跨控制器依賴碎片化。

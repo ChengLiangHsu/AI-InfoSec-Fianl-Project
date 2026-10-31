@@ -9,11 +9,14 @@
 ### FastAPI
 - [FastAPI 官方文件](https://fastapi.tiangolo.com/)
 - [FastAPI APIRouter 模組化架構指引](https://fastapi.tiangolo.com/tutorial/bigger-applications/)
+- [FastAPI APIRouter 路由前綴與標籤設計 (Routing)](https://fastapi.tiangolo.com/tutorial/bigger-applications/#apirouter)
 - [FastAPI StreamingResponse 官方文件](https://fastapi.tiangolo.com/advanced/custom-response/#streamingresponse)
+- [FastAPI 依賴注入 (Dependencies with yield) 官方文件](https://fastapi.tiangolo.com/tutorial/dependencies/dependencies-with-yield/)
 
 ### Pydantic AI
 - [Pydantic AI 官方文件](https://ai.pydantic.dev/)
 - [Pydantic AI 工具調度機制 (Function Tools)](https://ai.pydantic.dev/tools/)
+- [Pydantic AI 對話歷史與訊息管理 (Message History)](https://ai.pydantic.dev/message-history/)
 - [Pydantic 核心文件](https://docs.pydantic.dev/)
 - [ReAct 代理人架構論文 (Yao et al., 2022)](https://arxiv.org/abs/2210.03629)
 
@@ -37,6 +40,7 @@
 
 ### SQLModel & SQLite
 - [SQLModel 官方文件](https://sqlmodel.tiangolo.com/)
+- [SQLModel FastAPI Session 依賴注入教學](https://sqlmodel.tiangolo.com/tutorial/fastapi/session-with-dependency/)
 - [SQLite 官方文件](https://www.sqlite.org/docs.html)
 - [SQLite Single-file Architecture：適用於本地代理人應用與中繼資料持久化之獨立儲存規範](https://www.sqlite.org/about.html)
 - **採用架構**：以本機 SQLite 作為專案任務中繼資料、對話歷史與小區指標之單一事實來源，將運算引擎（NodeODM）與業務資料生命週期解耦。
@@ -138,6 +142,7 @@
 - **採用架構**：後端嚴格落實 Entities（領域純實體）、UseCases（應用業務流程）、Repositories（SQLModel 持久化倉儲）與 Controllers（FastAPI 路由協調）四層架構。
 
 ### Python Dataclasses & Asyncio Concurrency
+- [Python 官方文件 - zipfile (ZIP archive access)](https://docs.python.org/3/library/zipfile.html)
 - [Python 官方文件 - dataclasses (Data Classes)](https://docs.python.org/3/library/dataclasses.html)
 - [Python 官方文件 - asyncio.to_thread (Running in Threads)](https://docs.python.org/3/library/asyncio-task.html#asyncio.to_thread)
 - **非同步策略**：Entity 層以純 dataclass 實現零依賴；倉儲層以 Python 內建 `asyncio.to_thread` 調度同步 SQLModel Session 操作，達成無阻塞非同步介面。

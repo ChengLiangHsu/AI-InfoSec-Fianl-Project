@@ -18,9 +18,8 @@ from pydantic_ai import (
     RunContext,
 )
 
-from src.database import Database
+from src.usecases.ports.task import TaskPort
 from src.utility.formulas import algos, get_algorithm_list, get_camera_filters_for, lookup_formula
-from src.utility.nodeodm import fetch_orthophoto_from_odm
 from src.utility.spectral import generate_spectral_image
 
 SRC_DIR = Path(__file__).resolve().parents[1]
@@ -31,7 +30,7 @@ ODM_DIR.mkdir(parents=True, exist_ok=True)
 @dataclass
 class ChatDeps:
     project_id: str
-    database: Database
+    task_port: TaskPort
 
 
 model = os.getenv("PYDANTIC_AI_MODEL", "google:gemini-3.7-flash")
@@ -55,14 +54,14 @@ async def system_prompt(ctx: RunContext[ChatDeps]) -> str:
     pid = ctx.deps.project_id
     if pid and pid != "home":
         try:
-            proj = await ctx.deps.database.get_project(pid)
+            proj = await ctx.deps.task_port.get_task(pid)
             ortho_exists = (ODM_DIR / f"{pid}.png").exists()
             base_prompt += (
                 f"\n\n【當前專案資訊】\n"
-                f"- 專案名稱：{proj['name']}\n"
-                f"- 專案 ID：{proj['id']}\n"
-                f"- 航拍相片數：{proj['images']} 張\n"
-                f"- 拼接運算進度：{proj['progress']}%\n"
+                f"- 專案名稱：{proj.name}\n"
+                f"- 專案 ID：{proj.id}\n"
+                f"- 航拍相片數：{proj.images} 張\n"
+                f"- 拼接運算進度：{proj.progress}%\n"
                 f"- 正射圖產出狀態：{'已完成就緒 (Ready)' if ortho_exists else '尚未完成或生成中'}\n"
                 f"使用者目前在該專案的專屬小視窗（AskAgent）與你對話，你可以直接調用工具存取此專案的正射圖與其光譜圖進行多模態診斷。"
             )
@@ -81,7 +80,7 @@ async def get_current_project_info(ctx: RunContext[ChatDeps]) -> dict:
             "message": "目前使用者位於主畫面首頁，尚未進入任何專案。請引導使用者選擇或建立專案後再進行特定田間影像分析。",
         }
     try:
-        proj = await ctx.deps.database.get_project(pid)
+        proj = await ctx.deps.task_port.get_task(pid)
     except Exception as e:
         return {"status": "error", "message": f"無法載入專案資料: {e}"}
 
@@ -193,8 +192,6 @@ async def calculate_spectral_statistics(
 
     ortho_path = ODM_DIR / f"{pid}.png"
     if not ortho_path.exists():
-        await fetch_orthophoto_from_odm(pid, ortho_path)
-        if not ortho_path.exists():
             return {"status": "error", "message": "尚未找到該專案的正射圖，航拍拼接可能尚未完成。"}
 
     formula_upper = formula.strip().upper()
@@ -256,8 +253,6 @@ async def inspect_field_imagery(
 
     ortho_path = ODM_DIR / f"{pid}.png"
     if not ortho_path.exists():
-        await fetch_orthophoto_from_odm(pid, ortho_path)
-        if not ortho_path.exists():
             return "正射圖檔案不存在，請確認空拍拼接任務是否已完成。"
 
     formula_upper = formula.strip().upper()

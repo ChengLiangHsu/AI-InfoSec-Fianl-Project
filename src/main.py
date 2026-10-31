@@ -7,10 +7,9 @@ from dotenv import load_dotenv
 import fastapi
 import logfire
 
-from src.controllers import conversation_router, odm_router
+from src.controllers import task_router
 from src.database import init_db
 from src.presenter import register_error_handlers
-from src.utility.nodeodm import ensure_nodeodm_running
 
 load_dotenv()
 logfire.configure(send_to_logfire="if-token-present")
@@ -21,9 +20,7 @@ THIS_DIR = Path(__file__).parent
 
 @asynccontextmanager
 async def lifespan(_app: fastapi.FastAPI):
-    """應用程式生命週期管理：確認 NodeODM 就緒並初始化 SQLite 資料庫。"""
-    if not ensure_nodeodm_running():
-        raise RuntimeError("NodeODM 尚未啟動，中止後端服務。請先執行 'docker run -d -p 3002:3000 --name nodeodm opendronemap/nodeodm' 啟動容器。")
+    """應用程式生命週期管理：初始化 SQLite 資料庫結構。"""
     init_db()
     yield
 
@@ -33,9 +30,7 @@ def create_app() -> fastapi.FastAPI:
     app = fastapi.FastAPI(lifespan=lifespan)
     logfire.instrument_fastapi(app)
     register_error_handlers(app)
-    app.include_router(conversation_router, prefix="/api")
-    app.include_router(odm_router, prefix="/api")
-    app.frontend("/", directory=THIS_DIR.parent / "dist")
+    app.include_router(task_router, prefix="/task")
     return app
 
 
