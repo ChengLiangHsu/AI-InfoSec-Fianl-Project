@@ -156,3 +156,16 @@
 
 
 
+
+### Presenter 架構與 Python 原生例外處理 (Presenter Pattern & Native Exceptions)
+- [The Clean Architecture - Presenters (Robert C. Martin)](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)
+- [Python 官方文件 - 內建異常 (Built-in Exceptions)](https://docs.python.org/3/library/exceptions.html)
+- [FastAPI 全域異常處理器 (Handling Errors)](https://fastapi.tiangolo.com/tutorial/handling-errors/)
+- **採用架構**：UseCase 僅拋出 Python 原生例外（`KeyError` 代表查無資源、`ValueError` 代表校驗失敗、`RuntimeError` 代表衝突），維持核心領域與應用層純粹性；由 Presenter 層之 `register_error_handlers` 集中攔截並輸出統一之 `{"result": false, "message": "..."}` 格式。
+
+### Hexagonal Architecture (Ports and Adapters) 與 NodeODM Requester
+- [Hexagonal Architecture (Alistair Cockburn)](https://alistair.cockburn.us/hexagonal-architecture/)
+- [HTTPX 官方文件 (Async Client & Multipart Uploads)](https://www.python-httpx.org/async/)
+- [HTTPX 逾時配置指引 (Timeouts)](https://www.python-httpx.org/advanced/timeouts/)
+- [NodeODM REST API 官方規格 (OpenDroneMap API)](https://github.com/OpenDroneMap/NodeODM)
+- **採用架構**：於 `src/usecases/ports/odm.py` 以 `Protocol` 宣告 `OdmPort` 介面契約，將 NodeODM 外部通訊自用例層徹底抽離；於 `src/requesters/odm.py` 實作具備連線管理與異常轉譯能力的 `OdmRequester` 驅動配接器（Driven Adapter）。

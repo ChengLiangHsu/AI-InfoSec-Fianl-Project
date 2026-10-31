@@ -70,6 +70,16 @@
 - **維持本機 SQLite 專案中繼資料持久化（SQLite Project Metadata Persistence）**：後端維持在 `src/repositories/` 中持久化記錄航拍任務 ID、名稱、照片數量與運算進度，作為專案元資訊之單一事實來源（Single Source of Truth），以支援對話歷史關聯、小區指標綁定及離線清單查詢。
 - **小區實體內嵌與聚合架構（Task Plots Aggregate & Flat JSON Storage）**：將試驗小區定義為 `Plot` dataclass 並整併至 `src/entities/task.py`，使 `Task.plots` 以 `list[Plot]` 作為領域聚合欄位；底層 SQLite `TaskModel.plots` 則扁平化為純 JSON 字串存儲，兼顧領域強型別與輕量持久化。
 - **清理獨立小區倉儲與實體（Purge Standalone Plot Entities & Repositories）**：刪除舊有獨立的 `src/entities/plot.py` 與 `src/repositories/plot_repo.py`，小區存取與序列化全面收納至 `TaskRepository` 與 `TaskPort` 統一管理。
+- **TaskUseCase 聚合業務封裝（TaskUseCase Aggregate Orchestration）**：實作 `TaskUseCase` 專責封裝任務生命週期（CRUD 與進度管理）、小區配置與指標維護、以及對話歷史紀錄，建構子強制依賴注入抽象 `TaskPort` 介面。
+- **前端整包小區座標 JSON 更新（Batch Plots JSON Update）**：小區更新支援接收前端傳送之整包座標與設定 JSON，於 UseCase 進行反序列化與資料結構校驗（編號唯一性、座標非空、CK 標記規格）。
+- **小區指標增量保護（Merge Plot Metrics on Update）**：前端重送座標或處理設定時，若傳入項目未附帶 metrics，自動繼承保留該小區既有之已計算指標，防止光譜分析成果因網格微調而被覆蓋抹除。
+- **Python 原生例外與 Presenter 錯誤轉譯架構（Native Exceptions & Presenter Error Handlers）**：UseCase 層全面採用 Python 原生例外（`KeyError` 代表任務不存在、`ValueError` 代表小區格式校驗失敗、`RuntimeError` 代表狀態衝突），不引用任何 Web 框架異常，統一由 Presenter 全域例外處理器轉譯為語意化 HTTP 狀態碼與標準回應格式。
+- **NodeODM 專責通訊埠與契約宣告（OdmPort Interface Contract）**：於 `src/usecases/ports/odm.py` 使用 `typing.Protocol` 宣告 `OdmPort`，完整涵蓋五項 NodeODM 核心操作契約：節點探針 (`check_alive` / `get_node_info`)、建立任務 (`create_task`)、查詢進度與狀態 (`get_task_info`)、下載打包成果資產 (`download_task_assets`)、以及移除任務 (`remove_task`)。
+- **純 Python 影像檔案傳遞結構（Decoupled Upload File Abstraction）**：建立任務時影像資料採用純 Python 資料結構（`list[tuple[str, bytes, str]]` 檔名、位元組、檔案類型），確保 Port 與 UseCase 邊界與 FastAPI `UploadFile` 等 Web 框架實作徹底解耦。
+- **純原生回傳型別與例外轉譯（Native Types & Exception Mapping）**：`OdmPort` 方法回傳值採用純原生型別（`str`, `dict[str, Any]`, `bytes`, `bool`）。
+- **允許拋出 httpx 例外與 Presenter 集中攔截（Allow HTTPX Exceptions with Presenter Handling）**：Requester 允許直接拋出 `httpx.HTTPStatusError` 與 `httpx.RequestError` 例外，由 FastAPI Presenter 全域例外處理器統一攔截並包裝為標準錯誤格式，回傳訊息須明確標註為 NodeODM 服務錯誤（包含狀態碼、錯誤原因或連線失敗說明）。
+- **OdmRequester 實體內部自主管理連線客戶端（Self-Managed HTTP Client in OdmRequester）**：於 `src/requesters/odm.py` 實作 `OdmRequester`，建構子僅保留 Base URL 設定（預設 `http://localhost:3002`），連線客戶端 `httpx.AsyncClient` 由實例內部自主建立與維護，不強制自外部注入 client 參數，簡化實例化流程。
+- **階層式差異化操作超時機制（Tiered Operation Timeouts）**：針對大檔影像上傳與正射成果下載提供預設 120 秒超時，節點探針與狀態查詢提供預設 10 秒超時，並允許呼叫端傳入自訂超時或任務 options 參數。
 
 ## 拒絕
 - **拒絕 DESIGN.md 擴充非規範獨立章節**：不於 DESIGN.md 中新增額外獨立的 Problem、Requirements 或 How to Run 章節，How to Run 集中於 README.md，Problem/Requirements 歸屬提案章節與需求清單。
@@ -115,3 +125,12 @@
 - **拒絕 UseCase 直接耦合具體 Repository 實體（No Concrete Repo Coupling in UseCase）**：`src/usecases/` 嚴禁直接引用或依賴具體的 `TaskRepository` 實作類別或全域 `agent` 單例，強制一律透過建構子注入抽象 Port 與 Agent 實例。
 - **拒絕獨立小區資料表與實體分散（No Standalone Plot Table & Separate Entity）**：不為小區建立獨立的 `plots` 資料表與 `plot.py` 檔案，拒絕在領域實體中保留冗餘的 `task_id` 與獨立主鍵。
 
+- **拒絕跨任務對話遷移（No Cross-Task Message Migration）**：禁止將對話紀錄自一個任務遷移至另一個任務，維持任務與對話生命週期之嚴格單一歸屬。
+- **暫不實作小區處理組統計分析方法**：暫緩在 `TaskUseCase` 中實作小區指標分組平均（Treatment Mean）與對照組差異等統計分析方法，待後續具體使用情境釐清後再行實作。
+- **拒絕在 UseCase 內混雜外部 I/O 通訊與影像演算**：`TaskUseCase` 嚴禁包含 NodeODM HTTP 呼叫或正射光譜圖生成邏輯，外部通訊維持於 Utility 或專屬服務層。
+- **拒絕 Port 耦合 Web 框架檔案型別（No FastAPI UploadFile in Port）**：嚴禁在 `src/usecases/ports/odm.py` 引入或使用 `fastapi.UploadFile`，確保領域契約之純粹性。
+- **拒絕未標註 NodeODM 來源之模糊網路異常（No Ambiguous Network Exceptions to Client）**：嚴禁將未註明 NodeODM 服務來源的通用例外或原始連線錯誤未經轉譯直接外洩給前端使用者。
+- **拒絕寫死不可自訂之網路連線設定（No Hardcoded Unconfigurable Network Config）**：拒絕在 Requester 內寫死單一連線配置或全域固定 client，保持依賴注入彈性。
+- **拒絕過度工程之非同步上下文管理器（No Overengineered Async Context Manager in Requester）**：Requester 內部直接調用持久化 `httpx.AsyncClient`，不強制封裝 `__aenter__` 與 `__aexit__` 等上下文管理器樣板代碼，維持 API 調用介面之極簡性。
+- **拒絕外部注入 client 造成介面繁瑣（No Redundant Client Injection Parameter）**：`OdmRequester` 建構子不暴露多餘的 `client: httpx.AsyncClient` 參數，避免調用端增加不必要的生命週期傳遞負擔。
+- **拒絕未宣告於 Port 介面之冗餘關閉方法（No Redundant Close Method in Requester）**：`OdmPort` 未宣告 `close()` 契約，`OdmRequester` 嚴禁保留多餘的連線關閉方法，確保實作類別與介面契約嚴格 100% 對齊。

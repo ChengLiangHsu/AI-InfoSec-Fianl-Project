@@ -9,6 +9,7 @@ import logfire
 
 from src.controllers import conversation_router, odm_router
 from src.database import init_db
+from src.presenter import register_error_handlers
 from src.utility.nodeodm import ensure_nodeodm_running
 
 load_dotenv()
@@ -31,6 +32,7 @@ def create_app() -> fastapi.FastAPI:
     """FastAPI 應用工廠函式：負責初始化實例、整合監控並掛載各模組控制器。"""
     app = fastapi.FastAPI(lifespan=lifespan)
     logfire.instrument_fastapi(app)
+    register_error_handlers(app)
     app.include_router(conversation_router, prefix="/api")
     app.include_router(odm_router, prefix="/api")
     app.frontend("/", directory=THIS_DIR.parent / "dist")
