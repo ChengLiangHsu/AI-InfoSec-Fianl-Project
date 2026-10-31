@@ -20,6 +20,17 @@ class ModelMessageResponse:
 
 
 @dataclass
+class Plot:
+    """試驗小區實體"""
+    plot_number: int  # 網格編號
+    coords: str  # 坐標
+    is_control: bool = False  # 是否為對照組
+    treatment: str = ""  # 處理方式
+    dose: str = ""  # 劑量
+    metrics: dict[str, float] = field(default_factory=dict)
+
+
+@dataclass
 class Task:
     """NodeODM 航拍任務領域實體（純 Python Dataclass，無 ORM 依賴）。"""
     id: str
@@ -29,3 +40,4 @@ class Task:
     messages: str = ""
     status: int | None = None
     images_count: int | None = None
+    plots: list[Plot] = field(default_factory=list)

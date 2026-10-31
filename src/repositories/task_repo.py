@@ -1,10 +1,40 @@
+from dataclasses import asdict
+import json
 from typing import Any
 
 from pydantic_ai import ModelMessage, ModelMessagesTypeAdapter
 from sqlmodel import Field, Session, SQLModel, select
 
-from src.entities.task import Task
+from src.entities.task import Plot, Task
 from src.usecases.ports import TaskPort
+
+
+def _plots_to_json(plots: list[Plot]) -> str:
+    """將小區實體列表序列化為 JSON 字串。"""
+    if not plots:
+        return ""
+    return json.dumps([asdict(p) for p in plots], ensure_ascii=False)
+
+
+def _json_to_plots(plots_json: str) -> list[Plot]:
+    """將 JSON 字串反序列化為小區實體列表。"""
+    if not plots_json or plots_json.strip() in ("", "[]"):
+        return []
+    try:
+        raw_list = json.loads(plots_json)
+        return [
+            Plot(
+                plot_number=item.get("plot_number", 0),
+                coords=item.get("coords", ""),
+                is_control=item.get("is_control", False),
+                treatment=item.get("treatment", ""),
+                dose=item.get("dose", ""),
+                metrics=item.get("metrics", {}),
+            )
+            for item in raw_list
+        ]
+    except Exception:
+        return []
 
 
 class TaskModel(SQLModel, table=True):
@@ -16,6 +46,7 @@ class TaskModel(SQLModel, table=True):
     images: int
     progress: int = Field(default=0)
     messages: str = Field(default="")
+    plots: str = Field(default="")
 
 
 class TaskRepository(TaskPort):
@@ -31,16 +62,19 @@ class TaskRepository(TaskPort):
             images=model.images,
             progress=model.progress,
             messages=model.messages,
+            plots=_json_to_plots(model.plots),
         )
 
     async def add_task(self, task: Task) -> None:
         """非同步新增或更新任務記錄。"""
+        plots_json = _plots_to_json(task.plots)
         existing = self.session.get(TaskModel, task.id)
         if existing:
             existing.name = task.name
             existing.images = task.images
             existing.progress = task.progress
             existing.messages = task.messages
+            existing.plots = plots_json
             self.session.add(existing)
         else:
             model = TaskModel(
@@ -49,6 +83,7 @@ class TaskRepository(TaskPort):
                 images=task.images,
                 progress=task.progress,
                 messages=task.messages,
+                plots=plots_json,
             )
             self.session.add(model)
         self.session.commit()
@@ -84,6 +119,21 @@ class TaskRepository(TaskPort):
         model = self.session.get(TaskModel, task_id)
         if model:
             self.session.delete(model)
+            self.session.commit()
+
+    async def get_plots(self, task_id: str) -> list[Plot]:
+        """非同步查詢指定任務之小區列表。"""
+        model = self.session.get(TaskModel, task_id)
+        if not model or not model.plots:
+            return []
+        return _json_to_plots(model.plots)
+
+    async def update_plots(self, task_id: str, plots: list[Plot]) -> None:
+        """非同步更新指定任務之小區列表。"""
+        model = self.session.get(TaskModel, task_id)
+        if model:
+            model.plots = _plots_to_json(plots)
+            self.session.add(model)
             self.session.commit()
 
     async def get_messages(self, task_id: str) -> list[ModelMessage]:

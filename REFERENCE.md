@@ -145,7 +145,14 @@
 
 
 - [Python 官方文件 - typing.Protocol (PEP 544 結構化子型別)](https://docs.python.org/3/library/typing.html#typing.Protocol)
-- **採用架構**：UseCase 業務層以 `TaskUseCase` 作為聚合核心，透過 `TaskPort` 與 `PlotPort` 宣告倉儲契約；各倉儲實作類別（`TaskRepository`、`PlotGridRepository`）實作對應 Port 並由建構子注入 `Session`，落實依賴反轉與資源生命週期解耦。
+- **採用架構**：UseCase 業務層以 `TaskUseCase` 作為聚合核心，透過 `TaskPort` 宣告倉儲契約；倉儲實作類別（`TaskRepository`）實作對應 Port 並由建構子注入 `Session`，落實依賴反轉與資源生命週期解耦。
+
+### DDD 聚合根與資料對應 (Aggregate Root & Data Mapper)
+- [Martin Fowler - Aggregate](https://martinfowler.com/bliki/DDD_Aggregate.html)
+- [Martin Fowler - Data Mapper Pattern](https://martinfowler.com/eaaCatalog/dataMapper.html)
+- [Python dataclasses - field default_factory](https://docs.python.org/3/library/dataclasses.html#dataclasses.field)
+- [SQLite JSON1 擴充與純文字儲存規範](https://www.sqlite.org/json1.html)
+- **採用架構**：將 `Plot` 作為內嵌實體收錄於 `Task` 聚合根中，領域層透過 `Task.plots: list[Plot]` 呈現強型別結構，倉儲層（`TaskRepository`）以純文字 JSON 字串映射至 SQLite `tasks.plots` 欄位，消除多表關聯負擔並維持聚合完整性。
 
 
 

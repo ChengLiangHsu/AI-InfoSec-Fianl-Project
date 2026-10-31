@@ -1,4 +1,3 @@
-from src.entities.plot import PlotGrid
-from src.entities.task import Task
+from src.entities.task import ModelMessageResponse, Plot, Task, Version
 
-__all__ = ["Task", "PlotGrid"]
+__all__ = ["Task", "Plot", "Version", "ModelMessageResponse"]

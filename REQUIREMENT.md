@@ -68,6 +68,8 @@
 - **實體與控制器模組規格校準（Schema & Controller Mapping Synchronization）**：統一小區實體命名為 `PlotGrid`、資料庫初始化函式對齊 `init_db()`，並於第 5 章補入 `src/controllers/conversation.py` 控制器。
 - **README Demo 成果介面更新（README Demo Orthophoto UI Update）**：README.md 之 Demo 圖片統一以最新正射影像成果主畫面呈現，包含專案資訊卡片（田間航拍_1027_1153、65 張、100% 已完成）、RGB 原始拼接影像、懸浮光譜演算法切換器（VARI/EXG 等）及展開的側邊欄導覽，維持既有 Markdown 圖片語法直接覆蓋更新。
 - **維持本機 SQLite 專案中繼資料持久化（SQLite Project Metadata Persistence）**：後端維持在 `src/repositories/` 中持久化記錄航拍任務 ID、名稱、照片數量與運算進度，作為專案元資訊之單一事實來源（Single Source of Truth），以支援對話歷史關聯、小區指標綁定及離線清單查詢。
+- **小區實體內嵌與聚合架構（Task Plots Aggregate & Flat JSON Storage）**：將試驗小區定義為 `Plot` dataclass 並整併至 `src/entities/task.py`，使 `Task.plots` 以 `list[Plot]` 作為領域聚合欄位；底層 SQLite `TaskModel.plots` 則扁平化為純 JSON 字串存儲，兼顧領域強型別與輕量持久化。
+- **清理獨立小區倉儲與實體（Purge Standalone Plot Entities & Repositories）**：刪除舊有獨立的 `src/entities/plot.py` 與 `src/repositories/plot_repo.py`，小區存取與序列化全面收納至 `TaskRepository` 與 `TaskPort` 統一管理。
 
 ## 拒絕
 - **拒絕 DESIGN.md 擴充非規範獨立章節**：不於 DESIGN.md 中新增額外獨立的 Problem、Requirements 或 How to Run 章節，How to Run 集中於 README.md，Problem/Requirements 歸屬提案章節與需求清單。
@@ -111,4 +113,5 @@
 - **拒絕完全依賴 NodeODM 作為專案儲存媒介（No NodeODM-Only Storage Dependency）**：不將專案清單與狀態完全委託給 NodeODM API，避免因 Docker 容器重啟、清理暫存或伺服器中斷而造成專案中繼資料與分析關聯遺失。
 
 - **拒絕 UseCase 直接耦合具體 Repository 實體（No Concrete Repo Coupling in UseCase）**：`src/usecases/` 嚴禁直接引用或依賴具體的 `TaskRepository` 實作類別或全域 `agent` 單例，強制一律透過建構子注入抽象 Port 與 Agent 實例。
+- **拒絕獨立小區資料表與實體分散（No Standalone Plot Table & Separate Entity）**：不為小區建立獨立的 `plots` 資料表與 `plot.py` 檔案，拒絕在領域實體中保留冗餘的 `task_id` 與獨立主鍵。
 
