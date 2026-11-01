@@ -93,6 +93,20 @@
 - **控制器全面整合 Presenter 回應包裝（ResponseWrapper Integration in Controller）**：`src/controllers/task.py` 所有 JSON 成功回應全面採用 `src/presenter/response_wrapper.py` 之 `success_response(data=...)` 統一包裝，業務異常由 UseCase 拋出原生例外（`KeyError`, `ValueError`, `RuntimeError`）並由 Presenter `error_handlers` 攔截轉譯為標準 `error_response`。
 - **領域實體重用與重複宣告清理（Entity Reuse & Purge Duplicate Schemas）**：全面移除 `src/controllers/task.py` 內部重複宣告之 `Version` 與 `ModelMessageResponse` TypedDict，一律對齊與引用 `src/entities/task.py` 之純 dataclass 領域實體定義。
 - **前端 migrate 殘留呼叫清理（Purge Frontend Migrate Calls）**：清理前端 `GeminiHomeChat.vue` 與 `useChatAgent.ts` 中殘留之 `migrateChat` 呼叫與定義，消除無效網路請求。
+- **逐區手動多邊形繪製（Manual Independent Polygon Plot Segmentation）**：小區分割不採用全田行列自動網格劃分，改由使用者以滑鼠逐一在正射影像畫布上點繪獨立的多邊形頂點標註各小區範圍，適應田間任意走向、畸零地與分散試驗區。
+- **多邊形吸附閉合與遞增編號（Snap Closing & Auto-Increment Plot Numbering）**：點繪單一小區時，滑鼠點擊起點吸附或雙擊自動完成閉合，系統自動依序指派小區編號（#1, #2...），並支援點擊選取以拖曳頂點微調或整區刪除重繪。
+- **正規化相對比例座標儲存（Normalized Ratio Coordinates JSON）**：小區頂點座標以 `[[x1, y1], [x2, y2], ...]` 之 0.0 ~ 1.0 相對寬高比例 JSON 字串持久化於 `Plot.coords`，確保畫布響應式縮放不跑版，後端光譜統計時按正射圖原圖解析度等比放大計算。
+- **主影像疊加互動畫布（Overlay Canvas on Orthophoto）**：於主正射影像卡片直接覆蓋透明 HTML5 Canvas 互動層，提供「✏️ 繪製小區」與「🏷️ 套用處理」模式切換，兼顧即時光譜指標熱圖切換預覽與小區邊界疊合觀察。
+- **作用中標籤點擊套用（Active Brush Treatment Assignment）**：在「🏷️ 套用處理」模式下，於工具列設定當前作用中之「農藥＋劑量」或「未施藥對照 (CK)」，直接點擊畫布上的多邊形小區即可快速上色套用，不同處理組以相異色彩視覺區分。
+- **明確按鈕手動儲存（Explicit Manual Save & Dirty Check）**：繪製與設定完成後，由使用者點擊「💾 儲存小區」按鈕批次發送更新請求持久化至後端 SQLite，避免未定稿頻繁發送請求，並提供未儲存變更提示。
+- **繪製模式原生全螢幕（Native Fullscreen on Draw Mode）**：切換至「繪製小區（Draw）」模式時，自動透過瀏覽器原生 Fullscreen API (`requestFullscreen()`) 佔滿實體螢幕，最大化空拍高解析度影像之可視區域。
+- **純滑鼠平移與縮放（Pure Mouse Pan & Zoom Interaction）**：全螢幕繪製模式下支援純滑鼠手勢控制視角——滑鼠滾輪以游標為中心平滑縮放、按住滑鼠右鍵拖曳平移（Pan）並攔截預設快顯選單、滑鼠左鍵專注於點擊下點標註多邊形頂點與選取小區。
+- **全螢幕強綁定生命週期（Strong Fullscreen Mode Binding）**：全螢幕與繪製模式緊密連動；使用者按下 Esc 鍵或點擊退出全螢幕按鈕時，系統自動觸發儲存並退出繪製狀態切回檢視模式（View Mode）。
+- **懸浮膠囊工具列與縮放 HUD（Floating Capsule Toolbar & Zoom HUD）**：全螢幕繪製模式採用沉浸式佈局，頂部置中配置半透明毛玻璃懸浮膠囊（包含處理組筆刷、撤銷上一步、取消目前多邊形、儲存並退出），右下角配置縮放 HUD（顯示目前縮放比例、`+` 放大、`-` 縮小、`Fit` 適應螢幕重置），影像視野不受多餘邊框干擾。
+- **退出時未完成多邊形防護（Discard Unclosed Draft on Fullscreen Exit）**：在折線繪製中途（未點擊起點閉合）若退出全螢幕或切換模式，系統自動捨棄未閉合之草稿點，僅將已完成閉合之小區持久化儲存，避免產生殘留損壞的小區資料。
+- **正射圖 CSS GPU Transform 與解除寬高限制（CSS GPU Transform & Unconstrained Dimensions）**：正射影像元素解除 Tailwind CSS 預設 `max-width: 100%` 限制（加入 `max-w-none max-h-none`），改採固定 `baseWidth`/`baseHeight` 搭配硬體加速 `transform: translate3d(panX, panY, 0) scale(scale)` 與 `transform-origin: 0 0`，消除 Layout Reflow 重排並確保高倍率縮放時影像與 Canvas 多邊形 100% 像素級精準貼合不跑版。
+- **視角平移邊界彈性保護（Elastic Viewport Panning Bounds）**：在滑鼠縮放與右鍵拖曳平移時加入彈性視野保護機制，確保正射圖在任意縮放比例下至少保留 20% 影像面積於可視視窗內，防止影像被拖曳至畫面外遺失，並配合右下角 HUD「最適大小 (Fit)」提供即時一鍵復位。
+- **標準平滑取樣插值（Default Smooth Image Interpolation）**：在高倍率縮放檢視下維持瀏覽器標準平滑縮放插值（`image-rendering: auto`），保留空拍正射航拍圖自然漸層與植生指數熱圖展示品質。
 
 ## 拒絕
 - **拒絕 DESIGN.md 擴充非規範獨立章節**：不於 DESIGN.md 中新增額外獨立的 Problem、Requirements 或 How to Run 章節，How to Run 集中於 README.md，Problem/Requirements 歸屬提案章節與需求清單。
@@ -162,3 +176,14 @@
 - **拒絕無 rewrite 造成之路由前綴硬耦合（No Unrewritten Hardcoded Route Coupling）**：不採用前端無 `/api` 或後端被迫迎合前端無前綴之配置，確保反向代理層具備前綴解耦能力。
 - **拒絕前端掩蓋後端詳細錯誤資訊（No Generic Error Masking in Frontend）**：在後端已提供結構化 `data.message` 時，拒絕前端一律使用固定靜態錯誤字串，杜絕掩蔽真實錯誤根因。
 - **拒絕無效冗餘的雙代理通道（No Redundant Multi-Proxy Routes）**：在 Vite 開發伺服器中拒絕同時保留未使用的多重代理路徑，消除維護歧義。
+- **拒絕全田行列剛性自動劃分（No Rigid Global Grid Partitioning）**：不強制依賴全田外邊界與全域行列數（Rows/Cols）等分切割，拒絕無法適應畸零小區、弧形垄向或分散配置之僵化網格。
+- **拒絕非吸附之開放式小區路徑（No Open Polygon Paths）**：小區多邊形必須明確閉合方可成區，嚴禁未閉合之開放折線作為試驗小區。
+- **拒絕螢幕像素絕對值硬編碼（No Screen-Pixel Hardcoded Coordinates）**：嚴禁直接儲存瀏覽器 DOM 渲染之像素座標，避免因裝置解析度、視窗縮放或容器尺寸改變而導致座標錯位。
+- **拒絕跳轉式分離標註頁面（No Fragmented Modal for Plot Segmentation）**：不使用跳轉式獨立頁面或全螢幕彈窗進行小區分割，維持主畫面影像、熱圖與標註之空間上下文連續性。
+- **拒絕微操作高頻自動儲存（No High-Frequency Micro Auto-Save for Canvas Edits）**：在多邊形繪製與節點拖曳過程中不進行高頻防抖自動儲存，杜絕送出未閉合或半成品之暫態資料至資料庫。
+- **拒絕鍵盤組合鍵平移負擔（No Mandatory Keyboard Modifier for Pan）**：平移畫布不強制依賴按住空白鍵（Space）或 Ctrl 鍵，全面改採滑鼠右鍵直接拖曳，降低單手標註之操作負擔。
+- **拒絕退出全螢幕留存未閉合折線（No Unclosed Polygon Persistence on Exit）**：退出全螢幕時嚴禁將未閉合之草稿頂點儲存為小區，杜絕破壞幾何資料一致性。
+- **拒絕全螢幕遮蔽關鍵工具（No Floating-less Blank Canvas）**：進入全螢幕時不隱藏必要之筆刷選擇、撤銷與縮放控制功能，確保標註工作區具備完整可操作性。
+- **拒絕每幀重排尺寸縮放（No DOM Layout Reflow via Width/Height Resize）**：縮放平移時禁止頻繁修改 `img` 的 DOM 像素 `width` 與 `height`，拒絕引發瀏覽器整頁重排（Layout Reflow）與卡頓。
+- **拒絕 Tailwind CSS max-width 影像箝制（No Tailwind Default Image Max-Width Clamping）**：嚴禁讓正射航拍底圖受限於 Tailwind Preflight 的 `max-width: 100%` 預設限制，杜絕大於視窗寬度時影像停止縮放所造成的標註脫節錯位。
+- **拒絕無邊界無限平移迷航（No Unbounded Panning Lost in Space）**：禁止完全無限制將正射影像拖出視野之外，杜絕使用者迷航與找不到影像的操作困境。

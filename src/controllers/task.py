@@ -9,7 +9,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pydantic_ai import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
 
 from src.agents import ChatDeps, agent
@@ -33,6 +33,19 @@ router = APIRouter(tags=["task"])
 class PostChatRequest(BaseModel):
     prompt: str
     project_id: str = "home"
+
+
+class PlotItemPayload(BaseModel):
+    plot_number: int
+    coords: str
+    is_control: bool = False
+    treatment: str = ""
+    dose: str = ""
+    metrics: dict[str, float] = Field(default_factory=dict)
+
+
+class UpdatePlotsPayload(BaseModel):
+    plots: list[PlotItemPayload]
 
 
 # ============================================================================
@@ -264,6 +277,28 @@ async def delete_odm_task(
     """主流程：刪除指定任務與關聯影像資產。"""
     await usecase.delete_task(task_id)
     return success_response()
+
+
+@router.get("/plots/{task_id}")
+async def get_plots(
+    task_id: str,
+    usecase: TaskUseCase = Depends(get_task_usecase),
+) -> JSONResponse:
+    """主流程：查詢指定航拍任務之小區列表。"""
+    plots = await usecase.get_plots(task_id)
+    return success_response(data=[asdict(p) for p in plots])
+
+
+@router.put("/plots/{task_id}")
+async def update_plots(
+    task_id: str,
+    payload: UpdatePlotsPayload,
+    usecase: TaskUseCase = Depends(get_task_usecase),
+) -> JSONResponse:
+    """主流程：整包批次更新指定航拍任務之小區幾何座標與處理設定。"""
+    plots_data = [p.model_dump() for p in payload.plots]
+    updated_plots = await usecase.update_plots(task_id, plots_data)
+    return success_response(data=[asdict(p) for p in updated_plots])
 
 
 @router.post("/chat")

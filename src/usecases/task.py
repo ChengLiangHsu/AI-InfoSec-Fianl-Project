@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +47,22 @@ def _validate_plots_payload(plots_data: Any) -> None:
         raise ValueError("小區資料必須為列表清單")
 
 
+def _validate_coords_json(coords: str, plot_number: int) -> None:
+    """校驗小區座標格式是否為合法多邊形頂點 JSON 陣列。"""
+    try:
+        points = json.loads(coords)
+        if not isinstance(points, list) or len(points) < 3:
+            raise ValueError(f"小區 [{plot_number}] 多邊形頂點數必須大於等於 3")
+        for pt in points:
+            if not isinstance(pt, (list, tuple)) or len(pt) != 2:
+                raise ValueError(f"小區 [{plot_number}] 頂點格式必須為 [x, y]")
+            x, y = float(pt[0]), float(pt[1])
+            if not (-0.05 <= x <= 1.05 and -0.05 <= y <= 1.05):
+                raise ValueError(f"小區 [{plot_number}] 正規化座標超出有效範圍 (0~1): [{x}, {y}]")
+    except (json.JSONDecodeError, TypeError) as e:
+        raise ValueError(f"小區 [{plot_number}] 座標 JSON 格式無效: {e}")
+
+
 def _parse_plot_item(item: dict[str, Any] | Plot) -> Plot:
     """解析並正規化單一小區資料結構。"""
     if isinstance(item, Plot):
@@ -69,6 +86,7 @@ def _parse_plot_item(item: dict[str, Any] | Plot) -> Plot:
         raise ValueError(f"小區編號必須為大於 0 之整數，當前為: {plot_number}")
     if not coords:
         raise ValueError(f"小區 [{plot_number}] 座標不得為空")
+    _validate_coords_json(coords, plot_number)
 
     return Plot(
         plot_number=plot_number,

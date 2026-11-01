@@ -3,7 +3,30 @@ export const description = "Collapsible nested sidebars."
 export const iframeHeight = "800px"
 </script>
 <script setup lang="ts">
-import { MessageCircleIcon, MinusIcon, FileCodeIcon, XIcon, Plus, Upload, ImageIcon, Clock, Images, CheckCircle2, Layers, Trash2, Sparkles } from '@lucide/vue'
+import {
+  MessageCircleIcon,
+  MinusIcon,
+  FileCodeIcon,
+  XIcon,
+  Plus,
+  Upload,
+  ImageIcon,
+  Clock,
+  Images,
+  CheckCircle2,
+  Layers,
+  Trash2,
+  Sparkles,
+  ZoomIn,
+  ZoomOut,
+  Scan,
+  RotateCcw,
+  X,
+  Save,
+  Pencil,
+} from '@lucide/vue'
+import { useFullscreen } from '@vueuse/core'
+import { useCanvasViewport } from './lib/useCanvasViewport'
 import AppSidebar from "@/components/AppSidebar.vue"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -52,9 +75,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import AskAgent from './components/AskAgent.vue'
 import DroneHomeUpload from './components/DroneHomeUpload.vue'
+import PlotToolbar from './components/PlotToolbar.vue'
+import PlotCanvasOverlay from './components/PlotCanvasOverlay.vue'
+import { usePlots, type NormalizedPoint } from './lib/usePlots'
 import { useChatAgent } from './lib/useChatAgent'
 import { useOdmProgress } from './lib/useOdmProgress'
 import exifr from 'exifr'
@@ -62,7 +88,144 @@ import exifr from 'exifr'
 const { clearChat } = useChatAgent()
 const { listenProgress } = useOdmProgress()
 
+const {
+  plots,
+  activeMode,
+  selectedPlotNumber,
+  activeBrush,
+  isDirty,
+  isSaving,
+  errorMessage,
+  getPlotColor,
+  loadPlots,
+  savePlots,
+  addPlot,
+  updatePlotPoints,
+  deletePlot,
+  assignTreatmentToPlot,
+} = usePlots()
+
+const plotCanvasOverlayRef = ref<InstanceType<typeof PlotCanvasOverlay> | null>(null)
+const orthoContainerRef = ref<HTMLDivElement | null>(null)
+const viewportRef = ref<HTMLDivElement | null>(null)
+const imageRef = ref<HTMLImageElement | null>(null)
+
+const viewport = useCanvasViewport()
+const { isFullscreen, enter: enterFullscreen, exit: exitFullscreen } = useFullscreen(orthoContainerRef)
+
+const isDrawing = computed(() => plotCanvasOverlayRef.value?.isDrawing?.() || false)
+
+function onFitToScreen() {
+  const container = viewportRef.value || orthoContainerRef.value
+  const img = imageRef.value
+  if (!container || !img) return
+  viewport.fitToViewport(
+    container.clientWidth,
+    container.clientHeight,
+    img.naturalWidth || 1,
+    img.naturalHeight || 1,
+    isFullscreen.value ? 24 : 16
+  )
+  nextTick(() => {
+    plotCanvasOverlayRef.value?.syncCanvasSize()
+  })
+}
+
+function onZoomIn() {
+  const w = viewportRef.value?.clientWidth
+  const h = viewportRef.value?.clientHeight
+  viewport.zoomIn(w, h)
+  nextTick(() => plotCanvasOverlayRef.value?.redraw())
+}
+
+function onZoomOut() {
+  const w = viewportRef.value?.clientWidth
+  const h = viewportRef.value?.clientHeight
+  viewport.zoomOut(w, h)
+  nextTick(() => plotCanvasOverlayRef.value?.redraw())
+}
+
+async function handleExitFullscreenDraw() {
+  plotCanvasOverlayRef.value?.cancelDrawing()
+  if (isDirty.value) {
+    await handleSavePlots()
+  }
+  activeMode.value = 'view'
+  if (isFullscreen.value) {
+    await exitFullscreen()
+  }
+}
+
+function handleToggleFullscreen() {
+  if (isFullscreen.value) {
+    handleExitFullscreenDraw()
+  } else {
+    enterFullscreen()
+  }
+}
+
+watch(activeMode, async (newMode, oldMode) => {
+  if (newMode === 'draw') {
+    if (!isFullscreen.value) {
+      await enterFullscreen()
+    }
+  } else if (oldMode === 'draw' && isFullscreen.value) {
+    plotCanvasOverlayRef.value?.cancelDrawing()
+    await exitFullscreen()
+  }
+})
+
+watch(isFullscreen, async (full) => {
+  if (!full) {
+    if (activeMode.value === 'draw') {
+      plotCanvasOverlayRef.value?.cancelDrawing()
+      if (isDirty.value) {
+        await handleSavePlots()
+      }
+      activeMode.value = 'view'
+    }
+  }
+  await nextTick()
+  onFitToScreen()
+})
+
+function onImageLoaded() {
+  isImageLoading.value = false
+  nextTick(() => {
+    onFitToScreen()
+  })
+}
+
+function onAddPlot(points: NormalizedPoint[]) {
+  addPlot(points)
+}
+
+function onUpdatePlotPoints(payload: { plotNumber: number; points: NormalizedPoint[] }) {
+  updatePlotPoints(payload.plotNumber, payload.points)
+}
+
+function onSelectPlot(plotNumber: number | null) {
+  selectedPlotNumber.value = plotNumber
+}
+
+function onAssignPlot(plotNumber: number) {
+  assignTreatmentToPlot(plotNumber)
+}
+
+async function handleSavePlots() {
+  if (!selectedProject.value?.id) return
+  const ok = await savePlots(selectedProject.value.id)
+  if (!ok && errorMessage.value) {
+    alert(errorMessage.value)
+  }
+}
+
 async function handleGoHome() {
+  if (isDirty.value) {
+    if (!confirm('您有未儲存的小區設定，是否確定返回主畫面？未儲存的變更將會遺失。')) {
+      return
+    }
+  }
   selectedProject.value = null
   await clearChat('home')
 }
@@ -223,10 +386,13 @@ onMounted(async () => {
   }
 })
 
-watch(selectedProject, () => {
+watch(selectedProject, async (newProj) => {
   uploadList.value = []
   selectedFormula.value = 'rgb'
   isImageLoading.value = true
+  if (newProj?.id) {
+    await loadPlots(newProj.id)
+  }
 })
 
 </script>
@@ -311,10 +477,171 @@ watch(selectedProject, () => {
               </Badge>
             </div>
           </CardHeader>
+
+          <!-- 小區多邊形分割與處理組工具列 -->
+          <PlotToolbar
+            v-model:active-mode="activeMode"
+            v-model:active-brush="activeBrush"
+            :plots="plots"
+            :selected-plot-number="selectedPlotNumber"
+            :is-dirty="isDirty"
+            :is-saving="isSaving"
+            :is-drawing="isDrawing"
+            :is-fullscreen="isFullscreen"
+            @save="handleSavePlots"
+            @undo-point="plotCanvasOverlayRef?.undoLastPoint()"
+            @cancel-drawing="plotCanvasOverlayRef?.cancelDrawing()"
+            @delete-selected="selectedPlotNumber !== null && deletePlot(selectedPlotNumber)"
+            @toggle-fullscreen="handleToggleFullscreen"
+          />
+
           <CardContent class="p-4">
             <div
-              class="relative flex min-h-[360px] w-full items-center justify-center overflow-hidden rounded-lg border bg-muted/20 p-2">
-              
+              ref="orthoContainerRef"
+              class="relative flex flex-col w-full overflow-hidden select-none"
+              :class="[
+                isFullscreen
+                  ? 'fixed inset-0 z-50 h-screen w-screen bg-slate-950 p-0 rounded-none'
+                  : 'min-h-[460px] h-[68vh] rounded-lg border bg-muted/20 p-1',
+              ]"
+            >
+              <!-- 全螢幕頂部懸浮膠囊工具列 (Top Floating Capsule Toolbar in Fullscreen) -->
+              <div
+                v-if="isFullscreen"
+                class="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2.5 rounded-full border border-border/70 bg-background/90 px-4 py-1.5 shadow-2xl backdrop-blur-md text-xs"
+              >
+                <div class="flex items-center gap-1.5 font-semibold text-foreground">
+                  <Pencil class="size-3.5 text-blue-500" />
+                  <span>繪製小區中</span>
+                  <span class="text-[11px] font-normal text-muted-foreground hidden md:inline">
+                    (滾輪縮放 / 右鍵平移)
+                  </span>
+                </div>
+
+                <div class="h-3.5 w-px bg-border/60" />
+
+                <!-- 作用中筆刷指示 -->
+                <div class="flex items-center gap-1.5">
+                  <Badge
+                    variant="outline"
+                    class="h-6 gap-1 px-2 text-[11px] font-normal"
+                  >
+                    <span
+                      class="size-2 rounded-full"
+                      :style="{ backgroundColor: activeBrush.isControl ? '#64748b' : '#10b981' }"
+                    />
+                    <span>{{ activeBrush.isControl ? 'CK (對照)' : (activeBrush.treatment ? activeBrush.treatment + (activeBrush.dose ? ' ' + activeBrush.dose : '') : '未指定處理') }}</span>
+                  </Badge>
+                </div>
+
+                <div class="h-3.5 w-px bg-border/60" />
+
+                <!-- 復原與取消按鈕 -->
+                <Button
+                  v-if="isDrawing"
+                  size="sm"
+                  variant="ghost"
+                  class="h-6 px-2 text-[11px] cursor-pointer"
+                  @click="plotCanvasOverlayRef?.undoLastPoint()"
+                >
+                  <RotateCcw class="size-3 mr-1" />
+                  復原點
+                </Button>
+                <Button
+                  v-if="isDrawing"
+                  size="sm"
+                  variant="ghost"
+                  class="h-6 px-2 text-[11px] text-destructive hover:bg-destructive/10 cursor-pointer"
+                  @click="plotCanvasOverlayRef?.cancelDrawing()"
+                >
+                  <X class="size-3 mr-1" />
+                  放棄繪製
+                </Button>
+                <Button
+                  v-if="selectedPlotNumber !== null && !isDrawing"
+                  size="sm"
+                  variant="ghost"
+                  class="h-6 px-2 text-[11px] text-destructive hover:bg-destructive/10 cursor-pointer"
+                  @click="selectedPlotNumber !== null && deletePlot(selectedPlotNumber)"
+                >
+                  <Trash2 class="size-3 mr-1" />
+                  刪除 #{{ selectedPlotNumber }}
+                </Button>
+
+                <div class="h-3.5 w-px bg-border/60" />
+
+                <!-- 儲存並退出全螢幕按鈕 -->
+                <Button
+                  size="sm"
+                  :variant="isDirty ? 'default' : 'secondary'"
+                  class="h-6 gap-1.5 px-3 text-[11px] font-medium cursor-pointer shadow-xs"
+                  @click="handleExitFullscreenDraw"
+                >
+                  <Save class="size-3" />
+                  <span>{{ isDirty ? '儲存並結束 (Esc)' : '結束全螢幕 (Esc)' }}</span>
+                </Button>
+              </div>
+
+              <!-- 右下角懸浮縮放 HUD 控制器 (Floating Zoom HUD) -->
+              <div
+                class="absolute bottom-4 right-4 z-30 flex items-center gap-1 rounded-xl border border-border/80 bg-background/85 p-1 shadow-lg backdrop-blur-md"
+              >
+                <TooltipProvider :delay-duration="150">
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        class="size-7 p-0 cursor-pointer text-muted-foreground hover:text-foreground"
+                        @click="onZoomOut"
+                      >
+                        <ZoomOut class="size-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" class="text-xs">縮小視角</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+
+                <span class="w-12 text-center font-mono text-xs font-semibold text-foreground select-none">
+                  {{ viewport.zoomPercentage }}%
+                </span>
+
+                <TooltipProvider :delay-duration="150">
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        class="size-7 p-0 cursor-pointer text-muted-foreground hover:text-foreground"
+                        @click="onZoomIn"
+                      >
+                        <ZoomIn class="size-3.5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" class="text-xs">放大視角</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+
+                <div class="my-1 h-3.5 w-px bg-border/60" />
+
+                <TooltipProvider :delay-duration="150">
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        class="h-7 gap-1 px-2 text-xs font-medium cursor-pointer text-muted-foreground hover:text-foreground"
+                        @click="onFitToScreen"
+                      >
+                        <Scan class="size-3.5" />
+                        <span class="hidden sm:inline">最適大小</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" class="text-xs">重設為最適畫面尺寸 (Fit)</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+
               <!-- 懸浮公式快速切換按鈕群 (Floating Formula Switcher) -->
               <div
                 class="absolute top-3 right-3 z-20 flex flex-col gap-1.5 rounded-xl border border-border/80 bg-background/85 p-1.5 shadow-lg backdrop-blur-md">
@@ -382,14 +709,45 @@ watch(selectedProject, () => {
 
               <!-- 影像載入中遮罩 -->
               <div v-if="isImageLoading"
-                class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/60 backdrop-blur-xs">
+                class="absolute inset-0 z-25 flex flex-col items-center justify-center bg-background/60 backdrop-blur-xs">
                 <Spinner class="size-8 animate-spin text-primary" />
                 <span class="mt-2 text-xs font-medium text-muted-foreground">影像載入中...</span>
               </div>
-              <img
-                class="max-h-[65vh] w-auto max-w-full object-contain rounded shadow-sm transition-opacity duration-200"
-                :class="{ 'opacity-40': isImageLoading }" :src="currentImageUrl" :alt="selectedProject.name"
-                @load="isImageLoading = false" @error="isImageLoading = false">
+
+              <!-- 正射影像與小區多邊形視角容器 -->
+              <div
+                ref="viewportRef"
+                class="relative flex-1 w-full h-full overflow-hidden select-none"
+              >
+                <img
+                  ref="imageRef"
+                  class="absolute top-0 left-0 max-w-none max-h-none pointer-events-none select-none transition-opacity duration-150"
+                  :class="{ 'opacity-40': isImageLoading }"
+                  :style="{
+                    width: `${viewport.baseWidth.value}px`,
+                    height: `${viewport.baseHeight.value}px`,
+                    transform: `translate3d(${viewport.panX.value}px, ${viewport.panY.value}px, 0) scale(${viewport.scale.value})`,
+                    transformOrigin: '0 0',
+                    imageRendering: 'auto',
+                  }"
+                  :src="currentImageUrl"
+                  :alt="selectedProject.name"
+                  @load="onImageLoaded"
+                  @error="isImageLoading = false"
+                >
+                <PlotCanvasOverlay
+                  ref="plotCanvasOverlayRef"
+                  :plots="plots"
+                  :active-mode="activeMode"
+                  :selected-plot-number="selectedPlotNumber"
+                  :get-plot-color="getPlotColor"
+                  :viewport="viewport"
+                  @add-plot="onAddPlot"
+                  @update-plot-points="onUpdatePlotPoints"
+                  @select-plot="onSelectPlot"
+                  @assign-plot="onAssignPlot"
+                />
+              </div>
             </div>
           </CardContent>
         </Card>

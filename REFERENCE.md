@@ -185,3 +185,29 @@
 - [HTTPX 逾時配置指引 (Timeouts)](https://www.python-httpx.org/advanced/timeouts/)
 - [NodeODM REST API 官方規格 (OpenDroneMap API)](https://github.com/OpenDroneMap/NodeODM)
 - **採用架構**：於 `src/usecases/ports/odm.py` 以 `Protocol` 宣告 `OdmPort` 介面契約，將 NodeODM 外部通訊自用例層徹底抽離；於 `src/requesters/odm.py` 實作具備連線管理與異常轉譯能力的 `OdmRequester` 驅動配接器（Driven Adapter）。
+
+### 前端多邊形標註與正規化座標 (Canvas Polygon Annotation & Normalized Coordinates)
+- [MDN Canvas API - Path2D 官方文件](https://developer.mozilla.org/en-US/docs/Web/API/Path2D)
+- [MDN Canvas isPointInPath 官方文件](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/isPointInPath)
+- [Normalized Device Coordinates (NDC) / Relative Coordinate Systems](https://developer.mozilla.org/en-US/docs/Games/Techniques/2D_collision_detection)
+- **採用架構**：以 0.0 ~ 1.0 正規化浮點數頂點陣列 `[[x, y], ...]` 序列化為 JSON 儲存於 `Plot.coords`，前端動態乘上 DOM Canvas 尺寸，後端運算時乘上正射圖原始像素解析度，達成跨裝置、自適應響應式縮放之無失真轉換。
+
+### 作用中標籤互動模式 (Active Brush & Interaction State Pattern)
+- [Interaction Design Pattern: Tool Palette & State Pattern](https://en.wikipedia.org/wiki/State_pattern)
+- **採用架構**：前端畫布採用狀態模式，透過「✏️ 繪製小區」與「🏷️ 套用處理」兩種模式解耦滑鼠點擊事件；在處理套用模式下以作用中標籤（Active Brush）單擊賦值，提高農藥試驗多小區重複配置之標註效率。
+
+### 瀏覽器原生全螢幕與視角變換 (Browser Fullscreen API & Canvas 2D Pan/Zoom)
+- [MDN Web Docs - Fullscreen API](https://developer.mozilla.org/en-US/docs/Web/API/Fullscreen_API)
+- [MDN Web Docs - Document: fullscreenchange event](https://developer.mozilla.org/en-US/docs/Web/API/Document/fullscreenchange_event)
+- [MDN Web Docs - CanvasRenderingContext2D.setTransform()](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/setTransform)
+- [MDN Web Docs - Event.preventDefault()](https://developer.mozilla.org/en-US/docs/Web/API/Event/preventDefault)
+- [MDN Web Docs - backdrop-filter](https://developer.mozilla.org/en-US/docs/Web/CSS/backdrop-filter)
+- **採用架構**：以原生 `Element.requestFullscreen()` 與 `document.exitFullscreen()` 管理全螢幕生命週期；畫布與影像容器基於 2D Transform 矩陣實作以滑鼠游標為中心的滾輪縮放與右鍵拖曳平移，維持 NDC 正規化座標（0.0 ~ 1.0）之精準映射。
+
+### CSS 硬體加速 Transform 與視圖邊界保護 (CSS GPU Transform & Viewport Protection)
+- [MDN Web Docs - CSS transform](https://developer.mozilla.org/en-US/docs/Web/CSS/transform)
+- [MDN Web Docs - CSS translate3d()](https://developer.mozilla.org/en-US/docs/Web/CSS/transform-function/translate3d)
+- [Tailwind CSS Preflight 官方文件 (Images are block-level and max-width: 100%)](https://tailwindcss.com/docs/preflight#images-are-block-level)
+- [Google Web Fundamentals - High Performance Animations (GPU Compositing vs. Layout Reflow)](https://web.dev/articles/animations-guide)
+- [MDN Web Docs - image-rendering](https://developer.mozilla.org/en-US/docs/Web/CSS/image-rendering)
+- **採用架構**：正射影像採用 `transform: translate3d(panX, panY, 0) scale(scale)` 與 `max-w-none max-h-none` 解除 Tailwind 限制，基於 GPU 合成層實現高畫質 60fps 平滑縮放；於 `useCanvasViewport` 中封裝平移邊界約束演算法，保證正射影像邊界至少 20% 保留在視窗可視範圍內。
