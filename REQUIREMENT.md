@@ -85,6 +85,10 @@
 - **嚴格任務專屬對話持久化（Strict Task-Scoped Dialogue Persistence）**：對話歷史僅限於已建立或選定之特定航拍任務（Task ID）寫入 SQLite `tasks.messages` 欄位；首頁未選定專案時不進行資料庫持久化，確保任務與對話生命週期單一歸屬。
 - **正射成果下載與解壓職責分離（Decoupled Asset Download and Extraction）**：正射成果資產統一透過 `OdmRequester.download_task_assets` 經由 HTTP 下載位元組，再委由 `src/utility/nodeodm.py` 純影像工具函式進行解壓縮與 GeoTIFF 轉 PNG 處理，落實外部通訊與影像運算之關注點分離。
 - **單一任務控制器整合（Unified Task Controller Consolidation）**：將原先分散之 `conversation.py` 與 `odm.py` 整合為單一 `src/controllers/task.py`，由單一 `task_router` 集中維護航拍任務生命週期、NodeODM 任務調度、正射與光譜影像產出、以及任務關聯對話互動，直接對齊 `TaskUseCase` 業務聚合邊界。
+- **VS Code 三組態獨立啟動與複合調度架構（Three Dedicated Debug Configurations & Compound Launch）**：於 `.vscode/launch.json` 分別配置「後端: FastAPI」（`debugpy`）、「前端: Vite」（`node-terminal`）與「ODM: NodeODM (Docker)」（`node-terminal`）三項獨立啟動組態，並配置 `compounds` 支援一鍵同時平行啟動三者與連動關閉（`stopAll: true`），擺脫對 tasks.json 的依賴。
+- **Vite Proxy 路由重寫機制（Vite Proxy Path Rewrite）**：於 `frontend/vite.config.ts` 設定 `rewrite: (path) => path.replace(/^\/api/, '')`，將 `/api` 統一作為導向後端 FastAPI 服務之代理通道，進入後端時自動剝離 `/api` 並將請求精確導向至 `/task` 等模組化控制器路由。
+- **前端階層式路由命名（Frontend Hierarchical Routing /api/task/*）**：前端所有業務端點（`App.vue`、`DroneHomeUpload.vue`、`GeminiHomeChat.vue`、`useChatAgent.ts` 與 `useOdmProgress.ts`）統一宣告為 `/api/task/*`，兼顧前端通用 `/api` 代理通道與後端 `task_router`（`prefix="/task"`）之模組化分群。
+- **後端結構化錯誤訊息前端動態呈現（Presenter Error Message Feedback）**：前端 API 呼叫攔截異常時，優先解析並彈出後端回傳之結構化 `data.message`（例如 NodeODM 連線逾時或參數校驗失敗），若為網路中斷則提示連線異常，提升可追溯性與除錯體驗。
 
 ## 拒絕
 - **拒絕 DESIGN.md 擴充非規範獨立章節**：不於 DESIGN.md 中新增額外獨立的 Problem、Requirements 或 How to Run 章節，How to Run 集中於 README.md，Problem/Requirements 歸屬提案章節與需求清單。
@@ -144,3 +148,10 @@
 - **拒絕首頁無專案對話寫入資料庫（No Unbound Home Dialogue in DB）**：拒絕在資料庫建立虛擬 home 任務紀錄或儲存未綁定任務之臨時對話，杜絕無效資料堆積。
 - **拒絕 Utility 模組直接發起 HTTP 請求（No Direct HTTP Calls in Utility）**：影像處理與數學公式等公用模組（Utility）嚴禁直接調用外部網路請求，外部通訊統一經由 Port 與 Requester 處理。
 - **拒絕過度拆分碎片化控制器（No Fragmented Multi-Controllers for Task Domain）**：拒絕將屬於同一 Task 聚合領域之航拍任務與對話歷程人為拆分為多個獨立的控制器檔案，避免跨控制器依賴碎片化。
+- **拒絕外部獨立彈出視窗（No External Pop-up Windows）**：不使用外部彈跳終端機視窗，服務日誌集中收錄於 VS Code 內部整合終端機面板（Integrated Terminal）。
+- **拒絕除錯結束殘留 Docker 容器（No Lingering Docker Containers on Stop）**：禁止在停止除錯後將 NodeODM 容器遺留於背景持續運行，確保本機資源與連接埠完全釋放。
+- **拒絕繁瑣外部啟動腳本維護負擔（No Redundant External Launch Scripts）**：優先採用開發環境原生設定，不強制引入額外且維護成本高的外部啟動腳本。
+- **拒絕過度複雜的 tasks.json 依賴鏈（No Complex Task Dependency Chains）**：不強制使用 tasks.json 串聯背景問題匹配器（Problem Matchers），改採 launch.json 獨立組態與 compounds 直覺調度。
+- **拒絕無 rewrite 造成之路由前綴硬耦合（No Unrewritten Hardcoded Route Coupling）**：不採用前端無 `/api` 或後端被迫迎合前端無前綴之配置，確保反向代理層具備前綴解耦能力。
+- **拒絕前端掩蓋後端詳細錯誤資訊（No Generic Error Masking in Frontend）**：在後端已提供結構化 `data.message` 時，拒絕前端一律使用固定靜態錯誤字串，杜絕掩蔽真實錯誤根因。
+- **拒絕無效冗餘的雙代理通道（No Redundant Multi-Proxy Routes）**：在 Vite 開發伺服器中拒絕同時保留未使用的多重代理路徑，消除維護歧義。

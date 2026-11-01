@@ -129,12 +129,12 @@ async function handleSend() {
     }
 
     try {
-      const res = await fetch('/api/odm-task', {
+      const res = await fetch('/api/task/odm-task', {
         method: 'POST',
         body: formData,
       })
-      const data = await res.json()
-      if (res.ok && data.result) {
+      const data = await res.json().catch(() => null)
+      if (res.ok && data?.result) {
         const newProj: Project = {
           id: data.data.id,
           name: currentName,
@@ -159,11 +159,12 @@ async function handleSend() {
 
         await sendPrompt(agentPrompt, newProj.id)
       } else {
-        alert('建立 ODM 專案失敗，請檢查後端日誌')
+        const errMsg = data?.message || '建立 ODM 專案失敗，請檢查後端日誌'
+        alert(errMsg)
       }
     } catch (err) {
       console.error('Failed to create ODM task:', err)
-      alert('上傳失敗，請確認伺服器與 NodeODM 連線')
+      alert('上傳連線失敗，請確認伺服器與 NodeODM 服務狀態')
     } finally {
       isUploadingOdm.value = false
     }

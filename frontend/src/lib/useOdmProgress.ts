@@ -40,7 +40,7 @@ export function useOdmProgress() {
     activeTaskId.value = taskId
     isListening.value = true
 
-    const es = new EventSource(`/api/odm-task-stream/${encodeURIComponent(taskId)}`)
+    const es = new EventSource(`/api/task/odm-task-stream/${encodeURIComponent(taskId)}`)
     eventSource = es
 
     es.onmessage = (event) => {

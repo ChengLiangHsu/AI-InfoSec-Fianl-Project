@@ -181,12 +181,12 @@ async function handleStartOdmTask() {
   }
 
   try {
-    const res = await fetch('/api/odm-task', {
+    const res = await fetch('/api/task/odm-task', {
       method: 'POST',
       body: formData,
     })
-    const data = await res.json()
-    if (res.ok && data.result) {
+    const data = await res.json().catch(() => null)
+    if (res.ok && data?.result) {
       const newProj: Project = {
         id: data.data.id,
         name: currentName,
@@ -196,11 +196,12 @@ async function handleStartOdmTask() {
       clearFiles()
       emit('projectCreated', newProj)
     } else {
-      alert('建立正射拼接任務失敗，請檢查 NodeODM 伺服器狀態')
+      const errMsg = data?.message || '建立正射拼接任務失敗，請檢查 NodeODM 伺服器狀態'
+      alert(errMsg)
     }
   } catch (err) {
     console.error('Failed to submit ODM task:', err)
-    alert('上傳失敗，請確認後端與 NodeODM 容器連線')
+    alert('上傳連線失敗，請確認後端與 NodeODM 服務狀態')
   } finally {
     isUploading.value = false
   }

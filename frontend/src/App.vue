@@ -108,9 +108,9 @@ const isImageLoading = ref(false)
 const currentImageUrl = computed(() => {
   if (!selectedProject.value) return ''
   if (selectedFormula.value === 'rgb') {
-    return `/api/odm-task-orthophoto/${selectedProject.value.id}`
+    return `/api/task/odm-task-orthophoto/${selectedProject.value.id}`
   }
-  return `/api/odm-task-spectral/${selectedProject.value.id}?formula=${selectedFormula.value}`
+  return `/api/task/odm-task-spectral/${selectedProject.value.id}?formula=${selectedFormula.value}`
 })
 
 watch(selectedFormula, () => {
@@ -140,7 +140,7 @@ async function handleFileUpload(event: Event) {
 async function onProjectCreated(newProj: Project) {
   isCreatingProject.value = true
   try {
-    const listRes = await fetch("/api/odm-task-list")
+    const listRes = await fetch("/api/task/odm-task-list")
     const listData = await listRes.json()
     if (listRes.ok && listData.data) {
       projects.value = listData.data
@@ -174,7 +174,7 @@ async function onProjectCreated(newProj: Project) {
 
 async function handleDeleteProject(id: string) {
   if (!confirm("確定要刪除此專案嗎？")) return
-  const response = await fetch(`/api/odm-task/${id}`, {
+  const response = await fetch(`/api/task/odm-task/${id}`, {
     method: "DELETE",
   })
   if (!response.ok) {
@@ -189,7 +189,7 @@ async function handleDeleteProject(id: string) {
 
 onMounted(async () => {
   try {
-    const formulasRes = await fetch("/api/odm-task-formulas")
+    const formulasRes = await fetch("/api/task/odm-task-formulas")
     const formulasData = await formulasRes.json()
     if (formulasRes.ok && formulasData.data) {
       formulas.value = formulasData.data
@@ -198,7 +198,7 @@ onMounted(async () => {
     console.error("無法取得光譜演算法清單", err)
   }
 
-  const response = await fetch("/api/odm-task-list")
+  const response = await fetch("/api/task/odm-task-list")
   const data = await response.json()
   if (!response.ok) {
     return

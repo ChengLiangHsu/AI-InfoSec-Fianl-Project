@@ -75,7 +75,13 @@
 - [Vue.js 官方文件](https://vuejs.org/)
 - [Vue.js 組合式函數 (Composables) 官方指引](https://vuejs.org/guide/reusability/composables.html)
 - [Vite 官方文件](https://vite.dev/)
+- [Vite Server Proxy 官方設定指引](https://vite.dev/config/server-options#server-proxy)
 - [Lucide Icons 官方文件](https://lucide.dev/)
+
+### 前端 HTTP 通訊與錯誤處理 (Frontend HTTP & Error Handling)
+- [MDN Fetch API 官方文件](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch)
+- [MDN Response 物件與 JSON 解析指引](https://developer.mozilla.org/en-US/docs/Web/API/Response)
+- **採用架構**：前端統一以 `/api/task/*` 階層式路徑調用後端控制器端點，並由 Vite Proxy 配置 `rewrite: (path) => path.replace(/^\/api/, '')` 剝離 `/api` 轉發至本地 FastAPI `/task/*` 控制器；於 `fetch` 回應攔截中動態解析 `data.message`，落實前後端契約一致性與精準錯誤回顯。
 
 ### Server-Sent Events (SSE) 與串流傳輸
 - [MDN Server-Sent Events (SSE) 官方規範](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events)

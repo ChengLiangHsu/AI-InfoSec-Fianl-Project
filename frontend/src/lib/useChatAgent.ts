@@ -42,7 +42,7 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
       return
     }
     try {
-      const res = await fetch(`/api/chat/?project_id=${encodeURIComponent(targetId)}`)
+      const res = await fetch(`/api/task/chat/?project_id=${encodeURIComponent(targetId)}`)
       if (res.ok) {
         const text = await res.text()
         const lines = text.split('\n').filter(l => l.trim().length > 0)
@@ -109,7 +109,7 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
         prompt: promptText,
         project_id: targetId,
       })
-      const response = await fetch('/api/chat', {
+      const response = await fetch('/api/task/chat', {
         method: 'POST',
         body,
         headers: { 'Content-Type': 'application/json' }
@@ -126,7 +126,7 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
     conversations.value[targetId] = []
     statusMap.value[targetId] = 'ready'
     try {
-      await fetch(`/api/chat/?project_id=${encodeURIComponent(targetId)}`, {
+      await fetch(`/api/task/chat/?project_id=${encodeURIComponent(targetId)}`, {
         method: 'DELETE',
       })
     } catch (e) {
@@ -142,7 +142,7 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
     }
     statusMap.value[fromId] = 'ready'
     try {
-      await fetch('/api/chat/migrate', {
+      await fetch('/api/task/chat/migrate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
