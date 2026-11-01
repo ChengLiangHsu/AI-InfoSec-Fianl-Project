@@ -93,11 +93,13 @@
 - [MDN EventSource API 官方文件](https://developer.mozilla.org/en-US/docs/Web/API/EventSource)
 - [WHATWG HTML Server-Sent Events 標準](https://html.spec.whatwg.org/multipage/server-sent-events.html)
 
-### 前端互動介面 (HTML5 Canvas & Drag-and-Drop)
+### 前端互動介面 (HTML5 Canvas & Modal Dialog)
 - [MDN Canvas API 官方文件](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API)
-- [MDN click 事件：選取農藥與點選小區的互動參考](https://developer.mozilla.org/en-US/docs/Web/API/Element/click_event)
+- [MDN CanvasRenderingContext2D.rect() 繪製矩形路徑規範](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/rect)
 - [MDN Canvas isPointInPath：小區點選範圍判斷參考](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/isPointInPath)
-- [MDN HTML5 Drag and Drop API 官方文件](https://developer.mozilla.org/en-US/docs/Web/API/HTML_Drag_and_Drop_API)
+- [shadcn-vue Dialog 官方文件](https://www.shadcn-vue.com/docs/components/dialog.html)
+- [Radix Vue Dialog 原語規範與無障礙焦點管理](https://www.radix-vue.com/components/dialog.html)
+- [W3C WAI-ARIA Dialog (Modal) 互動模式規範](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/)
 
 ### 農業植保與藥效評估背景（正式藥效與法定判定為後續待確認範圍）
 - [EPPO PP 1 植保產品藥效評估標準指南](https://www.eppo.int/RESOURCES/eppo_standards/standards_pp1)

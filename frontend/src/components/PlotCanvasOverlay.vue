@@ -7,31 +7,44 @@ import {
 } from '@/lib/usePlots'
 import type { CanvasViewport } from '@/lib/useCanvasViewport'
 
-const props = defineProps<{
-  plots: PlotItem[]
-  activeMode: 'view' | 'draw' | 'assign'
-  selectedPlotNumber: number | null
-  getPlotColor: (plot: PlotItem) => string
-  viewport: CanvasViewport
-}>()
+const props = withDefaults(
+  defineProps<{
+    plots: PlotItem[]
+    activeMode: 'view' | 'draw'
+    drawTool?: 'rect' | 'polygon'
+    selectedPlotNumber: number | null
+    getPlotColor: (plot: PlotItem) => string
+    viewport: CanvasViewport
+  }>(),
+  {
+    drawTool: 'rect',
+  }
+)
 
 const emit = defineEmits<{
-  (e: 'add-plot', points: NormalizedPoint[]): void
+  (e: 'plot-drawn', points: NormalizedPoint[]): void
+  (e: 'edit-plot', plot: PlotItem): void
   (e: 'update-plot-points', payload: { plotNumber: number; points: NormalizedPoint[] }): void
   (e: 'select-plot', plotNumber: number | null): void
-  (e: 'assign-plot', plotNumber: number): void
 }>()
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const containerRef = ref<HTMLDivElement | null>(null)
 
-// 繪製中的暫態資料
+// 矩形拖曳拉框狀態
+const isDraggingRect = ref(false)
+const rectStartScreen = ref<{ x: number; y: number } | null>(null)
+const rectStartNorm = ref<NormalizedPoint | null>(null)
+const rectCurrentNorm = ref<NormalizedPoint | null>(null)
+
+// 多邊形點繪狀態
 const currentDrawingPoints = ref<NormalizedPoint[]>([])
 const currentMousePos = ref<NormalizedPoint | null>(null)
 const isNearStartPoint = ref(false)
 const draggingVertexIndex = ref<number | null>(null)
 
 const SNAP_THRESHOLD_PX = 18
+const MIN_RECT_DRAG_PX = 8
 
 function getCanvasRelativeCoords(e: MouseEvent): { screenX: number; screenY: number; norm: NormalizedPoint } {
   if (!canvasRef.value) {
@@ -102,6 +115,7 @@ function drawCanvas() {
   ctx.scale(dpr, dpr)
 
   drawExistingPlots(ctx)
+  drawDraggingRectPreview(ctx)
   drawCurrentDrawingPolyline(ctx)
 
   ctx.restore()
@@ -128,7 +142,7 @@ function drawExistingPlots(ctx: CanvasRenderingContext2D) {
     ctx.fillStyle = hexToRgba(color, isSelected ? 0.45 : 0.22)
     ctx.fill()
 
-    // 邊框繪製（固定螢幕像素寬度）
+    // 邊框繪製
     ctx.strokeStyle = isSelected ? '#ffffff' : color
     ctx.lineWidth = isSelected ? 3 : 1.8
     if (isSelected) {
@@ -146,6 +160,47 @@ function drawExistingPlots(ctx: CanvasRenderingContext2D) {
       drawPlotHandles(ctx, pts)
     }
   }
+}
+
+function drawDraggingRectPreview(ctx: CanvasRenderingContext2D) {
+  if (!isDraggingRect.value || !rectStartNorm.value || !rectCurrentNorm.value) return
+
+  const sp1 = props.viewport.normalizedToScreen(rectStartNorm.value)
+  const sp2 = props.viewport.normalizedToScreen(rectCurrentNorm.value)
+  const sx = Math.min(sp1.x, sp2.x)
+  const sy = Math.min(sp1.y, sp2.y)
+  const sw = Math.abs(sp2.x - sp1.x)
+  const sh = Math.abs(sp2.y - sp1.y)
+
+  ctx.save()
+  // 填色預覽
+  ctx.fillStyle = 'rgba(56, 189, 248, 0.25)'
+  ctx.fillRect(sx, sy, sw, sh)
+
+  // 邊框預覽
+  ctx.strokeStyle = '#0284c7'
+  ctx.lineWidth = 2
+  ctx.setLineDash([6, 4])
+  ctx.strokeRect(sx, sy, sw, sh)
+  ctx.setLineDash([])
+
+  // 四個角標記
+  const corners = [
+    { x: sx, y: sy },
+    { x: sx + sw, y: sy },
+    { x: sx + sw, y: sy + sh },
+    { x: sx, y: sy + sh },
+  ]
+  for (const c of corners) {
+    ctx.beginPath()
+    ctx.arc(c.x, c.y, 4, 0, Math.PI * 2)
+    ctx.fillStyle = '#38bdf8'
+    ctx.fill()
+    ctx.strokeStyle = '#ffffff'
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+  }
+  ctx.restore()
 }
 
 function drawPlotHandles(ctx: CanvasRenderingContext2D, pts: NormalizedPoint[]) {
@@ -294,29 +349,27 @@ function onMouseDown(e: MouseEvent) {
     return
   }
 
-  // 2. 僅滑鼠左鍵進行幾何標註與操作
+  // 2. 僅滑鼠左鍵進行繪製與選取
   if (e.button !== 0) return
 
   const { screenX, screenY, norm } = getCanvasRelativeCoords(e)
 
-  if (props.activeMode === 'assign') {
+  // 檢視模式：點擊小區選取並彈窗編輯
+  if (props.activeMode === 'view') {
     const hitPlot = findPlotAtPoint(screenX, screenY)
     if (hitPlot) {
-      emit('assign-plot', hitPlot.plot_number)
       emit('select-plot', hitPlot.plot_number)
+      emit('edit-plot', hitPlot)
+    } else {
+      emit('select-plot', null)
     }
     return
   }
 
-  if (props.activeMode === 'view') {
-    const hitPlot = findPlotAtPoint(screenX, screenY)
-    emit('select-plot', hitPlot ? hitPlot.plot_number : null)
-    return
-  }
-
+  // 繪製模式
   if (props.activeMode === 'draw') {
     // 檢查是否點擊在已選取小區的頂點手柄上以進行拖曳
-    if (props.selectedPlotNumber !== null && currentDrawingPoints.value.length === 0) {
+    if (props.selectedPlotNumber !== null && currentDrawingPoints.value.length === 0 && !isDraggingRect.value) {
       const selectedPlot = props.plots.find((p) => p.plot_number === props.selectedPlotNumber)
       if (selectedPlot) {
         const vIdx = findVertexNearPoint(screenX, screenY, selectedPlot)
@@ -327,28 +380,44 @@ function onMouseDown(e: MouseEvent) {
       }
     }
 
-    // 若已在繪製中
-    if (currentDrawingPoints.value.length > 0) {
-      // 靠近起點吸附閉合
-      if (isNearStartPoint.value && currentDrawingPoints.value.length >= 3) {
-        finishDrawing()
-        return
+    // 矩形拖曳拉框工具
+    if (props.drawTool === 'rect') {
+      const hitPlot = findPlotAtPoint(screenX, screenY)
+      if (hitPlot) {
+        emit('select-plot', hitPlot.plot_number)
+        emit('edit-plot', hitPlot)
+      } else {
+        emit('select-plot', null)
+        isDraggingRect.value = true
+        rectStartScreen.value = { x: screenX, y: screenY }
+        rectStartNorm.value = { x: norm.x, y: norm.y }
+        rectCurrentNorm.value = { x: norm.x, y: norm.y }
+        drawCanvas()
       }
-      // 加入新頂點
-      currentDrawingPoints.value.push({ x: norm.x, y: norm.y })
-      drawCanvas()
       return
     }
 
-    // 尚未開始繪製：若點到既有小區則選取它
-    const hitPlot = findPlotAtPoint(screenX, screenY)
-    if (hitPlot) {
-      emit('select-plot', hitPlot.plot_number)
-    } else {
-      // 點在空白處：開啟新小區繪製
-      emit('select-plot', null)
-      currentDrawingPoints.value = [{ x: norm.x, y: norm.y }]
-      drawCanvas()
+    // 多邊形點繪工具
+    if (props.drawTool === 'polygon') {
+      if (currentDrawingPoints.value.length > 0) {
+        if (isNearStartPoint.value && currentDrawingPoints.value.length >= 3) {
+          finishDrawing()
+          return
+        }
+        currentDrawingPoints.value.push({ x: norm.x, y: norm.y })
+        drawCanvas()
+        return
+      }
+
+      const hitPlot = findPlotAtPoint(screenX, screenY)
+      if (hitPlot) {
+        emit('select-plot', hitPlot.plot_number)
+        emit('edit-plot', hitPlot)
+      } else {
+        emit('select-plot', null)
+        currentDrawingPoints.value = [{ x: norm.x, y: norm.y }]
+        drawCanvas()
+      }
     }
   }
 }
@@ -381,8 +450,15 @@ function onMouseMove(e: MouseEvent) {
     return
   }
 
-  // 3. 繪製中的起點吸附判定
-  if (currentDrawingPoints.value.length >= 3) {
+  // 3. 矩形拖曳中
+  if (isDraggingRect.value && rectStartNorm.value) {
+    rectCurrentNorm.value = norm
+    drawCanvas()
+    return
+  }
+
+  // 4. 多邊形起點吸附判定
+  if (props.drawTool === 'polygon' && currentDrawingPoints.value.length >= 3) {
     const startSp = props.viewport.normalizedToScreen(currentDrawingPoints.value[0])
     const dist = Math.hypot(startSp.x - screenX, startSp.y - screenY)
     isNearStartPoint.value = dist <= SNAP_THRESHOLD_PX
@@ -400,6 +476,35 @@ function onMouseUp(e: MouseEvent) {
     props.viewport.endPan()
     return
   }
+
+  // 矩形拖曳結束判定
+  if (isDraggingRect.value && rectStartScreen.value && rectStartNorm.value && rectCurrentNorm.value) {
+    const { screenX, screenY } = getCanvasRelativeCoords(e)
+    const dist = Math.hypot(screenX - rectStartScreen.value.x, screenY - rectStartScreen.value.y)
+
+    if (dist >= MIN_RECT_DRAG_PX) {
+      const minX = Math.min(rectStartNorm.value.x, rectCurrentNorm.value.x)
+      const maxX = Math.max(rectStartNorm.value.x, rectCurrentNorm.value.x)
+      const minY = Math.min(rectStartNorm.value.y, rectCurrentNorm.value.y)
+      const maxY = Math.max(rectStartNorm.value.y, rectCurrentNorm.value.y)
+
+      const points: NormalizedPoint[] = [
+        { x: minX, y: minY },
+        { x: maxX, y: minY },
+        { x: maxX, y: maxY },
+        { x: minX, y: maxY },
+      ]
+      emit('plot-drawn', points)
+    }
+
+    isDraggingRect.value = false
+    rectStartScreen.value = null
+    rectStartNorm.value = null
+    rectCurrentNorm.value = null
+    drawCanvas()
+    return
+  }
+
   draggingVertexIndex.value = null
 }
 
@@ -416,14 +521,14 @@ function onWheel(e: WheelEvent) {
 }
 
 function onDblClick() {
-  if (props.activeMode === 'draw' && currentDrawingPoints.value.length >= 3) {
+  if (props.activeMode === 'draw' && props.drawTool === 'polygon' && currentDrawingPoints.value.length >= 3) {
     finishDrawing()
   }
 }
 
 function finishDrawing() {
   if (currentDrawingPoints.value.length >= 3) {
-    emit('add-plot', [...currentDrawingPoints.value])
+    emit('plot-drawn', [...currentDrawingPoints.value])
   }
   currentDrawingPoints.value = []
   isNearStartPoint.value = false
@@ -439,6 +544,10 @@ function undoLastPoint() {
 
 function cancelDrawing() {
   currentDrawingPoints.value = []
+  isDraggingRect.value = false
+  rectStartScreen.value = null
+  rectStartNorm.value = null
+  rectCurrentNorm.value = null
   isNearStartPoint.value = false
   drawCanvas()
 }
@@ -448,7 +557,7 @@ defineExpose({
   cancelDrawing,
   syncCanvasSize,
   redraw: drawCanvas,
-  isDrawing: () => currentDrawingPoints.value.length > 0,
+  isDrawing: () => isDraggingRect.value || currentDrawingPoints.value.length > 0,
 })
 
 let resizeObserver: ResizeObserver | null = null
@@ -475,6 +584,7 @@ watch(
   () => [
     props.plots,
     props.activeMode,
+    props.drawTool,
     props.selectedPlotNumber,
     props.viewport.scale.value,
     props.viewport.panX.value,
@@ -494,9 +604,7 @@ watch(
   () => props.activeMode,
   (newMode) => {
     if (newMode !== 'draw') {
-      currentDrawingPoints.value = []
-      isNearStartPoint.value = false
-      drawCanvas()
+      cancelDrawing()
     }
   }
 )
@@ -508,7 +616,7 @@ watch(
     class="absolute inset-0 pointer-events-auto select-none"
     :class="{
       'cursor-grab': viewport.isPanning.value,
-      'cursor-pointer': activeMode === 'assign' || activeMode === 'view',
+      'cursor-pointer': activeMode === 'view',
       'cursor-crosshair': activeMode === 'draw' && !viewport.isPanning.value,
     }"
     @mousedown="onMouseDown"

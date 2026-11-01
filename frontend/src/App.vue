@@ -25,7 +25,6 @@ import {
   Save,
   Pencil,
 } from '@lucide/vue'
-import { useFullscreen } from '@vueuse/core'
 import { useCanvasViewport } from './lib/useCanvasViewport'
 import AppSidebar from "@/components/AppSidebar.vue"
 import { Badge } from "@/components/ui/badge"
@@ -80,7 +79,8 @@ import AskAgent from './components/AskAgent.vue'
 import DroneHomeUpload from './components/DroneHomeUpload.vue'
 import PlotToolbar from './components/PlotToolbar.vue'
 import PlotCanvasOverlay from './components/PlotCanvasOverlay.vue'
-import { usePlots, type NormalizedPoint } from './lib/usePlots'
+import PlotTreatmentDialog, { type TreatmentData } from './components/PlotTreatmentDialog.vue'
+import { usePlots, type NormalizedPoint, type PlotItem } from './lib/usePlots'
 import { useChatAgent } from './lib/useChatAgent'
 import { useOdmProgress } from './lib/useOdmProgress'
 import exifr from 'exifr'
@@ -92,18 +92,20 @@ const {
   plots,
   activeMode,
   selectedPlotNumber,
-  activeBrush,
   isDirty,
   isSaving,
   errorMessage,
+  existingTreatments,
   getPlotColor,
   loadPlots,
   savePlots,
-  addPlot,
+  addPlotWithTreatment,
+  updatePlotTreatment,
   updatePlotPoints,
   deletePlot,
-  assignTreatmentToPlot,
 } = usePlots()
+
+const drawTool = ref<'rect' | 'polygon'>('rect')
 
 const plotCanvasOverlayRef = ref<InstanceType<typeof PlotCanvasOverlay> | null>(null)
 const orthoContainerRef = ref<HTMLDivElement | null>(null)
@@ -111,9 +113,26 @@ const viewportRef = ref<HTMLDivElement | null>(null)
 const imageRef = ref<HTMLImageElement | null>(null)
 
 const viewport = useCanvasViewport()
-const { isFullscreen, enter: enterFullscreen, exit: exitFullscreen } = useFullscreen(orthoContainerRef)
 
 const isDrawing = computed(() => plotCanvasOverlayRef.value?.isDrawing?.() || false)
+
+const treatmentDialogState = ref<{
+  open: boolean
+  isNewPlot: boolean
+  plotNumber: number | null
+  points: NormalizedPoint[] | null
+  initialTreatment: string
+  initialDose: string
+  initialIsControl: boolean
+}>({
+  open: false,
+  isNewPlot: true,
+  plotNumber: null,
+  points: null,
+  initialTreatment: '',
+  initialDose: '',
+  initialIsControl: false,
+})
 
 function onFitToScreen() {
   const container = viewportRef.value || orthoContainerRef.value
@@ -124,7 +143,7 @@ function onFitToScreen() {
     container.clientHeight,
     img.naturalWidth || 1,
     img.naturalHeight || 1,
-    isFullscreen.value ? 24 : 16
+    16
   )
   nextTick(() => {
     plotCanvasOverlayRef.value?.syncCanvasSize()
@@ -145,50 +164,6 @@ function onZoomOut() {
   nextTick(() => plotCanvasOverlayRef.value?.redraw())
 }
 
-async function handleExitFullscreenDraw() {
-  plotCanvasOverlayRef.value?.cancelDrawing()
-  if (isDirty.value) {
-    await handleSavePlots()
-  }
-  activeMode.value = 'view'
-  if (isFullscreen.value) {
-    await exitFullscreen()
-  }
-}
-
-function handleToggleFullscreen() {
-  if (isFullscreen.value) {
-    handleExitFullscreenDraw()
-  } else {
-    enterFullscreen()
-  }
-}
-
-watch(activeMode, async (newMode, oldMode) => {
-  if (newMode === 'draw') {
-    if (!isFullscreen.value) {
-      await enterFullscreen()
-    }
-  } else if (oldMode === 'draw' && isFullscreen.value) {
-    plotCanvasOverlayRef.value?.cancelDrawing()
-    await exitFullscreen()
-  }
-})
-
-watch(isFullscreen, async (full) => {
-  if (!full) {
-    if (activeMode.value === 'draw') {
-      plotCanvasOverlayRef.value?.cancelDrawing()
-      if (isDirty.value) {
-        await handleSavePlots()
-      }
-      activeMode.value = 'view'
-    }
-  }
-  await nextTick()
-  onFitToScreen()
-})
-
 function onImageLoaded() {
   isImageLoading.value = false
   nextTick(() => {
@@ -196,8 +171,60 @@ function onImageLoaded() {
   })
 }
 
-function onAddPlot(points: NormalizedPoint[]) {
-  addPlot(points)
+function onPlotDrawn(points: NormalizedPoint[]) {
+  const maxNum = plots.value.reduce((acc, cur) => Math.max(acc, cur.plot_number), 0)
+  treatmentDialogState.value = {
+    open: true,
+    isNewPlot: true,
+    plotNumber: maxNum + 1,
+    points,
+    initialTreatment: '',
+    initialDose: '',
+    initialIsControl: false,
+  }
+}
+
+function onEditPlot(plot: PlotItem) {
+  treatmentDialogState.value = {
+    open: true,
+    isNewPlot: false,
+    plotNumber: plot.plot_number,
+    points: null,
+    initialTreatment: plot.treatment,
+    initialDose: plot.dose,
+    initialIsControl: plot.is_control,
+  }
+}
+
+function onDialogConfirm(data: TreatmentData) {
+  if (treatmentDialogState.value.isNewPlot && treatmentDialogState.value.points) {
+    addPlotWithTreatment(
+      treatmentDialogState.value.points,
+      data.treatment,
+      data.dose,
+      data.isControl
+    )
+  } else if (!treatmentDialogState.value.isNewPlot && treatmentDialogState.value.plotNumber !== null) {
+    updatePlotTreatment(
+      treatmentDialogState.value.plotNumber,
+      data.treatment,
+      data.dose,
+      data.isControl
+    )
+  }
+  treatmentDialogState.value.open = false
+  treatmentDialogState.value.points = null
+}
+
+function onDialogCancel() {
+  treatmentDialogState.value.open = false
+  treatmentDialogState.value.points = null
+}
+
+function onDialogDelete(plotNumber: number) {
+  deletePlot(plotNumber)
+  treatmentDialogState.value.open = false
+  treatmentDialogState.value.points = null
 }
 
 function onUpdatePlotPoints(payload: { plotNumber: number; points: NormalizedPoint[] }) {
@@ -206,10 +233,6 @@ function onUpdatePlotPoints(payload: { plotNumber: number; points: NormalizedPoi
 
 function onSelectPlot(plotNumber: number | null) {
   selectedPlotNumber.value = plotNumber
-}
-
-function onAssignPlot(plotNumber: number) {
-  assignTreatmentToPlot(plotNumber)
 }
 
 async function handleSavePlots() {
@@ -481,107 +504,23 @@ watch(selectedProject, async (newProj) => {
           <!-- 小區多邊形分割與處理組工具列 -->
           <PlotToolbar
             v-model:active-mode="activeMode"
-            v-model:active-brush="activeBrush"
+            v-model:draw-tool="drawTool"
             :plots="plots"
             :selected-plot-number="selectedPlotNumber"
             :is-dirty="isDirty"
             :is-saving="isSaving"
             :is-drawing="isDrawing"
-            :is-fullscreen="isFullscreen"
             @save="handleSavePlots"
             @undo-point="plotCanvasOverlayRef?.undoLastPoint()"
             @cancel-drawing="plotCanvasOverlayRef?.cancelDrawing()"
             @delete-selected="selectedPlotNumber !== null && deletePlot(selectedPlotNumber)"
-            @toggle-fullscreen="handleToggleFullscreen"
           />
 
           <CardContent class="p-4">
             <div
               ref="orthoContainerRef"
-              class="relative flex flex-col w-full overflow-hidden select-none"
-              :class="[
-                isFullscreen
-                  ? 'fixed inset-0 z-50 h-screen w-screen bg-slate-950 p-0 rounded-none'
-                  : 'min-h-[460px] h-[68vh] rounded-lg border bg-muted/20 p-1',
-              ]"
+              class="relative flex flex-col w-full overflow-hidden select-none min-h-[460px] h-[68vh] rounded-lg border bg-muted/20 p-1"
             >
-              <!-- 全螢幕頂部懸浮膠囊工具列 (Top Floating Capsule Toolbar in Fullscreen) -->
-              <div
-                v-if="isFullscreen"
-                class="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2.5 rounded-full border border-border/70 bg-background/90 px-4 py-1.5 shadow-2xl backdrop-blur-md text-xs"
-              >
-                <div class="flex items-center gap-1.5 font-semibold text-foreground">
-                  <Pencil class="size-3.5 text-blue-500" />
-                  <span>繪製小區中</span>
-                  <span class="text-[11px] font-normal text-muted-foreground hidden md:inline">
-                    (滾輪縮放 / 右鍵平移)
-                  </span>
-                </div>
-
-                <div class="h-3.5 w-px bg-border/60" />
-
-                <!-- 作用中筆刷指示 -->
-                <div class="flex items-center gap-1.5">
-                  <Badge
-                    variant="outline"
-                    class="h-6 gap-1 px-2 text-[11px] font-normal"
-                  >
-                    <span
-                      class="size-2 rounded-full"
-                      :style="{ backgroundColor: activeBrush.isControl ? '#64748b' : '#10b981' }"
-                    />
-                    <span>{{ activeBrush.isControl ? 'CK (對照)' : (activeBrush.treatment ? activeBrush.treatment + (activeBrush.dose ? ' ' + activeBrush.dose : '') : '未指定處理') }}</span>
-                  </Badge>
-                </div>
-
-                <div class="h-3.5 w-px bg-border/60" />
-
-                <!-- 復原與取消按鈕 -->
-                <Button
-                  v-if="isDrawing"
-                  size="sm"
-                  variant="ghost"
-                  class="h-6 px-2 text-[11px] cursor-pointer"
-                  @click="plotCanvasOverlayRef?.undoLastPoint()"
-                >
-                  <RotateCcw class="size-3 mr-1" />
-                  復原點
-                </Button>
-                <Button
-                  v-if="isDrawing"
-                  size="sm"
-                  variant="ghost"
-                  class="h-6 px-2 text-[11px] text-destructive hover:bg-destructive/10 cursor-pointer"
-                  @click="plotCanvasOverlayRef?.cancelDrawing()"
-                >
-                  <X class="size-3 mr-1" />
-                  放棄繪製
-                </Button>
-                <Button
-                  v-if="selectedPlotNumber !== null && !isDrawing"
-                  size="sm"
-                  variant="ghost"
-                  class="h-6 px-2 text-[11px] text-destructive hover:bg-destructive/10 cursor-pointer"
-                  @click="selectedPlotNumber !== null && deletePlot(selectedPlotNumber)"
-                >
-                  <Trash2 class="size-3 mr-1" />
-                  刪除 #{{ selectedPlotNumber }}
-                </Button>
-
-                <div class="h-3.5 w-px bg-border/60" />
-
-                <!-- 儲存並退出全螢幕按鈕 -->
-                <Button
-                  size="sm"
-                  :variant="isDirty ? 'default' : 'secondary'"
-                  class="h-6 gap-1.5 px-3 text-[11px] font-medium cursor-pointer shadow-xs"
-                  @click="handleExitFullscreenDraw"
-                >
-                  <Save class="size-3" />
-                  <span>{{ isDirty ? '儲存並結束 (Esc)' : '結束全螢幕 (Esc)' }}</span>
-                </Button>
-              </div>
-
               <!-- 右下角懸浮縮放 HUD 控制器 (Floating Zoom HUD) -->
               <div
                 class="absolute bottom-4 right-4 z-30 flex items-center gap-1 rounded-xl border border-border/80 bg-background/85 p-1 shadow-lg backdrop-blur-md"
@@ -739,17 +678,31 @@ watch(selectedProject, async (newProj) => {
                   ref="plotCanvasOverlayRef"
                   :plots="plots"
                   :active-mode="activeMode"
+                  :draw-tool="drawTool"
                   :selected-plot-number="selectedPlotNumber"
                   :get-plot-color="getPlotColor"
                   :viewport="viewport"
-                  @add-plot="onAddPlot"
+                  @plot-drawn="onPlotDrawn"
+                  @edit-plot="onEditPlot"
                   @update-plot-points="onUpdatePlotPoints"
                   @select-plot="onSelectPlot"
-                  @assign-plot="onAssignPlot"
                 />
               </div>
             </div>
           </CardContent>
+
+          <PlotTreatmentDialog
+            v-model:open="treatmentDialogState.open"
+            :plot-number="treatmentDialogState.plotNumber"
+            :is-new-plot="treatmentDialogState.isNewPlot"
+            :initial-treatment="treatmentDialogState.initialTreatment"
+            :initial-dose="treatmentDialogState.initialDose"
+            :initial-is-control="treatmentDialogState.initialIsControl"
+            :existing-treatments="existingTreatments"
+            @confirm="onDialogConfirm"
+            @cancel="onDialogCancel"
+            @delete="onDialogDelete"
+          />
         </Card>
 
         <!-- 運算中提示 -->

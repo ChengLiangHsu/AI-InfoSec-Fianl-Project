@@ -20,6 +20,13 @@ export interface ActiveBrush {
   dose: string
 }
 
+export interface ExistingTreatment {
+  isControl: boolean
+  treatment: string
+  dose: string
+  label: string
+}
+
 const PRESET_COLORS = [
   '#10b981', // emerald
   '#3b82f6', // blue
@@ -57,17 +64,11 @@ export function serializePoints(points: NormalizedPoint[]): string {
 
 export function usePlots() {
   const plots = ref<PlotItem[]>([])
-  const activeMode = ref<'view' | 'draw' | 'assign'>('view')
+  const activeMode = ref<'view' | 'draw'>('view')
   const selectedPlotNumber = ref<number | null>(null)
   const isDirty = ref(false)
   const isSaving = ref(false)
   const errorMessage = ref<string | null>(null)
-
-  const activeBrush = ref<ActiveBrush>({
-    isControl: false,
-    treatment: '',
-    dose: '',
-  })
 
   // 動態分配各處理組之顏色標籤
   const treatmentColorMap = computed(() => {
@@ -86,6 +87,30 @@ export function usePlots() {
       }
     }
     return map
+  })
+
+  // 取得既有專案中出現過的獨立處理組清單，作為快捷選取按鈕
+  const existingTreatments = computed<ExistingTreatment[]>(() => {
+    const set = new Set<string>()
+    for (const p of plots.value) {
+      if (p.is_control) {
+        set.add('CK')
+      } else if (p.treatment) {
+        set.add(`${p.treatment}::${p.dose}`)
+      }
+    }
+    return Array.from(set).map((item) => {
+      if (item === 'CK') {
+        return { isControl: true, treatment: '', dose: '', label: '未施藥對照 (CK)' }
+      }
+      const [treatment, dose] = item.split('::')
+      return {
+        isControl: false,
+        treatment,
+        dose,
+        label: `${treatment}${dose ? ' (' + dose + ')' : ''}`,
+      }
+    })
   })
 
   function getPlotColor(plot: PlotItem): string {
@@ -157,21 +182,40 @@ export function usePlots() {
     }
   }
 
-  function addPlot(points: NormalizedPoint[]): PlotItem | null {
+  function addPlotWithTreatment(
+    points: NormalizedPoint[],
+    treatment: string,
+    dose: string,
+    isControl: boolean
+  ): PlotItem | null {
     if (points.length < 3) return null
     const maxNum = plots.value.reduce((acc, cur) => Math.max(acc, cur.plot_number), 0)
     const newPlot: PlotItem = {
       plot_number: maxNum + 1,
       coords: serializePoints(points),
-      is_control: false,
-      treatment: '',
-      dose: '',
+      is_control: isControl,
+      treatment: isControl ? '' : treatment.trim(),
+      dose: isControl ? '' : dose.trim(),
       metrics: {},
     }
     plots.value.push(newPlot)
     selectedPlotNumber.value = newPlot.plot_number
     isDirty.value = true
     return newPlot
+  }
+
+  function updatePlotTreatment(
+    plotNumber: number,
+    treatment: string,
+    dose: string,
+    isControl: boolean
+  ): void {
+    const target = plots.value.find((p) => p.plot_number === plotNumber)
+    if (!target) return
+    target.is_control = isControl
+    target.treatment = isControl ? '' : treatment.trim()
+    target.dose = isControl ? '' : dose.trim()
+    isDirty.value = true
   }
 
   function updatePlotPoints(plotNumber: number, points: NormalizedPoint[]): void {
@@ -194,21 +238,6 @@ export function usePlots() {
     }
   }
 
-  function assignTreatmentToPlot(plotNumber: number): void {
-    const target = plots.value.find((p) => p.plot_number === plotNumber)
-    if (!target) return
-    if (activeBrush.value.isControl) {
-      target.is_control = true
-      target.treatment = ''
-      target.dose = ''
-    } else {
-      target.is_control = false
-      target.treatment = activeBrush.value.treatment.trim()
-      target.dose = activeBrush.value.dose.trim()
-    }
-    isDirty.value = true
-  }
-
   function clearAllPlots(): void {
     plots.value = []
     selectedPlotNumber.value = null
@@ -219,19 +248,18 @@ export function usePlots() {
     plots,
     activeMode,
     selectedPlotNumber,
-    activeBrush,
     isDirty,
     isSaving,
     errorMessage,
     treatmentColorMap,
+    existingTreatments,
     getPlotColor,
     loadPlots,
     savePlots,
-    addPlot,
+    addPlotWithTreatment,
+    updatePlotTreatment,
     updatePlotPoints,
     deletePlot,
-    assignTreatmentToPlot,
     clearAllPlots,
   }
 }
-

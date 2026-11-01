@@ -96,14 +96,14 @@
 - **逐區手動多邊形繪製（Manual Independent Polygon Plot Segmentation）**：小區分割不採用全田行列自動網格劃分，改由使用者以滑鼠逐一在正射影像畫布上點繪獨立的多邊形頂點標註各小區範圍，適應田間任意走向、畸零地與分散試驗區。
 - **多邊形吸附閉合與遞增編號（Snap Closing & Auto-Increment Plot Numbering）**：點繪單一小區時，滑鼠點擊起點吸附或雙擊自動完成閉合，系統自動依序指派小區編號（#1, #2...），並支援點擊選取以拖曳頂點微調或整區刪除重繪。
 - **正規化相對比例座標儲存（Normalized Ratio Coordinates JSON）**：小區頂點座標以 `[[x1, y1], [x2, y2], ...]` 之 0.0 ~ 1.0 相對寬高比例 JSON 字串持久化於 `Plot.coords`，確保畫布響應式縮放不跑版，後端光譜統計時按正射圖原圖解析度等比放大計算。
-- **主影像疊加互動畫布（Overlay Canvas on Orthophoto）**：於主正射影像卡片直接覆蓋透明 HTML5 Canvas 互動層，提供「✏️ 繪製小區」與「🏷️ 套用處理」模式切換，兼顧即時光譜指標熱圖切換預覽與小區邊界疊合觀察。
-- **作用中標籤點擊套用（Active Brush Treatment Assignment）**：在「🏷️ 套用處理」模式下，於工具列設定當前作用中之「農藥＋劑量」或「未施藥對照 (CK)」，直接點擊畫布上的多邊形小區即可快速上色套用，不同處理組以相異色彩視覺區分。
+- **主影像疊加互動畫布（Overlay Canvas on Orthophoto）**：於主正射影像卡片直接覆蓋透明 HTML5 Canvas 互動層，提供「檢視」與「繪製小區」模式切換，兼顧即時光譜指標熱圖切換預覽與小區邊界疊合觀察。
+- **完全移除全螢幕機制（Complete Removal of Fullscreen Mechanism）**：取消繪製小區時自動強制進入全螢幕的行為，並從工具列徹底移除全螢幕切換按鈕，所有小區繪製、編輯與檢視直接在既有主工作區卡片畫布中進行，維持上下文連貫。
+- **預設矩形框選並保留多邊形繪製（Default Rectangle Drag-to-Draw with Polygon Option）**：小區繪製預設提供「矩形拖曳拉框（Drag Rectangle）」互動，按住滑鼠左鍵拖曳即可秒速框出小區頂點；同時保留「多邊形點繪（Polygon）」切換工具，供非規則或傾斜小區逐點點擊標註。
+- **繪製後即時彈出農藥表單（Post-Draw Immediate Pesticide Modal）**：小區繪製閉合瞬間（矩形放開或多邊形閉合），自動於畫面中央彈出「小區農藥處理設定」Modal 對話框，焦點自動置於農藥欄位，支援快速填寫農藥與劑量、CK 勾選與既有處理快速標籤按鈕，按 Enter 快速確認套用。
+- **取消與編輯生命週期控制（Cancel Discard & Click-to-Edit Lifecycle）**：若在農藥彈窗中按取消或 Esc，系統自動捨棄該次繪圖並刪除該小區；在畫布上點選既有小區即可重新彈出該 Modal 修改處理設定或刪除小區。
+- **廢除舊版套用處理模式（Deprecate Standalone Assign Mode）**：廢除獨立的「套用處理」筆刷模式，工具列精簡為「檢視」與「繪製小區（支援矩形/多邊形）」雙模式，農藥指派完全融入繪製完成即時彈窗與點選小區修改。
 - **明確按鈕手動儲存（Explicit Manual Save & Dirty Check）**：繪製與設定完成後，由使用者點擊「💾 儲存小區」按鈕批次發送更新請求持久化至後端 SQLite，避免未定稿頻繁發送請求，並提供未儲存變更提示。
-- **繪製模式原生全螢幕（Native Fullscreen on Draw Mode）**：切換至「繪製小區（Draw）」模式時，自動透過瀏覽器原生 Fullscreen API (`requestFullscreen()`) 佔滿實體螢幕，最大化空拍高解析度影像之可視區域。
-- **純滑鼠平移與縮放（Pure Mouse Pan & Zoom Interaction）**：全螢幕繪製模式下支援純滑鼠手勢控制視角——滑鼠滾輪以游標為中心平滑縮放、按住滑鼠右鍵拖曳平移（Pan）並攔截預設快顯選單、滑鼠左鍵專注於點擊下點標註多邊形頂點與選取小區。
-- **全螢幕強綁定生命週期（Strong Fullscreen Mode Binding）**：全螢幕與繪製模式緊密連動；使用者按下 Esc 鍵或點擊退出全螢幕按鈕時，系統自動觸發儲存並退出繪製狀態切回檢視模式（View Mode）。
-- **懸浮膠囊工具列與縮放 HUD（Floating Capsule Toolbar & Zoom HUD）**：全螢幕繪製模式採用沉浸式佈局，頂部置中配置半透明毛玻璃懸浮膠囊（包含處理組筆刷、撤銷上一步、取消目前多邊形、儲存並退出），右下角配置縮放 HUD（顯示目前縮放比例、`+` 放大、`-` 縮小、`Fit` 適應螢幕重置），影像視野不受多餘邊框干擾。
-- **退出時未完成多邊形防護（Discard Unclosed Draft on Fullscreen Exit）**：在折線繪製中途（未點擊起點閉合）若退出全螢幕或切換模式，系統自動捨棄未閉合之草稿點，僅將已完成閉合之小區持久化儲存，避免產生殘留損壞的小區資料。
+- **純滑鼠平移與縮放（Pure Mouse Pan & Zoom Interaction）**：主畫布下支援純滑鼠手勢控制視角——滑鼠滾輪以游標為中心平滑縮放、按住滑鼠右鍵拖曳平移（Pan）並攔截預設快顯選單、滑鼠左鍵專注於拉框標註與點選小區。
 - **正射圖 CSS GPU Transform 與解除寬高限制（CSS GPU Transform & Unconstrained Dimensions）**：正射影像元素解除 Tailwind CSS 預設 `max-width: 100%` 限制（加入 `max-w-none max-h-none`），改採固定 `baseWidth`/`baseHeight` 搭配硬體加速 `transform: translate3d(panX, panY, 0) scale(scale)` 與 `transform-origin: 0 0`，消除 Layout Reflow 重排並確保高倍率縮放時影像與 Canvas 多邊形 100% 像素級精準貼合不跑版。
 - **視角平移邊界彈性保護（Elastic Viewport Panning Bounds）**：在滑鼠縮放與右鍵拖曳平移時加入彈性視野保護機制，確保正射圖在任意縮放比例下至少保留 20% 影像面積於可視視窗內，防止影像被拖曳至畫面外遺失，並配合右下角 HUD「最適大小 (Fit)」提供即時一鍵復位。
 - **標準平滑取樣插值（Default Smooth Image Interpolation）**：在高倍率縮放檢視下維持瀏覽器標準平滑縮放插值（`image-rendering: auto`），保留空拍正射航拍圖自然漸層與植生指數熱圖展示品質。
@@ -182,8 +182,10 @@
 - **拒絕跳轉式分離標註頁面（No Fragmented Modal for Plot Segmentation）**：不使用跳轉式獨立頁面或全螢幕彈窗進行小區分割，維持主畫面影像、熱圖與標註之空間上下文連續性。
 - **拒絕微操作高頻自動儲存（No High-Frequency Micro Auto-Save for Canvas Edits）**：在多邊形繪製與節點拖曳過程中不進行高頻防抖自動儲存，杜絕送出未閉合或半成品之暫態資料至資料庫。
 - **拒絕鍵盤組合鍵平移負擔（No Mandatory Keyboard Modifier for Pan）**：平移畫布不強制依賴按住空白鍵（Space）或 Ctrl 鍵，全面改採滑鼠右鍵直接拖曳，降低單手標註之操作負擔。
-- **拒絕退出全螢幕留存未閉合折線（No Unclosed Polygon Persistence on Exit）**：退出全螢幕時嚴禁將未閉合之草稿頂點儲存為小區，杜絕破壞幾何資料一致性。
-- **拒絕全螢幕遮蔽關鍵工具（No Floating-less Blank Canvas）**：進入全螢幕時不隱藏必要之筆刷選擇、撤銷與縮放控制功能，確保標註工作區具備完整可操作性。
-- **拒絕每幀重排尺寸縮放（No DOM Layout Reflow via Width/Height Resize）**：縮放平移時禁止頻繁修改 `img` 的 DOM 像素 `width` 與 `height`，拒絕引發瀏覽器整頁重排（Layout Reflow）與卡頓。
+- **拒絕強制自動全螢幕與無效全螢幕功能（No Forced Fullscreen & Redundant Fullscreen Control）**：繪製模式嚴禁強制劫持瀏覽器原生全螢幕，工具列嚴禁保留不實用之全螢幕切換按鈕。
+- **拒絕單一低效的多邊形逐點閉合（No Polygon-Only Plot Drawing）**：嚴禁僅提供逐點點擊與雙擊吸附閉合多邊形作為唯一繪製方式，小區標註必須預設支援快速滑鼠拖曳矩形框選。
+- **拒絕分割式獨立筆刷套用模式（No Disconnected Brush Assignment Mode）**：嚴禁要求使用者在繪製完成後手動切換至獨立的「套用處理」模式重複點擊小區上色，農藥設定必須在畫完當下即時彈窗完成。
+- **拒絕取消彈窗時殘留未指定垃圾小區（No Orphaned Unassigned Plot on Dialog Cancel）**：在農藥設定彈窗中點擊取消或關閉時，嚴禁於畫布留下未指定處理之殘留小區，必須即時回復並徹底移除該次幾何草稿。
+- **拒絕每幀重排尺寸縮放（No DOM Layout Reflow via Width/Height Resize）**：縮放平移時禁止頻繁修改 `img` 的 DOM像素 `width` 與 `height`，拒絕引發瀏覽器整頁重排（Layout Reflow）與卡頓。
 - **拒絕 Tailwind CSS max-width 影像箝制（No Tailwind Default Image Max-Width Clamping）**：嚴禁讓正射航拍底圖受限於 Tailwind Preflight 的 `max-width: 100%` 預設限制，杜絕大於視窗寬度時影像停止縮放所造成的標註脫節錯位。
 - **拒絕無邊界無限平移迷航（No Unbounded Panning Lost in Space）**：禁止完全無限制將正射影像拖出視野之外，杜絕使用者迷航與找不到影像的操作困境。
