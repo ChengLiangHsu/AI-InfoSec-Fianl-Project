@@ -5,57 +5,30 @@ from collections.abc import AsyncGenerator
 from dataclasses import asdict
 from datetime import datetime, timezone
 import json
-from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from pydantic_ai import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
-from typing_extensions import TypedDict
 
 from src.agents import ChatDeps, agent
 from src.controllers.dependencies import (
-    get_odm_requester,
     get_task_repo,
     get_task_usecase,
 )
-from src.entities.task import Task
-from src.usecases.ports.odm import OdmPort
+from src.entities.task import ModelMessageResponse, Task, Version
+from src.presenter.response_wrapper import success_response
 from src.usecases.ports.task import TaskPort
 from src.usecases.task import TaskUseCase
 from src.utility.formulas import get_algorithm_list
-from src.utility.imagery import extract_orthophoto_from_zip
-from src.utility.spectral import generate_spectral_image
-
-SRC_DIR = Path(__file__).resolve().parents[1]
-ODM_DIR = SRC_DIR / "odm"
-ODM_DIR.mkdir(parents=True, exist_ok=True)
 
 router = APIRouter(tags=["task"])
 
 
 # ============================================================================
-# 型別宣告 (Types & Schemas)
+# 請求模型宣告 (Request Schemas)
 # ============================================================================
-
-class Version(TypedDict):
-    """前端畫布對話版本訊息規格。"""
-    id: str
-    content: str
-
-
-class ModelMessageResponse(TypedDict):
-    """前端串流渲染規範訊息物件。"""
-    key: str
-    role: Literal["user", "assistant"]
-    versions: list[Version]
-
-
-class MigrateChatRequest(BaseModel):
-    from_project_id: str = "home"
-    to_project_id: str
-
 
 class PostChatRequest(BaseModel):
     prompt: str
@@ -100,89 +73,37 @@ async def _extract_upload_payload(
     return payload
 
 
-async def _ensure_orthophoto_cached(
-    task_id: str, odm_requester: OdmPort
-) -> Path | None:
-    """確保正射圖 PNG 檔案已於本機快取；若無則向 NodeODM 下載資產並轉換。"""
-    file_path = ODM_DIR / f"{task_id}.png"
-    if file_path.exists():
-        return file_path
-    try:
-        zip_bytes = await odm_requester.download_task_assets(task_id, asset="all.zip")
-        success = extract_orthophoto_from_zip(zip_bytes, file_path)
-        if success and file_path.exists():
-            return file_path
-    except Exception:
-        pass
-    return None
-
-
-async def _generate_spectral_cached(
-    task_id: str, formula: str, odm_requester: OdmPort
-) -> Path | None:
-    """依據指定指標（如 VARI）產出光譜熱圖 PNG，必要時先載入原始正射圖。"""
-    formula_upper = formula.strip().upper()
-    spectral_file_path = ODM_DIR / f"{task_id}_{formula_upper}.png"
-    if spectral_file_path.exists():
-        return spectral_file_path
-
-    ortho_path = await _ensure_orthophoto_cached(task_id, odm_requester)
-    if not ortho_path or not ortho_path.exists():
-        return None
-
-    generate_spectral_image(ortho_path, spectral_file_path, formula_upper)
-    return spectral_file_path if spectral_file_path.exists() else None
-
-
-async def _cleanup_task_assets(
-    task_id: str, usecase: TaskUseCase, odm_requester: OdmPort
-) -> None:
-    """調度 NodeODM 遠端任務移除、本機影像暫存清除與資料庫任務刪除。"""
-    try:
-        await odm_requester.remove_task(task_id)
-    except Exception:
-        pass
-
-    for f in ODM_DIR.glob(f"{task_id}*.png"):
-        try:
-            f.unlink()
-        except Exception:
-            pass
-
-    await usecase.delete_task(task_id)
-
-
 def _to_model_message_response(m: ModelMessage) -> ModelMessageResponse | None:
-    """將 Pydantic AI 的 ModelMessage 轉為前端畫布規範的訊息格式。"""
+    """將 Pydantic AI 的 ModelMessage 轉為前端畫布規範的訊息實體。"""
     if isinstance(m, ModelRequest):
         for part in m.parts:
             if isinstance(part, UserPromptPart) and isinstance(part.content, str):
-                return {
-                    "role": "user",
-                    "key": part.timestamp.isoformat(),
-                    "versions": [{"id": "1", "content": part.content}],
-                }
+                return ModelMessageResponse(
+                    key=part.timestamp.isoformat(),
+                    role="user",
+                    versions=[Version(id="1", content=part.content)],
+                )
         return None
     if isinstance(m, ModelResponse):
         for part in m.parts:
             if isinstance(part, TextPart):
-                return {
-                    "role": "assistant",
-                    "key": m.timestamp.isoformat(),
-                    "versions": [{"id": "1", "content": part.content}],
-                }
+                return ModelMessageResponse(
+                    key=m.timestamp.isoformat(),
+                    role="assistant",
+                    versions=[Version(id="1", content=part.content)],
+                )
         return None
     return None
 
 
 def _format_initial_user_event(prompt: str) -> bytes:
     """包裝並回傳即時回顯給前端的使用者提問 JSON 事件。"""
-    payload = {
-        "role": "user",
-        "key": datetime.now(tz=timezone.utc).isoformat(),
-        "versions": [{"id": "1", "content": prompt}],
-    }
-    return json.dumps(payload, ensure_ascii=False).encode("utf-8") + b"\n"
+    event = ModelMessageResponse(
+        key=datetime.now(tz=timezone.utc).isoformat(),
+        role="user",
+        versions=[Version(id="1", content=prompt)],
+    )
+    return json.dumps(asdict(event), ensure_ascii=False).encode("utf-8") + b"\n"
 
 
 async def _stream_agent_dialogue(
@@ -203,7 +124,7 @@ async def _stream_agent_dialogue(
             m = ModelResponse(parts=[TextPart(text)], timestamp=result.timestamp)
             converted = _to_model_message_response(m)
             if converted:
-                yield json.dumps(converted, ensure_ascii=False).encode("utf-8") + b"\n"
+                yield json.dumps(asdict(converted), ensure_ascii=False).encode("utf-8") + b"\n"
 
     if is_task_scoped:
         await usecase.append_messages(project_id, result.new_messages_json())
@@ -213,7 +134,6 @@ async def _generate_task_progress_events(
     task_id: str,
     request: Request,
     usecase: TaskUseCase,
-    odm_requester: OdmPort,
 ) -> AsyncGenerator[bytes, None]:
     """輪詢 NodeODM 並即時向客戶端推播 SSE 任務進度事件。"""
     try:
@@ -223,15 +143,7 @@ async def _generate_task_progress_events(
         return
 
     # 連線首刻主動同步最新狀態並立即推播
-    code = None
-    try:
-        info = await odm_requester.get_task_info(task_id)
-        progress = int(info.get("progress", 0))
-        code = info.get("status", {}).get("code")
-        task = await usecase.update_task_progress(task_id, progress=progress)
-    except Exception:
-        pass
-
+    task, code = await usecase.sync_task_progress(task_id)
     last_emitted_progress = task.progress
     yield _format_sse_data(_task_to_dict(task))
 
@@ -243,14 +155,7 @@ async def _generate_task_progress_events(
             break
         await asyncio.sleep(1.0)
 
-        try:
-            info = await odm_requester.get_task_info(task_id)
-            progress = int(info.get("progress", 0))
-            code = info.get("status", {}).get("code")
-            task = await usecase.update_task_progress(task_id, progress=progress)
-        except Exception:
-            break
-
+        task, code = await usecase.sync_task_progress(task_id)
         if task.progress != last_emitted_progress or _is_task_finished(task.progress, code):
             last_emitted_progress = task.progress
             yield _format_sse_data(_task_to_dict(task))
@@ -268,29 +173,21 @@ async def create_odm_task(
     name: Annotated[str, Form()],
     files: list[UploadFile] = File(...),
     usecase: TaskUseCase = Depends(get_task_usecase),
-    odm_requester: OdmPort = Depends(get_odm_requester),
-) -> dict[str, Any]:
+) -> JSONResponse:
     """主流程：接收空拍相片、派送 NodeODM 拼圖並持久化建立任務。"""
     files_payload = await _extract_upload_payload(files)
-    uuid_str = await odm_requester.create_task(files=files_payload, name=name)
-    await usecase.create_task(id=uuid_str, name=name, images=len(files))
-    return {"result": True, "data": {"id": uuid_str, "name": name}}
+    task = await usecase.create_task(name=name, files=files_payload)
+    return success_response(data={"id": task.id, "name": task.name})
 
 
 @router.get("/odm-task-info/{task_id}")
 async def get_odm_task_info(
     task_id: str,
     usecase: TaskUseCase = Depends(get_task_usecase),
-    odm_requester: OdmPort = Depends(get_odm_requester),
-) -> dict[str, Any]:
+) -> JSONResponse:
     """主流程：查詢任務最新進度、同步持久化並回傳任務資訊。"""
-    try:
-        info = await odm_requester.get_task_info(task_id)
-        progress = int(info.get("progress", 0))
-        task = await usecase.update_task_progress(task_id, progress=progress)
-    except Exception:
-        task = await usecase.get_task(task_id)
-    return {"result": True, "data": _task_to_dict(task)}
+    task = await usecase.get_task_info(task_id)
+    return success_response(data=_task_to_dict(task))
 
 
 @router.get("/odm-task-stream/{task_id}")
@@ -298,10 +195,9 @@ async def stream_odm_task_progress(
     task_id: str,
     request: Request,
     usecase: TaskUseCase = Depends(get_task_usecase),
-    odm_requester: OdmPort = Depends(get_odm_requester),
 ) -> StreamingResponse:
     """主流程：建立 Server-Sent Events (SSE) 串流推播任務進度。"""
-    stream = _generate_task_progress_events(task_id, request, usecase, odm_requester)
+    stream = _generate_task_progress_events(task_id, request, usecase)
     return StreamingResponse(
         stream,
         media_type="text/event-stream",
@@ -316,17 +212,15 @@ async def stream_odm_task_progress(
 @router.get("/odm-task-orthophoto/{task_id}")
 async def get_odm_task_orthophoto(
     task_id: str,
-    odm_requester: OdmPort = Depends(get_odm_requester),
-) -> Response:
-    """主流程：取得航拍正射圖成果（必要時自 NodeODM 下載轉換）。"""
-    file_path = await _ensure_orthophoto_cached(task_id, odm_requester)
-    if not file_path:
-        return Response(content="Orthophoto not found", status_code=404)
+    usecase: TaskUseCase = Depends(get_task_usecase),
+) -> FileResponse:
+    """主流程：取得航拍正射圖成果（必要時由 UseCase 自 NodeODM 下載轉換快取）。"""
+    file_path = await usecase.get_orthophoto_path(task_id)
     return FileResponse(file_path, media_type="image/png")
 
 
 @router.get("/odm-task-formulas")
-async def get_odm_task_formulas() -> dict[str, Any]:
+async def get_odm_task_formulas() -> JSONResponse:
     """主流程：查詢系統目前支援之 RGB 植生指標算式清單。"""
     all_algos = get_algorithm_list(max_bands=3)
     rgb_algos = [
@@ -339,40 +233,37 @@ async def get_odm_task_formulas() -> dict[str, Any]:
         for a in all_algos
         if "RGB" in a.get("filters", [])
     ]
-    return {"result": True, "data": rgb_algos}
+    return success_response(data=rgb_algos)
 
 
 @router.get("/odm-task-spectral/{task_id}")
 async def get_odm_task_spectral(
     task_id: str,
     formula: str = "VARI",
-    odm_requester: OdmPort = Depends(get_odm_requester),
-) -> Response:
+    usecase: TaskUseCase = Depends(get_task_usecase),
+) -> FileResponse:
     """主流程：取得或計算指定專案在特定植生指標（如 VARI）下之光譜熱圖。"""
-    file_path = await _generate_spectral_cached(task_id, formula, odm_requester)
-    if not file_path:
-        return Response(content="Spectral image could not be generated", status_code=404)
+    file_path = await usecase.get_spectral_image_path(task_id, formula)
     return FileResponse(file_path, media_type="image/png")
 
 
 @router.get("/odm-task-list")
 async def get_odm_task_list(
     usecase: TaskUseCase = Depends(get_task_usecase),
-) -> dict[str, Any]:
+) -> JSONResponse:
     """主流程：查詢所有任務清單。"""
     tasks = await usecase.get_tasks()
-    return {"result": True, "data": [_task_to_dict(t) for t in tasks]}
+    return success_response(data=[_task_to_dict(t) for t in tasks])
 
 
 @router.delete("/odm-task/{task_id}")
 async def delete_odm_task(
     task_id: str,
     usecase: TaskUseCase = Depends(get_task_usecase),
-    odm_requester: OdmPort = Depends(get_odm_requester),
-) -> dict[str, Any]:
+) -> JSONResponse:
     """主流程：刪除指定任務與關聯影像資產。"""
-    await _cleanup_task_assets(task_id, usecase, odm_requester)
-    return {"result": True}
+    await usecase.delete_task(task_id)
+    return success_response()
 
 
 @router.post("/chat")
@@ -406,7 +297,7 @@ async def get_chat(
     for m in msgs:
         converted = _to_model_message_response(m)
         if converted:
-            serialized.append(json.dumps(converted, ensure_ascii=False).encode("utf-8"))
+            serialized.append(json.dumps(asdict(converted), ensure_ascii=False).encode("utf-8"))
     return Response(b"\n".join(serialized), media_type="text/plain")
 
 
@@ -415,21 +306,11 @@ async def get_chat(
 async def delete_chat(
     project_id: str = "home",
     usecase: TaskUseCase = Depends(get_task_usecase),
-) -> dict[str, Any]:
+) -> JSONResponse:
     """主流程：清空指定專案之對話歷史紀錄。"""
     if project_id and project_id != "home":
         try:
             await usecase.clear_messages(project_id)
         except KeyError:
             pass
-    return {"result": True}
-
-
-@router.post("/chat/migrate")
-@router.post("/chat/migrate/")
-async def migrate_chat(
-    request: MigrateChatRequest,
-) -> dict[str, Any]:
-    """主流程：維持前端呼叫相容性（依據架構規範拒絕跨任務對話複製）。"""
-    return {"result": True}
-
+    return success_response()

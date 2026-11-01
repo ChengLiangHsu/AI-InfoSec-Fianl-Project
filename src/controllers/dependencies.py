@@ -29,6 +29,7 @@ def get_odm_requester() -> OdmPort:
 
 def get_task_usecase(
     task_repo: TaskPort = Depends(get_task_repo),
+    odm_requester: OdmPort = Depends(get_odm_requester),
 ) -> TaskUseCase:
-    """依賴注入工廠：注入 TaskPort 契約介面，建構領域應用層 TaskUseCase 用例實例。"""
-    return TaskUseCase(task_port=task_repo)
+    """依賴注入工廠：注入 TaskPort 與 OdmPort 契約介面，建構領域應用層 TaskUseCase 用例實例。"""
+    return TaskUseCase(task_port=task_repo, odm_port=odm_requester)

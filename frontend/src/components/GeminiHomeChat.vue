@@ -35,7 +35,7 @@ const emit = defineEmits<{
   (e: 'projectCreated', project: Project): void
 }>()
 
-const { status, messages, loadInitialMessages, sendPrompt, clearChat, migrateChat } = useChatAgent(() => 'home')
+const { status, messages, loadInitialMessages, sendPrompt, clearChat } = useChatAgent(() => 'home')
 
 const inputPrompt = ref('')
 const projectName = ref('')
@@ -142,17 +142,17 @@ async function handleSend() {
           progress: 0,
         }
 
-        // 1. 若主畫面有對話紀錄，將其遷移保存至新建的專案中
-        await migrateChat('home', newProj.id)
 
-        // 2. 清空主畫面選取之檔案與專案名稱
+
+
+        // 1. 清空主畫面選取之檔案與專案名稱
         selectedFiles.value = []
         projectName.value = ''
 
-        // 3. 通知父層切換至專案
+        // 2. 通知父層切換至專案
         emit('projectCreated', newProj)
 
-        // 4. 發送專案建立之指引提示給該專案 (project_id: newProj.id)
+        // 3. 發送專案建立之指引提示給該專案 (project_id: newProj.id)
         const agentPrompt = text
           ? `${text}\n\n（系統附帶通知：我已上傳 ${filesToUpload.length} 張航拍照片並發起專案「${currentName}」（ID: ${newProj.id}），請解說適用此航拍任務的植生指標與後續評估步驟。）`
           : `我已上傳 ${filesToUpload.length} 張航拍正射原始照片，成功發起專案「${currentName}」（ID: ${newProj.id}）。請說明適合此航拍任務的植生指標與後續處理建議。`

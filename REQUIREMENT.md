@@ -89,6 +89,10 @@
 - **Vite Proxy 路由重寫機制（Vite Proxy Path Rewrite）**：於 `frontend/vite.config.ts` 設定 `rewrite: (path) => path.replace(/^\/api/, '')`，將 `/api` 統一作為導向後端 FastAPI 服務之代理通道，進入後端時自動剝離 `/api` 並將請求精確導向至 `/task` 等模組化控制器路由。
 - **前端階層式路由命名（Frontend Hierarchical Routing /api/task/*）**：前端所有業務端點（`App.vue`、`DroneHomeUpload.vue`、`GeminiHomeChat.vue`、`useChatAgent.ts` 與 `useOdmProgress.ts`）統一宣告為 `/api/task/*`，兼顧前端通用 `/api` 代理通道與後端 `task_router`（`prefix="/task"`）之模組化分群。
 - **後端結構化錯誤訊息前端動態呈現（Presenter Error Message Feedback）**：前端 API 呼叫攔截異常時，優先解析並彈出後端回傳之結構化 `data.message`（例如 NodeODM 連線逾時或參數校驗失敗），若為網路中斷則提示連線異常，提升可追溯性與除錯體驗。
+- **OdmPort 注入 TaskUseCase 業務編排（OdmPort Dependency Injection in TaskUseCase）**：將 `OdmPort` 介面注入至 `TaskUseCase`，由 UseCase 統一封裝航拍任務建立、進度狀態輪詢、遠端任務移除、本機正射影像快取與光譜熱圖生成流程，貫徹 Clean Architecture 業務流程集中管理。
+- **控制器全面整合 Presenter 回應包裝（ResponseWrapper Integration in Controller）**：`src/controllers/task.py` 所有 JSON 成功回應全面採用 `src/presenter/response_wrapper.py` 之 `success_response(data=...)` 統一包裝，業務異常由 UseCase 拋出原生例外（`KeyError`, `ValueError`, `RuntimeError`）並由 Presenter `error_handlers` 攔截轉譯為標準 `error_response`。
+- **領域實體重用與重複宣告清理（Entity Reuse & Purge Duplicate Schemas）**：全面移除 `src/controllers/task.py` 內部重複宣告之 `Version` 與 `ModelMessageResponse` TypedDict，一律對齊與引用 `src/entities/task.py` 之純 dataclass 領域實體定義。
+- **前端 migrate 殘留呼叫清理（Purge Frontend Migrate Calls）**：清理前端 `GeminiHomeChat.vue` 與 `useChatAgent.ts` 中殘留之 `migrateChat` 呼叫與定義，消除無效網路請求。
 
 ## 拒絕
 - **拒絕 DESIGN.md 擴充非規範獨立章節**：不於 DESIGN.md 中新增額外獨立的 Problem、Requirements 或 How to Run 章節，How to Run 集中於 README.md，Problem/Requirements 歸屬提案章節與需求清單。
@@ -136,7 +140,10 @@
 
 - **拒絕跨任務對話遷移（No Cross-Task Message Migration）**：禁止將對話紀錄自一個任務遷移至另一個任務，維持任務與對話生命週期之嚴格單一歸屬。
 - **暫不實作小區處理組統計分析方法**：暫緩在 `TaskUseCase` 中實作小區指標分組平均（Treatment Mean）與對照組差異等統計分析方法，待後續具體使用情境釐清後再行實作。
-- **拒絕在 UseCase 內混雜外部 I/O 通訊與影像演算**：`TaskUseCase` 嚴禁包含 NodeODM HTTP 呼叫或正射光譜圖生成邏輯，外部通訊維持於 Utility 或專屬服務層。
+- **拒絕在 UseCase 內直接耦合外部 HTTP 通訊細節**：`TaskUseCase` 嚴禁直接發起原生 HTTP 請求，必須一律依賴抽象的 `OdmPort` 介面進行通訊與業務流程編排。
+- **拒絕 Controller 直接依賴外部通訊 Port（No Direct Outbound Port in Controller）**：控制器嚴禁直接注入或操作 `OdmPort`，外部通訊與第三方服務調度一律經由 UseCase 統一封裝。
+- **拒絕後端殘留無效的對話遷移端點與模型（No Obsolete Migrate Route & Schema）**：徹底刪除 `/chat/migrate` 路由與 `MigrateChatRequest` 模型，杜絕死代碼。
+- **拒絕 Controller 直接回傳裸字典或自組 404 回應（No Raw Dict or Ad-hoc 404 in Controller）**：JSON 端點嚴禁直接回傳 `{"result": True}` 字典字面值，資源未找到時禁止回傳自定義 `Response("...", status_code=404)`，統一依循 Presenter 架構調用 `success_response` 或拋出原生例外。
 - **拒絕 Port 耦合 Web 框架檔案型別（No FastAPI UploadFile in Port）**：嚴禁在 `src/usecases/ports/odm.py` 引入或使用 `fastapi.UploadFile`，確保領域契約之純粹性。
 - **拒絕未標註 NodeODM 來源之模糊網路異常（No Ambiguous Network Exceptions to Client）**：嚴禁將未註明 NodeODM 服務來源的通用例外或原始連線錯誤未經轉譯直接外洩給前端使用者。
 - **拒絕寫死不可自訂之網路連線設定（No Hardcoded Unconfigurable Network Config）**：拒絕在 Requester 內寫死單一連線配置或全域固定 client，保持依賴注入彈性。

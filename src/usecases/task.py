@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from src.entities.task import Plot, Task
 from src.usecases.ports import TaskPort
+from src.usecases.ports.odm import OdmPort
+from src.utility.imagery import extract_orthophoto_from_zip
+from src.utility.spectral import generate_spectral_image
+
+SRC_DIR = Path(__file__).resolve().parents[1]
+ODM_DIR = SRC_DIR / "odm"
+ODM_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _validate_task_id(task_id: str) -> None:
@@ -12,11 +20,16 @@ def _validate_task_id(task_id: str) -> None:
         raise ValueError("任務 ID 不得為空")
 
 
+def _validate_task_name(name: str) -> None:
+    """校驗任務名稱是否有效。"""
+    if not name or not isinstance(name, str) or not name.strip():
+        raise ValueError("任務名稱不得為空")
+
+
 def _validate_task_creation(id: str, name: str, images: int) -> None:
     """校驗任務建立參數合法性。"""
     _validate_task_id(id)
-    if not name or not isinstance(name, str) or not name.strip():
-        raise ValueError("任務名稱不得為空")
+    _validate_task_name(name)
     if images < 0:
         raise ValueError("相片數量不得小於 0")
 
@@ -110,13 +123,20 @@ def _validate_messages_content(new_messages: str | bytes) -> None:
 class TaskUseCase:
     """任務用例（業務編排層）：協調航拍任務生命週期、小區配置與對話歷史業務流程。"""
 
-    def __init__(self, task_port: TaskPort) -> None:
+    def __init__(self, task_port: TaskPort, odm_port: OdmPort) -> None:
         self.task_port = task_port
+        self.odm_port = odm_port
 
-    async def create_task(self, id: str, name: str, images: int) -> Task:
-        """建立並持久化新任務實體。"""
-        _validate_task_creation(id, name, images)
-        task = Task(id=id, name=name, images=images, progress=0)
+    async def create_task(
+        self, name: str, files: list[tuple[str, bytes, str]]
+    ) -> Task:
+        """主流程：接收空拍相片清單、派送 NodeODM 拼圖並持久化建立任務。"""
+        _validate_task_name(name)
+        if not files:
+            raise ValueError("上傳相片清單不得為空")
+
+        uuid_str = await self.odm_port.create_task(files=files, name=name)
+        task = Task(id=uuid_str, name=name, images=len(files), progress=0)
         await self.task_port.add_task(task)
         return task
 
@@ -128,6 +148,25 @@ class TaskUseCase:
     async def get_tasks(self) -> list[Task]:
         """查詢所有任務實體清單。"""
         return await self.task_port.get_tasks()
+
+    async def sync_task_progress(self, task_id: str) -> tuple[Task, int | None]:
+        """向 NodeODM 查詢最新進度與狀態碼，同步持久化至資料庫並回傳 (Task, status_code)。"""
+        _validate_task_id(task_id)
+        code = None
+        try:
+            info = await self.odm_port.get_task_info(task_id)
+            progress = int(info.get("progress", 0))
+            code = info.get("status", {}).get("code")
+            task = await self.update_task_progress(task_id, progress=progress)
+            return task, code
+        except Exception:
+            task = await self.get_task(task_id)
+            return task, None
+
+    async def get_task_info(self, task_id: str) -> Task:
+        """主流程：查詢任務最新狀態（優先向 NodeODM 同步進度後回傳）。"""
+        task, _ = await self.sync_task_progress(task_id)
+        return task
 
     async def update_task_progress(
         self,
@@ -145,9 +184,57 @@ class TaskUseCase:
         return await self.task_port.get_task(task_id)
 
     async def delete_task(self, task_id: str) -> None:
-        """刪除指定任務實體。"""
+        """主流程：調度 NodeODM 遠端任務移除、本機影像暫存清除與資料庫任務刪除。"""
         _validate_task_id(task_id)
+        await self._cleanup_task_assets(task_id)
         await self.task_port.delete_task(task_id)
+
+    async def _cleanup_task_assets(self, task_id: str) -> None:
+        """私有子流程：清理遠端 NodeODM 任務與本地暫存影像檔。"""
+        try:
+            await self.odm_port.remove_task(task_id)
+        except Exception:
+            pass
+
+        for f in ODM_DIR.glob(f"{task_id}*.png"):
+            try:
+                f.unlink()
+            except Exception:
+                pass
+
+    async def get_orthophoto_path(self, task_id: str) -> Path:
+        """主流程：取得航拍正射圖成果路徑，必要時自 NodeODM 下載資產並解壓轉換快取。"""
+        _validate_task_id(task_id)
+        await self.get_task(task_id)
+        file_path = ODM_DIR / f"{task_id}.png"
+        if file_path.exists():
+            return file_path
+
+        try:
+            zip_bytes = await self.odm_port.download_task_assets(task_id, asset="all.zip")
+            success = extract_orthophoto_from_zip(zip_bytes, file_path)
+            if success and file_path.exists():
+                return file_path
+        except Exception:
+            pass
+
+        raise KeyError(f"任務 [{task_id}] 正射圖尚未生成或無法取得")
+
+    async def get_spectral_image_path(
+        self, task_id: str, formula: str = "VARI"
+    ) -> Path:
+        """主流程：取得或計算指定專案在特定植生指標（如 VARI）下之光譜熱圖路徑。"""
+        _validate_task_id(task_id)
+        formula_upper = formula.strip().upper()
+        spectral_file_path = ODM_DIR / f"{task_id}_{formula_upper}.png"
+        if spectral_file_path.exists():
+            return spectral_file_path
+
+        ortho_path = await self.get_orthophoto_path(task_id)
+        generate_spectral_image(ortho_path, spectral_file_path, formula_upper)
+        if spectral_file_path.exists():
+            return spectral_file_path
+        raise RuntimeError(f"無法產出光譜熱圖指標 [{formula_upper}]")
 
     async def get_plots(self, task_id: str) -> list[Plot]:
         """查詢指定任務之小區列表（確保任務存在）。"""

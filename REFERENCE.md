@@ -11,7 +11,12 @@
 - [FastAPI APIRouter 模組化架構指引](https://fastapi.tiangolo.com/tutorial/bigger-applications/)
 - [FastAPI APIRouter 路由前綴與標籤設計 (Routing)](https://fastapi.tiangolo.com/tutorial/bigger-applications/#apirouter)
 - [FastAPI StreamingResponse 官方文件](https://fastapi.tiangolo.com/advanced/custom-response/#streamingresponse)
+- [FastAPI Custom Response - JSONResponse 官方文件](https://fastapi.tiangolo.com/advanced/custom-response/)
 - [FastAPI 依賴注入 (Dependencies with yield) 官方文件](https://fastapi.tiangolo.com/tutorial/dependencies/dependencies-with-yield/)
+
+### Clean Architecture (整潔架構)
+- [The Clean Architecture (Robert C. Martin / Uncle Bob)](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)
+- **採用架構**：將外部輸出埠（Driven / Outbound Ports 如 `OdmPort` 與 `TaskPort`）統一注入應用用例層（`TaskUseCase`），由用例封裝航拍任務生命週期、狀態同步與正射影像資產快取，控制器僅專注於 HTTP 請求調度與 Presenter (`success_response`) 回應。
 
 ### Pydantic AI
 - [Pydantic AI 官方文件](https://ai.pydantic.dev/)
