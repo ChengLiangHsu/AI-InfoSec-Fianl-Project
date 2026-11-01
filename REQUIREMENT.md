@@ -107,6 +107,12 @@
 - **正射圖 CSS GPU Transform 與解除寬高限制（CSS GPU Transform & Unconstrained Dimensions）**：正射影像元素解除 Tailwind CSS 預設 `max-width: 100%` 限制（加入 `max-w-none max-h-none`），改採固定 `baseWidth`/`baseHeight` 搭配硬體加速 `transform: translate3d(panX, panY, 0) scale(scale)` 與 `transform-origin: 0 0`，消除 Layout Reflow 重排並確保高倍率縮放時影像與 Canvas 多邊形 100% 像素級精準貼合不跑版。
 - **視角平移邊界彈性保護（Elastic Viewport Panning Bounds）**：在滑鼠縮放與右鍵拖曳平移時加入彈性視野保護機制，確保正射圖在任意縮放比例下至少保留 20% 影像面積於可視視窗內，防止影像被拖曳至畫面外遺失，並配合右下角 HUD「最適大小 (Fit)」提供即時一鍵復位。
 - **標準平滑取樣插值（Default Smooth Image Interpolation）**：在高倍率縮放檢視下維持瀏覽器標準平滑縮放插值（`image-rendering: auto`），保留空拍正射航拍圖自然漸層與植生指數熱圖展示品質。
+- **白色定位牌自動偵測與四角母框（White Marker Auto-Detection & 4-Point Bounding Quadrilateral）**：以田間最外圍 4 個白色定位牌（空拍圖呈現為高反差白色點點）為基準，後端利用 OpenCV 影像演算法一鍵自動搜尋與定位外圍 4 個角點建立四邊形邊界，畫布提供可拖曳錨點把手供使用者即時微調。
+- **雙線性插值網格即時動態預覽（Bilinear Interpolation Grid Live Preview）**：在 4 角四邊形內，依使用者指定的行列數（Rows x Cols）透過雙線性插值（Bilinear Interpolation）在前端 Canvas 即時渲染半透明虛線小區預覽網格，拖曳 4 角錨點或調整參數時即時動態連動。
+- **走道內縮間距滑桿（Walkway / Alley Margin Gap Slider）**：網格生成工具列提供走道內縮比例（0%~20%）滑桿，自動自小區四邊等比內縮，排除田埂走道、畦溝與邊界雜草裸土干擾。
+- **一鍵確認生成正式小區（Confirm Batch Plot Generation）**：使用者於預覽滿意後，點擊「確認生成」按鈕批次將預覽網格轉化為正式小區（加入 `plots` 陣列並標記未儲存變更），生成後的小區預設為待設定狀態。
+- **小區點擊快速標籤設定（Click Plot with Quick Treatment Tags）**：整批生成後維持現有直覺互動，使用者點擊任一小區即彈出 `PlotTreatmentDialog`，點選既有處理標籤或設為 CK 對照組秒速套用，不強制彈跳連續遮罩視窗。
+- **端點與工具函式 Clean Architecture 實作（Marker Detection Utility & Endpoint）**：於 `src/utility/marker_detection.py` 實作純 OpenCV 影像運算（灰階/高光閥值、輪廓特徵過濾、外圍四角凸包定位），於 `TaskUseCase` 封裝業務流程，並在控制器暴露 `POST /task/{task_id}/detect-markers` 端點。
 
 ## 拒絕
 - **拒絕 DESIGN.md 擴充非規範獨立章節**：不於 DESIGN.md 中新增額外獨立的 Problem、Requirements 或 How to Run 章節，How to Run 集中於 README.md，Problem/Requirements 歸屬提案章節與需求清單。
@@ -189,3 +195,7 @@
 - **拒絕每幀重排尺寸縮放（No DOM Layout Reflow via Width/Height Resize）**：縮放平移時禁止頻繁修改 `img` 的 DOM像素 `width` 與 `height`，拒絕引發瀏覽器整頁重排（Layout Reflow）與卡頓。
 - **拒絕 Tailwind CSS max-width 影像箝制（No Tailwind Default Image Max-Width Clamping）**：嚴禁讓正射航拍底圖受限於 Tailwind Preflight 的 `max-width: 100%` 預設限制，杜絕大於視窗寬度時影像停止縮放所造成的標註脫節錯位。
 - **拒絕無邊界無限平移迷航（No Unbounded Panning Lost in Space）**：禁止完全無限制將正射影像拖出視野之外，杜絕使用者迷航與找不到影像的操作困境。
+- **拒絕無預覽盲目覆蓋生成（No Blind Overwrite Generation）**：嚴禁在未提供畫布動態虛線預覽與四角錨點把手的情況下直接將演算法推估的小區寫死或覆蓋既有小區。
+- **拒絕重型深度學習分割模型（No Heavy Deep Learning Segmentor for Markers）**：不引入 YOLO、Mask R-CNN 或 SAM 等重型模型辨識定位牌，採用純粹輕量的 OpenCV 高亮度形態學二值化與輪廓特徵演算法。
+- **拒絕強制阻塞式連續填寫彈窗（No Blocking Sequential Treatment Modal）**：整批小區一鍵生成後，嚴禁強制跳出接二連三、無法關閉的循序表單彈窗打斷操作，維持由使用者在畫布上自由點選指派的彈性。
+- **拒絕零間隔剛性切分（No Strict Zero-Gap Rigid Partitioning）**：生成小區時拒絕強制無縫緊貼，必須提供走道內縮間距（Margin Gap）以避免田埂走道裸土污染植生指標。

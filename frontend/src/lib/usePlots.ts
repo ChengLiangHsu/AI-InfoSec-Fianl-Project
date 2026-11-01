@@ -27,6 +27,15 @@ export interface ExistingTreatment {
   label: string
 }
 
+export interface GridGeneratorState {
+  isActive: boolean
+  corners: NormalizedPoint[] // [TL, TR, BR, BL]
+  rows: number
+  cols: number
+  marginRatio: number
+  isDetecting: boolean
+}
+
 const PRESET_COLORS = [
   '#10b981', // emerald
   '#3b82f6', // blue
@@ -69,6 +78,21 @@ export function usePlots() {
   const isDirty = ref(false)
   const isSaving = ref(false)
   const errorMessage = ref<string | null>(null)
+
+  // 一鍵自動網格生成狀態
+  const gridState = ref<GridGeneratorState>({
+    isActive: false,
+    corners: [
+      { x: 0.30, y: 0.25 },
+      { x: 0.55, y: 0.25 },
+      { x: 0.55, y: 0.38 },
+      { x: 0.30, y: 0.38 },
+    ],
+    rows: 3,
+    cols: 4,
+    marginRatio: 0.08,
+    isDetecting: false,
+  })
 
   // 動態分配各處理組之顏色標籤
   const treatmentColorMap = computed(() => {
@@ -244,6 +268,124 @@ export function usePlots() {
     isDirty.value = true
   }
 
+  function startGridMode(defaultCorners?: NormalizedPoint[]): void {
+    gridState.value.isActive = true
+    if (defaultCorners && defaultCorners.length === 4) {
+      gridState.value.corners = defaultCorners
+    }
+  }
+
+  function closeGridMode(): void {
+    gridState.value.isActive = false
+  }
+
+  function updateGridCorner(index: number, pt: NormalizedPoint): void {
+    if (index >= 0 && index < 4 && gridState.value.corners[index]) {
+      gridState.value.corners[index] = {
+        x: Math.max(0, Math.min(1, Number(pt.x.toFixed(5)))),
+        y: Math.max(0, Math.min(1, Number(pt.y.toFixed(5)))),
+      }
+    }
+  }
+
+  async function detectMarkers(taskId: string, roi?: [number, number, number, number]): Promise<boolean> {
+    if (!taskId) return false
+    gridState.value.isDetecting = true
+    errorMessage.value = null
+    try {
+      const res = await fetch(`/api/task/detect-markers/${taskId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roi }),
+      })
+      const json = await res.json()
+      if (res.ok && json.result && Array.isArray(json.data?.corners) && json.data.corners.length === 4) {
+        gridState.value.corners = json.data.corners.map((pt: [number, number]) => ({
+          x: pt[0],
+          y: pt[1],
+        }))
+        return true
+      } else {
+        errorMessage.value = json.message || '無法自動偵測四角白色定位牌'
+        return false
+      }
+    } catch (err: any) {
+      errorMessage.value = `偵測定位牌失敗: ${err.message}`
+      return false
+    } finally {
+      gridState.value.isDetecting = false
+    }
+  }
+
+  function computeGridPlots(): NormalizedPoint[][] {
+    const { corners, rows, cols, marginRatio } = gridState.value
+    if (corners.length < 4 || rows <= 0 || cols <= 0) return []
+
+    const p00 = corners[0] // TL (u=0, v=0)
+    const p10 = corners[1] // TR (u=1, v=0)
+    const p11 = corners[2] // BR (u=1, v=1)
+    const p01 = corners[3] // BL (u=0, v=1)
+
+    function interp(u: number, v: number): NormalizedPoint {
+      const x = (1 - u) * (1 - v) * p00.x + u * (1 - v) * p10.x + u * v * p11.x + (1 - u) * v * p01.x
+      const y = (1 - u) * (1 - v) * p00.y + u * (1 - v) * p10.y + u * v * p11.y + (1 - u) * v * p01.y
+      return {
+        x: Math.max(0, Math.min(1, Number(x.toFixed(5)))),
+        y: Math.max(0, Math.min(1, Number(y.toFixed(5)))),
+      }
+    }
+
+    const marginU = (1.0 / cols) * marginRatio
+    const marginV = (1.0 / rows) * marginRatio
+
+    const result: NormalizedPoint[][] = []
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const uMin = c / cols + marginU
+        const uMax = (c + 1) / cols - marginU
+        const vMin = r / rows + marginV
+        const vMax = (r + 1) / rows - marginV
+
+        // 小區多邊形四頂點：TL, TR, BR, BL
+        result.push([
+          interp(uMin, vMin),
+          interp(uMax, vMin),
+          interp(uMax, vMax),
+          interp(uMin, vMax),
+        ])
+      }
+    }
+    return result
+  }
+
+  function confirmBatchGenerate(mode: 'replace' | 'append' = 'replace'): void {
+    const polys = computeGridPlots()
+    if (polys.length === 0) return
+
+    if (mode === 'replace') {
+      plots.value = []
+    }
+
+    let startNum = mode === 'replace'
+      ? 1
+      : plots.value.reduce((acc, cur) => Math.max(acc, cur.plot_number), 0) + 1
+
+    for (const poly of polys) {
+      plots.value.push({
+        plot_number: startNum++,
+        coords: serializePoints(poly),
+        is_control: false,
+        treatment: '',
+        dose: '',
+        metrics: {},
+      })
+    }
+
+    isDirty.value = true
+    selectedPlotNumber.value = null
+    closeGridMode()
+  }
+
   return {
     plots,
     activeMode,
@@ -251,6 +393,7 @@ export function usePlots() {
     isDirty,
     isSaving,
     errorMessage,
+    gridState,
     treatmentColorMap,
     existingTreatments,
     getPlotColor,
@@ -261,5 +404,11 @@ export function usePlots() {
     updatePlotPoints,
     deletePlot,
     clearAllPlots,
+    startGridMode,
+    closeGridMode,
+    updateGridCorner,
+    detectMarkers,
+    computeGridPlots,
+    confirmBatchGenerate,
   }
 }

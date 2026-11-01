@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from src.entities.task import Plot, Task
 from src.usecases.ports import TaskPort
 from src.usecases.ports.odm import OdmPort
 from src.utility.imagery import extract_orthophoto_from_zip
+from src.utility.marker_detection import detect_white_marker_corners
 from src.utility.spectral import generate_spectral_image
 
 SRC_DIR = Path(__file__).resolve().parents[1]
@@ -296,4 +298,13 @@ class TaskUseCase:
         _validate_task_id(task_id)
         await self.task_port.get_task(task_id)
         await self.task_port.clear_messages(task_id)
+
+    async def detect_plot_markers(
+        self, task_id: str, roi: Sequence[float] | None = None
+    ) -> list[list[float]]:
+        """主流程：調度影像運算工具自動偵測田區四角白色定位牌。"""
+        _validate_task_id(task_id)
+        ortho_path = await self.get_orthophoto_path(task_id)
+        corners = await asyncio.to_thread(detect_white_marker_corners, ortho_path, roi)
+        return corners
 

@@ -95,6 +95,7 @@ const {
   isDirty,
   isSaving,
   errorMessage,
+  gridState,
   existingTreatments,
   getPlotColor,
   loadPlots,
@@ -103,7 +104,34 @@ const {
   updatePlotTreatment,
   updatePlotPoints,
   deletePlot,
+  startGridMode,
+  closeGridMode,
+  updateGridCorner,
+  detectMarkers,
+  computeGridPlots,
+  confirmBatchGenerate,
 } = usePlots()
+
+const previewGridPlots = computed(() => {
+  if (!gridState.value.isActive) return []
+  return computeGridPlots()
+})
+
+async function handleDetectMarkers() {
+  if (!selectedProject.value?.id) return
+  await detectMarkers(selectedProject.value.id)
+  nextTick(() => plotCanvasOverlayRef.value?.redraw())
+}
+
+function handleConfirmGrid() {
+  if (plots.value.length > 0) {
+    const replace = window.confirm(`目前畫布上已有 ${plots.value.length} 個小區。\n點擊「確定」替換既有小區，點擊「取消」保留並追加在後方。`)
+    confirmBatchGenerate(replace ? 'replace' : 'append')
+  } else {
+    confirmBatchGenerate('replace')
+  }
+  nextTick(() => plotCanvasOverlayRef.value?.redraw())
+}
 
 const drawTool = ref<'rect' | 'polygon'>('rect')
 
@@ -510,10 +538,18 @@ watch(selectedProject, async (newProj) => {
             :is-dirty="isDirty"
             :is-saving="isSaving"
             :is-drawing="isDrawing"
+            :grid-state="gridState"
             @save="handleSavePlots"
             @undo-point="plotCanvasOverlayRef?.undoLastPoint()"
             @cancel-drawing="plotCanvasOverlayRef?.cancelDrawing()"
             @delete-selected="selectedPlotNumber !== null && deletePlot(selectedPlotNumber)"
+            @start-grid="startGridMode"
+            @close-grid="closeGridMode"
+            @detect-markers="handleDetectMarkers"
+            @confirm-grid="handleConfirmGrid"
+            @update:grid-rows="gridState.rows = $event"
+            @update:grid-cols="gridState.cols = $event"
+            @update:grid-margin="gridState.marginRatio = $event"
           />
 
           <CardContent class="p-4">
@@ -682,10 +718,13 @@ watch(selectedProject, async (newProj) => {
                   :selected-plot-number="selectedPlotNumber"
                   :get-plot-color="getPlotColor"
                   :viewport="viewport"
+                  :grid-state="gridState"
+                  :preview-plots="previewGridPlots"
                   @plot-drawn="onPlotDrawn"
                   @edit-plot="onEditPlot"
                   @update-plot-points="onUpdatePlotPoints"
                   @select-plot="onSelectPlot"
+                  @update-grid-corner="updateGridCorner($event.index, $event.point)"
                 />
               </div>
             </div>

@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import {
   type PlotItem,
   type NormalizedPoint,
+  type GridGeneratorState,
   parseCoords,
 } from '@/lib/usePlots'
 import type { CanvasViewport } from '@/lib/useCanvasViewport'
@@ -15,9 +16,12 @@ const props = withDefaults(
     selectedPlotNumber: number | null
     getPlotColor: (plot: PlotItem) => string
     viewport: CanvasViewport
+    gridState?: GridGeneratorState
+    previewPlots?: NormalizedPoint[][]
   }>(),
   {
     drawTool: 'rect',
+    previewPlots: () => [],
   }
 )
 
@@ -26,10 +30,14 @@ const emit = defineEmits<{
   (e: 'edit-plot', plot: PlotItem): void
   (e: 'update-plot-points', payload: { plotNumber: number; points: NormalizedPoint[] }): void
   (e: 'select-plot', plotNumber: number | null): void
+  (e: 'update-grid-corner', payload: { index: number; point: NormalizedPoint }): void
 }>()
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const containerRef = ref<HTMLDivElement | null>(null)
+
+// 網格角點把手拖曳狀態
+const draggingGridCornerIndex = ref<number | null>(null)
 
 // 矩形拖曳拉框狀態
 const isDraggingRect = ref(false)
@@ -118,7 +126,118 @@ function drawCanvas() {
   drawDraggingRectPreview(ctx)
   drawCurrentDrawingPolyline(ctx)
 
+  // 繪製自動網格動態預覽與 4 角錨點把手
+  if (props.gridState?.isActive) {
+    drawGridGeneratorOverlay(ctx)
+  }
+
   ctx.restore()
+}
+
+function drawGridGeneratorOverlay(ctx: CanvasRenderingContext2D) {
+  if (!props.gridState || !props.gridState.isActive || props.gridState.corners.length < 4) return
+
+  const corners = props.gridState.corners
+  const screenCorners = corners.map((c) => props.viewport.normalizedToScreen(c))
+
+  // 1. 繪製預覽子小區 (Subplots Preview)
+  if (props.previewPlots && props.previewPlots.length > 0) {
+    let plotIdx = 1
+    for (const plotPoly of props.previewPlots) {
+      if (plotPoly.length < 3) continue
+      const spStart = props.viewport.normalizedToScreen(plotPoly[0])
+
+      ctx.beginPath()
+      ctx.moveTo(spStart.x, spStart.y)
+      for (let j = 1; j < plotPoly.length; j++) {
+        const sp = props.viewport.normalizedToScreen(plotPoly[j])
+        ctx.lineTo(sp.x, sp.y)
+      }
+      ctx.closePath()
+
+      // 填充淡紫色半透明背景
+      ctx.fillStyle = 'rgba(168, 85, 247, 0.16)'
+      ctx.fill()
+
+      // 繪製虛線邊框
+      ctx.strokeStyle = '#a855f7'
+      ctx.lineWidth = 1.5
+      ctx.setLineDash([4, 3])
+      ctx.stroke()
+      ctx.setLineDash([])
+
+      // 繪製子小區中心編號標籤
+      let sumX = 0
+      let sumY = 0
+      for (const p of plotPoly) {
+        const sp = props.viewport.normalizedToScreen(p)
+        sumX += sp.x
+        sumY += sp.y
+      }
+      const cx = sumX / plotPoly.length
+      const cy = sumY / plotPoly.length
+
+      ctx.save()
+      ctx.font = 'bold 10px system-ui, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'
+      ctx.beginPath()
+      ctx.arc(cx, cy, 9, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = '#a855f7'
+      ctx.lineWidth = 1
+      ctx.stroke()
+
+      ctx.fillStyle = '#7e22ce'
+      ctx.fillText(`#${plotIdx}`, cx, cy)
+      ctx.restore()
+
+      plotIdx++
+    }
+  }
+
+  // 2. 繪製母區四邊形邊界 (Bounding Quad)
+  ctx.beginPath()
+  ctx.moveTo(screenCorners[0].x, screenCorners[0].y)
+  for (let i = 1; i < 4; i++) {
+    ctx.lineTo(screenCorners[i].x, screenCorners[i].y)
+  }
+  ctx.closePath()
+  ctx.strokeStyle = '#6b21a8'
+  ctx.lineWidth = 2.2
+  ctx.setLineDash([6, 4])
+  ctx.stroke()
+  ctx.setLineDash([])
+
+  // 3. 繪製 4 個角點可拖曳把手 (Draggable Handles)
+  const cornerLabels = ['TL', 'TR', 'BR', 'BL']
+  for (let i = 0; i < 4; i++) {
+    const sc = screenCorners[i]
+    const isDragging = draggingGridCornerIndex.value === i
+
+    // 外圈光暈與陰影
+    ctx.save()
+    ctx.beginPath()
+    ctx.arc(sc.x, sc.y, isDragging ? 15 : 12, 0, Math.PI * 2)
+    ctx.fillStyle = isDragging ? '#7e22ce' : '#9333ea'
+    ctx.shadowColor = 'rgba(126, 34, 206, 0.6)'
+    ctx.shadowBlur = 8
+    ctx.fill()
+    ctx.strokeStyle = '#ffffff'
+    ctx.lineWidth = 2.5
+    ctx.stroke()
+    ctx.restore()
+
+    // 內圈文字
+    ctx.save()
+    ctx.font = 'bold 9px system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillStyle = '#ffffff'
+    ctx.fillText(cornerLabels[i], sc.x, sc.y)
+    ctx.restore()
+  }
 }
 
 function drawExistingPlots(ctx: CanvasRenderingContext2D) {
@@ -354,6 +473,20 @@ function onMouseDown(e: MouseEvent) {
 
   const { screenX, screenY, norm } = getCanvasRelativeCoords(e)
 
+  // 自動網格生成模式：檢查是否點擊在 4 個角點錨點把手上以進行拖曳
+  if (props.gridState?.isActive) {
+    if (props.gridState.corners && props.gridState.corners.length >= 4) {
+      for (let i = 0; i < 4; i++) {
+        const sc = props.viewport.normalizedToScreen(props.gridState.corners[i])
+        if (Math.hypot(sc.x - screenX, sc.y - screenY) <= 18) {
+          draggingGridCornerIndex.value = i
+          return
+        }
+      }
+    }
+    return
+  }
+
   // 檢視模式：點擊小區選取並彈窗編輯
   if (props.activeMode === 'view') {
     const hitPlot = findPlotAtPoint(screenX, screenY)
@@ -436,7 +569,34 @@ function onMouseMove(e: MouseEvent) {
   const { screenX, screenY, norm } = getCanvasRelativeCoords(e)
   currentMousePos.value = norm
 
-  // 2. 頂點拖曳微調
+  // 2. 自動網格模式下拖曳 4 角錨點或懸停檢測
+  if (props.gridState?.isActive) {
+    if (draggingGridCornerIndex.value !== null) {
+      emit('update-grid-corner', {
+        index: draggingGridCornerIndex.value,
+        point: norm,
+      })
+      drawCanvas()
+      return
+    }
+
+    let isHoverHandle = false
+    if (props.gridState.corners && props.gridState.corners.length >= 4) {
+      for (let i = 0; i < 4; i++) {
+        const sc = props.viewport.normalizedToScreen(props.gridState.corners[i])
+        if (Math.hypot(sc.x - screenX, sc.y - screenY) <= 18) {
+          isHoverHandle = true
+          break
+        }
+      }
+    }
+    if (canvasRef.value) {
+      canvasRef.value.style.cursor = isHoverHandle ? 'grab' : 'crosshair'
+    }
+    return
+  }
+
+  // 3. 頂點拖曳微調
   if (draggingVertexIndex.value !== null && props.selectedPlotNumber !== null) {
     const selectedPlot = props.plots.find((p) => p.plot_number === props.selectedPlotNumber)
     if (selectedPlot) {
@@ -472,6 +632,12 @@ function onMouseMove(e: MouseEvent) {
 }
 
 function onMouseUp(e: MouseEvent) {
+  if (draggingGridCornerIndex.value !== null) {
+    draggingGridCornerIndex.value = null
+    drawCanvas()
+    return
+  }
+
   if (e.button === 2 || props.viewport.isPanning.value) {
     props.viewport.endPan()
     return
@@ -586,6 +752,12 @@ watch(
     props.activeMode,
     props.drawTool,
     props.selectedPlotNumber,
+    props.gridState?.isActive,
+    props.gridState?.corners,
+    props.gridState?.rows,
+    props.gridState?.cols,
+    props.gridState?.marginRatio,
+    props.previewPlots,
     props.viewport.scale.value,
     props.viewport.panX.value,
     props.viewport.panY.value,
@@ -616,8 +788,9 @@ watch(
     class="absolute inset-0 pointer-events-auto select-none"
     :class="{
       'cursor-grab': viewport.isPanning.value,
-      'cursor-pointer': activeMode === 'view',
-      'cursor-crosshair': activeMode === 'draw' && !viewport.isPanning.value,
+      'cursor-pointer': activeMode === 'view' && !gridState?.isActive,
+      'cursor-crosshair': activeMode === 'draw' && !gridState?.isActive && !viewport.isPanning.value,
+      'cursor-default': gridState?.isActive && !viewport.isPanning.value,
     }"
     @mousedown="onMouseDown"
     @mousemove="onMouseMove"

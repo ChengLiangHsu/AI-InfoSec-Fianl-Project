@@ -48,6 +48,10 @@ class UpdatePlotsPayload(BaseModel):
     plots: list[PlotItemPayload]
 
 
+class DetectMarkersPayload(BaseModel):
+    roi: list[float] | None = None
+
+
 # ============================================================================
 # 內部輔助與序列化子函式 (Helpers & Serializers)
 # ============================================================================
@@ -299,6 +303,18 @@ async def update_plots(
     plots_data = [p.model_dump() for p in payload.plots]
     updated_plots = await usecase.update_plots(task_id, plots_data)
     return success_response(data=[asdict(p) for p in updated_plots])
+
+
+@router.post("/detect-markers/{task_id}")
+async def detect_markers(
+    task_id: str,
+    payload: DetectMarkersPayload | None = None,
+    usecase: TaskUseCase = Depends(get_task_usecase),
+) -> JSONResponse:
+    """主流程：自動偵測空拍圖中田間 4 個白色定位標記牌座標。"""
+    roi = payload.roi if payload else None
+    corners = await usecase.detect_plot_markers(task_id, roi)
+    return success_response(data={"corners": corners})
 
 
 @router.post("/chat")

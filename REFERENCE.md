@@ -213,3 +213,20 @@
 - [Google Web Fundamentals - High Performance Animations (GPU Compositing vs. Layout Reflow)](https://web.dev/articles/animations-guide)
 - [MDN Web Docs - image-rendering](https://developer.mozilla.org/en-US/docs/Web/CSS/image-rendering)
 - **採用架構**：正射影像採用 `transform: translate3d(panX, panY, 0) scale(scale)` 與 `max-w-none max-h-none` 解除 Tailwind 限制，基於 GPU 合成層實現高畫質 60fps 平滑縮放；於 `useCanvasViewport` 中封裝平移邊界約束演算法，保證正射影像邊界至少 20% 保留在視窗可視範圍內。
+
+### OpenCV 影像處理與白色定位牌偵測 (OpenCV Marker Detection)
+- [OpenCV Image Thresholding 官方文件](https://docs.opencv.org/4.x/d7/4d/tutorial_py_thresholding.html)
+- [OpenCV Contours and Convex Hull 官方文件](https://docs.opencv.org/4.x/dd/d49/tutorial_py_contour_features.html)
+- [OpenCV SimpleBlobDetector 官方文件](https://docs.opencv.org/4.x/d0/d7a/classcv_1_1SimpleBlobDetector.html)
+- **採用架構**：針對空拍圖中田間白色定位牌插牌之高反差光譜特徵，於 `src/utility/marker_detection.py` 採用亮度閥值（Grayscale / Value Thresholding）與斑點輪廓幾何過濾（面積、長寬比），並結合凸包（Convex Hull）與四邊形極值逼近計算，一鍵定位包覆試驗田之 4 個外圍角點座標。
+
+### 雙線性插值與網格透視剖分 (Bilinear Interpolation & Grid Partitioning)
+- [OpenCV Geometric Transformations (Perspective & Affine)](https://docs.opencv.org/4.x/da/d54/tutorial_py_geometric_transformations.html)
+- [Bilinear Interpolation 數學原理 (Wikipedia)](https://en.wikipedia.org/wiki/Bilinear_interpolation)
+- [FIELDimageR R Package - fieldShape & Buffer Specification](https://github.com/filipematias23/FIELDimageR)
+- **採用架構**：給定 4 個正規化角點，透過雙線性插值公式 $P(u, v) = (1-u)(1-v) P_{00} + u(1-v) P_{10} + uv P_{11} + (1-u)v P_{01}$ 將非正交或傾斜的四邊形平滑映射為 $R \times C$ 小區網格；並引入走道間隔比例（Buffer / Margin Gap）將各子小區邊緣等比內縮，自動排除畦溝與田埂走道。
+
+### HTML5 Canvas 動態預覽與錨點拖曳互動 (Canvas Interactive Handles & Live Preview)
+- [MDN Canvas API 官方文件](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API)
+- [Nielsen Norman Group - Immediate Feedback in User Interfaces](https://www.nngroup.com/articles/immediate-feedback-interaction/)
+- **採用架構**：前端於 `PlotCanvasOverlay.vue` 建立 4 角拖曳錨點與半透明虛線網格層，支援拖曳頂點時 60fps 即時重繪預覽網格，使用者確認無誤後單擊「確認生成」批量轉入 `plots` 陣列。
