@@ -24,7 +24,7 @@ import { Conversation, ConversationContent, ConversationScrollButton } from '@/c
 import type { AttachmentData } from '@/components/ai-elements/attachments'
 
 import { onMounted, watch } from 'vue'
-import { Sparkles, Layers, Eye, BarChart2, CheckCircle2, Trash2 } from '@lucide/vue'
+import { Eye, BarChart2, Sparkles } from '@lucide/vue'
 import { useChatAgent } from '@/lib/useChatAgent'
 
 const props = defineProps<{
@@ -60,46 +60,14 @@ async function triggerQuickPrompt(promptText: string): Promise<void> {
 
 <template>
   <div class="relative flex size-full flex-col divide-y overflow-hidden">
-    <!-- 正射圖與光譜圖存取狀態列 -->
-    <div class="flex items-center justify-between bg-muted/30 px-3.5 py-2 text-xs border-b">
-      <div class="flex items-center gap-1.5 font-medium text-muted-foreground truncate">
-        <span class="size-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-        <span class="truncate">已連結正射影像</span>
-        <span class="text-muted-foreground/60">·</span>
-        <span class="flex items-center gap-1 rounded bg-background px-1.5 py-0.5 font-mono text-[11px] font-semibold text-foreground border shadow-2xs">
-          <Layers class="size-3 text-primary" />
-          {{ (selectedFormula || 'rgb').toUpperCase() }}
-        </span>
-      </div>
-      <div class="flex items-center gap-2 shrink-0">
-        <span class="text-[11px] text-emerald-600 font-medium shrink-0 flex items-center gap-1">
-          <CheckCircle2 class="size-3" />
-          多模態就緒
-        </span>
-        <button
-          v-if="messages.length > 0"
-          type="button"
-          :disabled="status === 'streaming'"
-          class="text-[11px] text-muted-foreground hover:text-destructive flex items-center gap-1 transition-colors cursor-pointer px-1.5 py-0.5 rounded hover:bg-destructive/10 disabled:opacity-50"
-          @click="clearChat(props.projectId)"
-          title="清除此專案之對話紀錄"
-        >
-          <Trash2 class="size-3" />
-          <span>清除</span>
-        </button>
-      </div>
-    </div>
+
 
     <!-- 對話內容區 -->
     <Conversation>
       <ConversationContent>
-        <div v-if="messages.length === 0" class="flex h-full min-h-[200px] flex-col items-center justify-center p-6 text-center text-muted-foreground my-auto select-none">
-          <div class="mb-3 inline-flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            <Sparkles class="size-5" />
-          </div>
-          <p class="text-sm font-semibold text-foreground">智慧田間試驗分析就緒</p>
-          <p class="text-xs text-muted-foreground mt-1 max-w-[280px] leading-relaxed">
-            已載入此專案的正射影像與光譜運算成果。您可以點選下方快捷標籤或提問以開始分析。
+        <div v-if="messages.length === 0" class="flex h-full min-h-[160px] flex-col items-center justify-center p-4 text-center text-muted-foreground my-auto select-none">
+          <p class="text-xs text-muted-foreground/75">
+            點選下方快捷分析標籤或輸入問題開始診斷
           </p>
         </div>
         <MessageBranch v-for="message in messages" :key="message.key" :default-branch="0">

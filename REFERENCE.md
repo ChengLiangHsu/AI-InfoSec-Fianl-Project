@@ -230,3 +230,22 @@
 - [MDN Canvas API 官方文件](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API)
 - [Nielsen Norman Group - Immediate Feedback in User Interfaces](https://www.nngroup.com/articles/immediate-feedback-interaction/)
 - **採用架構**：前端於 `PlotCanvasOverlay.vue` 建立 4 角拖曳錨點與半透明虛線網格層，支援拖曳頂點時 60fps 即時重繪預覽網格，使用者確認無誤後單擊「確認生成」批量轉入 `plots` 陣列。
+
+### AI Elements Vue Persona 組件 (AI Elements Vue Persona Component)
+- [AI Elements Vue - Persona Component 官方文件](https://www.ai-elements-vue.com/components/voice/persona#obsidian-default)
+- **採用架構**：採用 Obsidian 變體與 Rive WebGL2 動畫渲染引擎，封裝為 64px 懸浮互動球體，映射 Agent 狀態（`idle`、`thinking`、`speaking`），作為田間試驗分析之動態虛擬形象入口。
+
+### Rive WebGL2 動畫運行時 (Rive Runtime WebGL2)
+- [Rive Official Documentation](https://rive.app/community/doc/overview/doc1/)
+- [Rive WebGL2 Runtime for Web (rive-app/webgl2)](https://help.rive.app/runtimes/overview/web-js)
+- **採用架構**：透過 `@rive-app/webgl2` 渲染向量動畫，支援深淺色主題監聽與畫布自適應縮放（`resizeDrawingSurfaceToCanvas`）。
+
+### VueUse useDraggable 與手勢位移閥值 (VueUse useDraggable & Pointer Movement Thresholding)
+- [VueUse - useDraggable 官方文件](https://vueuse.org/core/useDraggable/)
+- [W3C Pointer Events Level 3 規範 (Pointer Move Threshold)](https://www.w3.org/TR/pointerevents3/)
+- **採用架構**：利用 `useDraggable` 綁定懸浮組件之絕對座標，並在滑鼠放開時計算總位移距（$\Delta x^2 + \Delta y^2 > 5^2$），嚴格分離「長按拖曳移動」與「點擊開關對話框」行為，並實施可視視窗（Viewport）邊界箝制（Boundary Clamping）。
+
+### 自適應邊界避障彈窗定位 (Adaptive Viewport Clamping & Collision-Free Popover Layout)
+- [MDN Web Docs - Element.getBoundingClientRect()](https://developer.mozilla.org/en-US/docs/Web/API/Element/getBoundingClientRect)
+- [W3C CSS Positioned Layout Level 3](https://www.w3.org/TR/css-position-3/)
+- **採用架構**：依據 Persona 當前所在的視窗四象限座標，動態決定迷你文字氣泡與完整對話視窗的彈出方向（橫向優先向視窗內側展開、縱向避開頂底邊界），確保無論 Persona 停在何處，展開視窗 100% 完整可見。

@@ -113,6 +113,9 @@
 - **一鍵確認生成正式小區（Confirm Batch Plot Generation）**：使用者於預覽滿意後，點擊「確認生成」按鈕批次將預覽網格轉化為正式小區（加入 `plots` 陣列並標記未儲存變更），生成後的小區預設為待設定狀態。
 - **小區點擊快速標籤設定（Click Plot with Quick Treatment Tags）**：整批生成後維持現有直覺互動，使用者點擊任一小區即彈出 `PlotTreatmentDialog`，點選既有處理標籤或設為 CK 對照組秒速套用，不強制彈跳連續遮罩視窗。
 - **端點與工具函式 Clean Architecture 實作（Marker Detection Utility & Endpoint）**：於 `src/utility/marker_detection.py` 實作純 OpenCV 影像運算（灰階/高光閥值、輪廓特徵過濾、外圍四角凸包定位），於 `TaskUseCase` 封裝業務流程，並在控制器暴露 `POST /task/{task_id}/detect-markers` 端點。
+- **懸浮 Persona AI 代理人組件（Floating Persona AI Agent Component）**：以 AI Elements Vue 的 Persona 組件（預設 `obsidian` 變體，64px 球體）取代原先右下角固定對話按鈕，懸浮於選定專案之工作視窗，支援滑鼠按住拖曳（位移 > 5px 視為拖曳）並限制於視窗可視範圍內自由停放（預設右下角），單純點擊 Persona 本身直接開啟或收合完整 AskAgent 對話視窗。
+- **即時串流迷你文字氣泡與身旁避障彈窗（Realtime Streaming Speech Bubble & Adaptive Anchored Dialog）**：Agent 產生回覆時文字同步即時串流至 Persona 身旁的迷你文字氣泡（寬度上限 280px，附帶關閉 ✕ 按鈕與點擊展開提示），點擊文字氣泡可展開完整 AskAgent 對話視窗；完整視窗展開時自動緊鄰 Persona 並依據螢幕邊界進行智慧避障展開（避免超出視窗），展開時自動隱藏迷你氣泡。
+- **Persona 動畫狀態即時連動（Persona State-Agent Lifecycle Sync）**：Persona 動畫狀態緊密映射後端 Agent 生命週期，於等待推論處理時呈現 `thinking`、串流輸出文字時呈現 `speaking`，完成後或平時維持 `idle` 休憩狀態。
 
 ## 拒絕
 - **拒絕 DESIGN.md 擴充非規範獨立章節**：不於 DESIGN.md 中新增額外獨立的 Problem、Requirements 或 How to Run 章節，How to Run 集中於 README.md，Problem/Requirements 歸屬提案章節與需求清單。
@@ -199,3 +202,6 @@
 - **拒絕重型深度學習分割模型（No Heavy Deep Learning Segmentor for Markers）**：不引入 YOLO、Mask R-CNN 或 SAM 等重型模型辨識定位牌，採用純粹輕量的 OpenCV 高亮度形態學二值化與輪廓特徵演算法。
 - **拒絕強制阻塞式連續填寫彈窗（No Blocking Sequential Treatment Modal）**：整批小區一鍵生成後，嚴禁強制跳出接二連三、無法關閉的循序表單彈窗打斷操作，維持由使用者在畫布上自由點選指派的彈性。
 - **拒絕零間隔剛性切分（No Strict Zero-Gap Rigid Partitioning）**：生成小區時拒絕強制無縫緊貼，必須提供走道內縮間距（Margin Gap）以避免田埂走道裸土污染植生指標。
+- **拒絕常駐遮擋式固定右下角對話框（No Permanent Obstructive Fixed Dialog）**：淘汰固定於右下角佔用 420x600 空間之僵硬對話框與簡易按鈕，改以輕量自由拖曳懸浮之 Persona 取代，避免遮蔽正射拼接底圖與小區邊界。
+- **拒絕拖曳點擊行為混淆（No Drag-Click Ambiguity）**：拖曳移動位移大於 5px 時嚴禁誤觸發點擊展開對話視窗，避免使用者拖放 Persona 調整位置時跳出干擾彈窗。
+- **拒絕超出版面無限拖曳迷航（No Out-of-Bounds Persona Drifting）**：拖曳懸浮 Persona 時強制實施 Viewport 視窗邊界限制（Clamping），嚴禁拖出螢幕可視範圍外造成組件遺失。

@@ -4,8 +4,6 @@ export const iframeHeight = "800px"
 </script>
 <script setup lang="ts">
 import {
-  MessageCircleIcon,
-  MinusIcon,
   FileCodeIcon,
   XIcon,
   Plus,
@@ -75,7 +73,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import AskAgent from './components/AskAgent.vue'
+import FloatingPersona from './components/FloatingPersona.vue'
 import DroneHomeUpload from './components/DroneHomeUpload.vue'
 import PlotToolbar from './components/PlotToolbar.vue'
 import PlotCanvasOverlay from './components/PlotCanvasOverlay.vue'
@@ -281,11 +279,6 @@ async function handleGoHome() {
   await clearChat('home')
 }
 
-async function handleClearAgentChat() {
-  if (selectedProject.value?.id) {
-    await clearChat(selectedProject.value.id)
-  }
-}
 
 interface Formula {
   id: string
@@ -314,7 +307,6 @@ const selectedProject = ref<Project | null>(null)
 const processingProject = ref<Project | null>(null)
 const uploadList = ref<UploadItem[]>([])
 const isCreatingProject = ref(false)
-const isAgentOpen = ref(true)
 const formulas = ref<Formula[]>([])
 const selectedFormula = ref<string>('rgb')
 const isImageLoading = ref(false)
@@ -758,64 +750,11 @@ watch(selectedProject, async (newProj) => {
       </div>
     </SidebarInset>
   </SidebarProvider>
-  <section v-if="selectedProject" v-show="isAgentOpen" id="ask-agent-window" aria-labelledby="ask-agent-title"
-    class="fixed bottom-4 right-4 z-40 flex h-[600px] max-h-[calc(100dvh-2rem)] w-[420px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border bg-background text-foreground shadow-xl">
-    <header class="flex shrink-0 items-center justify-between border-b px-3.5 py-2.5 bg-muted/20">
-      <div class="flex items-center gap-2 min-w-0">
-        <Sparkles class="size-4 text-primary shrink-0" />
-        <h2 id="ask-agent-title" class="font-semibold text-sm truncate">AskAgent ({{ selectedProject?.name }})</h2>
-      </div>
-      <div class="flex items-center gap-1 shrink-0">
-        <TooltipProvider :delay-duration="150">
-          <Tooltip>
-            <TooltipTrigger as-child>
-              <button
-                type="button"
-                aria-label="清除對話紀錄"
-                class="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-destructive focus-visible:outline-2 focus-visible:outline-ring cursor-pointer transition-colors"
-                @click="handleClearAgentChat"
-              >
-                <Trash2 class="size-4" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" class="text-xs">
-              清除對話紀錄
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-
-        <TooltipProvider :delay-duration="150">
-          <Tooltip>
-            <TooltipTrigger as-child>
-              <button
-                type="button"
-                aria-label="收合 AskAgent"
-                aria-controls="ask-agent-window"
-                :aria-expanded="isAgentOpen"
-                class="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring cursor-pointer transition-colors"
-                @click="isAgentOpen = false"
-              >
-                <MinusIcon class="size-4" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" class="text-xs">
-              收合小視窗
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
-    </header>
-    <AskAgent
-      :project-id="selectedProject?.id"
-      :project-name="selectedProject?.name"
-      :selected-formula="selectedFormula"
-    />
-  </section>
-
-  <button v-if="selectedProject && !isAgentOpen" type="button" aria-label="開啟 AskAgent" aria-controls="ask-agent-window"
-    :aria-expanded="isAgentOpen"
-    class="fixed bottom-4 right-4 z-40 inline-flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg hover:opacity-90 focus-visible:outline-2 focus-visible:outline-ring"
-    @click="isAgentOpen = true">
-    <MessageCircleIcon class="size-6" />
-  </button>
+  <!-- 懸浮 Persona AI 代理人組件 -->
+  <FloatingPersona
+    v-if="selectedProject"
+    :project-id="selectedProject.id"
+    :project-name="selectedProject.name"
+    :selected-formula="selectedFormula"
+  />
 </template>
