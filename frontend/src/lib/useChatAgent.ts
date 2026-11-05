@@ -41,6 +41,12 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
     if (conversations.value[targetId] && conversations.value[targetId].length > 0) {
       return
     }
+    if (targetId === 'home') {
+      if (!conversations.value['home']) {
+        conversations.value['home'] = []
+      }
+      return
+    }
     try {
       const res = await fetch(`/api/task/chat/?project_id=${encodeURIComponent(targetId)}`)
       if (res.ok) {
@@ -51,6 +57,28 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
     } catch (e) {
       console.error(`Failed to load chat history for ${targetId}`, e)
     }
+  }
+
+  function injectAssistantMessage(content: string, pid?: string) {
+    const targetId = pid || currentProjectId.value
+    if (!conversations.value[targetId]) {
+      conversations.value[targetId] = []
+    }
+    const key = `proactive-${Date.now()}`
+    conversations.value[targetId] = [
+      ...conversations.value[targetId],
+      {
+        key,
+        role: 'assistant',
+        content,
+        versions: [{ id: `v-${Date.now()}`, content }]
+      }
+    ]
+  }
+
+  function hasMessages(pid?: string): boolean {
+    const targetId = pid || currentProjectId.value
+    return (conversations.value[targetId]?.length || 0) > 0
   }
 
   function updateStreamingContent(message: MessageType, targetId: string) {
@@ -125,6 +153,7 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
     const targetId = pid || currentProjectId.value
     conversations.value[targetId] = []
     statusMap.value[targetId] = 'ready'
+    if (targetId === 'home') return
     try {
       await fetch(`/api/task/chat/?project_id=${encodeURIComponent(targetId)}`, {
         method: 'DELETE',
@@ -139,6 +168,9 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
     messages,
     loadInitialMessages,
     sendPrompt,
+    injectAssistantMessage,
+    hasMessages,
     clearChat,
   }
 }
+

@@ -249,3 +249,30 @@
 - [MDN Web Docs - Element.getBoundingClientRect()](https://developer.mozilla.org/en-US/docs/Web/API/Element/getBoundingClientRect)
 - [W3C CSS Positioned Layout Level 3](https://www.w3.org/TR/css-position-3/)
 - **採用架構**：依據 Persona 當前所在的視窗四象限座標，動態決定迷你文字氣泡與完整對話視窗的彈出方向（橫向優先向視窗內側展開、縱向避開頂底邊界），確保無論 Persona 停在何處，展開視窗 100% 完整可見。
+
+### 前端有限狀態機與階段感知引導 (Finite State Machine for Workflow Guidance)
+- [Kent C. Dodds - Stop using isLoading booleans (Finite State Machines)](https://kentcdodds.com/blog/stop-using-isloading-booleans)
+- [XState - Finite State Machines Specification](https://stately.ai/docs/finite-state-machines)
+- **採用架構**：前端透過計算狀態屬性感知五大工作流階段（`HOME_INTRO`、`STITCHING`、`ASK_SCENARIO`、`GUIDE_PLOTS`、`ANALYZE_RESULTS`），解耦非同步狀態變更與 Persona 迷你氣泡主動發話邏輯。
+
+### 擬人化角色提示工程與口語化短句風格 (Persona Prompting & Casual Conversational Style)
+- [Google Gemini 提示工程指引 (System Instructions & Persona)](https://ai.google.dev/gemini-api/docs/system-instructions)
+- [Pydantic AI 系統提示詞親切角色設定 (Persona Prompting)](https://ai.pydantic.dev/agent/#system-prompts)
+- **採用架構**：透過 Pydantic AI `@agent.system_prompt` 動態注入田間助理親切角色設定，以朋友口吻與簡潔短句互動，並以結構化情境晶片按鈕降低使用者打字溝通門檻。
+
+### 前端純記憶體暫態對話管理 (In-Memory Ephemeral Chat Management)
+- [Vue 3 響應式狀態 (Reactivity Core: ref & reactive)](https://vuejs.org/api/reactivity-core.html)
+- **採用架構**：在 `useChatAgent` 支援 `home` 專案 ID 之純前端記憶體訊息陣列，首頁問答與功能介紹不發送至後端持久化 SQLite，貫徹輕量與防止資料庫污染原則。
+
+### 前端字體排版與無障礙可讀性規範 (Typography Scale & WCAG Readability)
+- [Tailwind CSS Font Size Scale 官方文件](https://tailwindcss.com/docs/font-size)
+- [W3C Web Content Accessibility Guidelines (WCAG) 2.1 - Visual Presentation & Readability](https://www.w3.org/WAI/WCAG21/Understanding/visual-presentation.html)
+- [Nielsen Norman Group - Typography and Readability in Digital Interfaces](https://www.nngroup.com/articles/typography-field-guide/)
+- **採用架構**：首頁置頂步驟 1 引導與核心上傳拖曳框全面升級排版層級，標題提升至 18px~20px（`text-lg`/`sm:text-xl`），說明內文提升至 14px~16px（`text-sm`/`sm:text-base`），淘汰 10px 等微小字級，符合資訊清晰度與無障礙瀏覽標準。
+
+### 步驟流程導引與色彩語意分群 (Step Progress Pipeline & Color Semantics)
+- [Material Design 3 - Color Roles and Prominence](https://m3.material.io/styles/color/roles)
+- [Nielsen Norman Group - Steppers and Multi-step Form Design Patterns](https://www.nngroup.com/articles/step-by-step-wizards/)
+- **採用架構**：建立 7 步驟農業科技色彩鏈（1 航拍上傳 [科技藍] ➔ 2 正射拼接 [運算紫] ➔ 3 試驗情境 [陽光橘] ➔ 4 植生指標 [光譜青] ➔ 5 小區標註 [田間綠] ➔ 6 處理對照 [試驗紅] ➔ 7 藥效評估 [豐收金]），於 AI Agent 對話訊息中透過 `StepBadgeText.vue` 動態識別步驟並渲染為高彩度膠囊徽章，一眼區隔一般文字與行動焦點，首頁則移除繁瑣橫幅維持簡潔俐落。
+
+

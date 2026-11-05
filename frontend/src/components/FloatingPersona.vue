@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useDraggable, useWindowSize } from '@vueuse/core'
 import Persona, { type PersonaState } from '@/components/ai-elements/persona/Persona.vue'
 import AskAgent from './AskAgent.vue'
+import StepBadgeText from '@/components/StepBadgeText.vue'
 import { useChatAgent } from '@/lib/useChatAgent'
 import { Sparkles, X, Bot } from '@lucide/vue'
 import {
@@ -12,14 +13,23 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 
-const props = defineProps<{
-  projectId?: string
-  projectName?: string
-  selectedFormula?: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    projectId?: string
+    projectName?: string
+    selectedFormula?: string
+    projectProgress?: number
+    hasPlots?: boolean
+    isHome?: boolean
+  }>(),
+  {
+    isHome: false,
+    hasPlots: false,
+  }
+)
 
 const { width: windowWidth, height: windowHeight } = useWindowSize()
-const { status, messages, clearChat } = useChatAgent(() => props.projectId)
+const { status, messages, sendPrompt, injectAssistantMessage } = useChatAgent(() => props.projectId)
 
 const personaContainer = ref<HTMLElement | null>(null)
 const isDialogOpen = ref(false)
@@ -81,7 +91,6 @@ function closeDialog() {
   isDialogOpen.value = false
 }
 
-
 // Persona 動畫狀態與後端 Agent 狀態連動
 const personaState = computed<PersonaState>(() => {
   if (status.value === 'submitted') return 'thinking'
@@ -96,6 +105,85 @@ const latestAssistantMessage = computed(() => {
   const last = assistantMsgs[assistantMsgs.length - 1]
   return last.versions?.[0]?.content || last.content || ''
 })
+
+// 五大工作流狀態機判定
+type WorkflowState = 'HOME_INTRO' | 'STITCHING' | 'ASK_SCENARIO' | 'GUIDE_PLOTS' | 'ANALYZE_RESULTS'
+
+const currentWorkflowState = computed<WorkflowState>(() => {
+  if (props.isHome || !props.projectId) return 'HOME_INTRO'
+  if (typeof props.projectProgress === 'number' && props.projectProgress < 100) return 'STITCHING'
+  if (props.projectProgress === 100) {
+    const assistantCount = messages.value.filter((m) => m.role === 'assistant').length
+    if (assistantCount === 0) return 'ASK_SCENARIO'
+    if (!props.hasPlots) return 'GUIDE_PLOTS'
+    return 'ANALYZE_RESULTS'
+  }
+  return 'HOME_INTRO'
+})
+
+interface ScenarioChip {
+  label: string
+  icon?: string
+  prompt: string
+}
+
+const scenarioChips: ScenarioChip[] = [
+  {
+    label: '殺蟲劑藥效評估',
+    icon: '🐛',
+    prompt: '殺蟲劑藥效評估',
+  },
+  {
+    label: '除草劑防除試驗',
+    icon: '🌿',
+    prompt: '除草劑防除試驗',
+  },
+  {
+    label: '長勢與缺株監測',
+    icon: '🌱',
+    prompt: '長勢與缺株監測',
+  },
+]
+
+// 紀錄已主動問候過的專案，避免重複打擾
+const promptedProjects = ref<Record<string, boolean>>({})
+
+async function handleSelectScenario(chip: ScenarioChip) {
+  openDialog()
+  await sendPrompt(chip.prompt, props.projectId || 'home')
+}
+
+// 生命週期狀態感知與主動問候觸發
+watch(
+  () => [currentWorkflowState.value, props.projectId, props.projectProgress, messages.value.length] as const,
+  ([state, pid, progress, msgCount]) => {
+    const key = (pid as string) || 'home'
+
+    if (state === 'HOME_INTRO') {
+      if (messages.value.length === 0) {
+        injectAssistantMessage(
+          '嗨！歡迎來到田間試驗評估系統～直接把空拍照片拖進來，就可以開始步驟 1：航拍上傳囉！',
+          'home'
+        )
+      }
+      if (!isDialogOpen.value) {
+        showBubble.value = true
+      }
+    } else if (state === 'ASK_SCENARIO') {
+      if (!promptedProjects.value[key] && msgCount === 0) {
+        promptedProjects.value[key] = true
+        injectAssistantMessage(
+          '太棒了，正射圖拼好囉！這次田裡是做什麼試驗呀？殺蟲還是除草呢？點選下方標籤告訴我吧！',
+          key
+        )
+        if (!isDialogOpen.value) {
+          showBubble.value = true
+        }
+      }
+    }
+  },
+  { immediate: true }
+)
 
 // 當 Agent 開始串流輸出或完成時，若視窗未開則自動展示文字氣泡
 watch(
@@ -130,7 +218,6 @@ const dialogStyle = computed(() => {
   const dialogH = Math.min(600, wh - 32)
 
   let posX: number
-  // 水平判定：若 Persona 在右半側，彈窗優先向左展開；反之向右展開
   if (px > ww / 2) {
     posX = px - dialogW - 12
     if (posX < 16) {
@@ -144,7 +231,6 @@ const dialogStyle = computed(() => {
   }
 
   let posY: number
-  // 垂直判定：若 Persona 在下半側，彈窗優先對齊底部向上延伸
   if (py > wh / 2) {
     posY = py + 64 - dialogH
     if (posY < 16) posY = 16
@@ -190,7 +276,6 @@ const bubbleStyle = computed(() => {
 })
 
 onMounted(() => {
-  // 確保初始位置在視窗範圍內
   if (typeof window !== 'undefined') {
     x.value = Math.max(16, window.innerWidth - 96)
     y.value = Math.max(16, window.innerHeight - 96)
@@ -221,7 +306,7 @@ onMounted(() => {
     @keydown.space.prevent="toggleDialog"
   >
     <div
-      class="relative flex size-16 items-center justify-center rounded-full border border-primary/25 bg-background/85 shadow-2xl backdrop-blur-xl transition-all duration-300 hover:border-primary/50 hover:shadow-primary/20 ring-1 ring-primary/20 overflow-hidden"
+      class="relative flex size-16 items-center justify-center rounded-full border-2 border-zinc-900 bg-zinc-950 shadow-2xl backdrop-blur-xl transition-all duration-300 hover:border-black hover:shadow-black/60 ring-2 ring-zinc-800/80 overflow-hidden"
     >
       <!-- Rive Persona Obsidian 動態圖示 -->
       <Persona
@@ -229,7 +314,6 @@ onMounted(() => {
         :state="personaState"
         class="size-full pointer-events-none scale-110"
       />
-
     </div>
   </div>
 
@@ -250,8 +334,10 @@ onMounted(() => {
     >
       <div class="flex items-center justify-between gap-2 border-b border-border/50 pb-1.5 text-xs text-muted-foreground">
         <div class="flex items-center gap-1.5 font-medium text-foreground">
-          <Bot class="size-3.5 text-primary" />
-          <span class="text-[11px] font-semibold">AI 試驗診斷</span>
+          <Bot class="size-4 text-primary" />
+          <span class="text-xs font-semibold">
+            {{ isHome ? '田間試驗好夥伴' : 'AI 試驗診斷' }}
+          </span>
           <span
             v-if="status === 'streaming'"
             class="size-1.5 rounded-full bg-emerald-500 animate-pulse"
@@ -263,13 +349,31 @@ onMounted(() => {
           class="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
           @click.stop="showBubble = false"
         >
-          <X class="size-3.5" />
+          <X class="size-4" />
         </button>
       </div>
 
-      <p class="text-xs text-foreground/90 leading-relaxed line-clamp-3 select-none">
-        {{ latestAssistantMessage }}
-      </p>
+      <div class="text-sm text-foreground/90 leading-relaxed line-clamp-3 select-none">
+        <StepBadgeText :text="latestAssistantMessage" />
+      </div>
+
+      <!-- 快捷情境按鈕列 (正射剛完成或小區未劃定前) -->
+      <div
+        v-if="currentWorkflowState === 'ASK_SCENARIO' || (props.projectId && !hasPlots)"
+        class="flex flex-wrap gap-1 pt-1"
+        @click.stop
+      >
+        <button
+          v-for="chip in scenarioChips"
+          :key="chip.label"
+          type="button"
+          class="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-foreground hover:bg-primary/20 transition-colors cursor-pointer"
+          @click="handleSelectScenario(chip)"
+        >
+          <span>{{ chip.icon }}</span>
+          <span>{{ chip.label }}</span>
+        </button>
+      </div>
 
       <div class="flex items-center justify-between pt-1 text-[10px] text-muted-foreground/75 font-medium">
         <span>點擊展開完整對話</span>
@@ -299,7 +403,7 @@ onMounted(() => {
         <div class="flex items-center gap-2 min-w-0">
           <Sparkles class="size-4 text-primary shrink-0" />
           <h2 id="ask-agent-title" class="font-semibold text-sm truncate">
-            AskAgent ({{ projectName || '專案分析' }})
+            AskAgent ({{ isHome ? '首頁助理' : (projectName || '專案分析') }})
           </h2>
         </div>
         <div class="flex items-center gap-1 shrink-0">
@@ -329,6 +433,8 @@ onMounted(() => {
           :project-id="projectId"
           :project-name="projectName"
           :selected-formula="selectedFormula"
+          :is-home="isHome"
+          :has-plots="hasPlots"
         />
       </div>
     </section>

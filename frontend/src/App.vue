@@ -750,11 +750,13 @@ watch(selectedProject, async (newProj) => {
       </div>
     </SidebarInset>
   </SidebarProvider>
-  <!-- 懸浮 Persona AI 代理人組件 -->
+  <!-- 懸浮 Persona AI 代理人組件 (全域常駐) -->
   <FloatingPersona
-    v-if="selectedProject"
-    :project-id="selectedProject.id"
-    :project-name="selectedProject.name"
+    :project-id="selectedProject?.id"
+    :project-name="selectedProject?.name"
     :selected-formula="selectedFormula"
+    :project-progress="selectedProject?.progress"
+    :has-plots="plots.length > 0"
+    :is-home="!selectedProject"
   />
 </template>
