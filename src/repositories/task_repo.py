@@ -42,6 +42,7 @@ class TaskModel(SQLModel, table=True):
     __tablename__ = "tasks"
 
     id: str = Field(primary_key=True)
+    owner_id: str | None = Field(default=None, index=True)
     name: str
     images: int
     progress: int = Field(default=0)
@@ -52,8 +53,21 @@ class TaskModel(SQLModel, table=True):
 class TaskRepository(TaskPort):
     """NodeODM 航拍任務倉儲類別：實作 TaskPort 介面，由外部注入 Session。"""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, owner_id: str) -> None:
+        if not owner_id:
+            raise ValueError("缺少訪客身分")
         self.session = session
+        self.owner_id = owner_id
+
+    def _get_owned_model(self, task_id: str) -> TaskModel:
+        model = self.session.exec(
+            select(TaskModel).where(
+                TaskModel.id == task_id, TaskModel.owner_id == self.owner_id,
+            ).execution_options(populate_existing=True)
+        ).first()
+        if model is None:
+            raise KeyError("找不到任務")
+        return model
 
     def _to_entity(self, model: TaskModel) -> Task:
         return Task(
@@ -70,6 +84,7 @@ class TaskRepository(TaskPort):
         plots_json = _plots_to_json(task.plots)
         existing = self.session.get(TaskModel, task.id)
         if existing:
+            existing = self._get_owned_model(task.id)
             existing.name = task.name
             existing.images = task.images
             existing.progress = task.progress
@@ -79,6 +94,7 @@ class TaskRepository(TaskPort):
         else:
             model = TaskModel(
                 id=task.id,
+                owner_id=self.owner_id,
                 name=task.name,
                 images=task.images,
                 progress=task.progress,
@@ -90,20 +106,20 @@ class TaskRepository(TaskPort):
 
     async def get_task(self, task_id: str) -> Task:
         """非同步依據 task_id 查詢任務實體，若不存在則拋出 KeyError。"""
-        model = self.session.get(TaskModel, task_id)
+        model = self._get_owned_model(task_id)
         if not model:
             raise KeyError(f"任務不存在: {task_id}")
         return self._to_entity(model)
 
     async def get_tasks(self) -> list[Task]:
         """非同步查詢所有任務實體清單。"""
-        statement = select(TaskModel)
+        statement = select(TaskModel).where(TaskModel.owner_id == self.owner_id)
         models = self.session.exec(statement).all()
         return [self._to_entity(m) for m in models]
 
     async def update_task(self, task_id: str, data: dict[str, Any]) -> None:
         """非同步更新任務進度與照片數量。"""
-        model = self.session.get(TaskModel, task_id)
+        model = self._get_owned_model(task_id)
         if model:
             if "imagesCount" in data:
                 model.images = int(data["imagesCount"])
@@ -116,21 +132,21 @@ class TaskRepository(TaskPort):
 
     async def delete_task(self, task_id: str) -> None:
         """非同步刪除任務實體。"""
-        model = self.session.get(TaskModel, task_id)
+        model = self._get_owned_model(task_id)
         if model:
             self.session.delete(model)
             self.session.commit()
 
     async def get_plots(self, task_id: str) -> list[Plot]:
         """非同步查詢指定任務之小區列表。"""
-        model = self.session.get(TaskModel, task_id)
+        model = self._get_owned_model(task_id)
         if not model or not model.plots:
             return []
         return _json_to_plots(model.plots)
 
     async def update_plots(self, task_id: str, plots: list[Plot]) -> None:
         """非同步更新指定任務之小區列表。"""
-        model = self.session.get(TaskModel, task_id)
+        model = self._get_owned_model(task_id)
         if model:
             model.plots = _plots_to_json(plots)
             self.session.add(model)
@@ -138,14 +154,14 @@ class TaskRepository(TaskPort):
 
     async def get_messages(self, task_id: str) -> list[ModelMessage]:
         """非同步查詢指定任務之對話歷史列表。"""
-        model = self.session.get(TaskModel, task_id)
+        model = self._get_owned_model(task_id)
         if not model or not model.messages:
             return []
         return ModelMessagesTypeAdapter.validate_json(model.messages)
 
     async def add_messages(self, task_id: str, new_messages: str | bytes) -> None:
         """非同步新增序列化之對話歷史記錄至任務。"""
-        model = self.session.get(TaskModel, task_id)
+        model = self._get_owned_model(task_id)
         if not model:
             return
         new_str = new_messages.decode("utf-8") if isinstance(new_messages, bytes) else str(new_messages)
@@ -163,7 +179,7 @@ class TaskRepository(TaskPort):
 
     async def clear_messages(self, task_id: str) -> None:
         """非同步清空指定任務之對話歷史。"""
-        model = self.session.get(TaskModel, task_id)
+        model = self._get_owned_model(task_id)
         if model:
             model.messages = ""
             self.session.add(model)

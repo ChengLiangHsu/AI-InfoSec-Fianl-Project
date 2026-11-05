@@ -19,13 +19,9 @@ from pydantic_ai import (
 )
 
 from src.usecases.ports.task import TaskPort
+from src.config import ODM_DIR
 from src.utility.formulas import algos, get_algorithm_list, get_camera_filters_for, lookup_formula
 from src.utility.spectral import generate_spectral_image
-
-SRC_DIR = Path(__file__).resolve().parents[1]
-ODM_DIR = SRC_DIR / "odm"
-ODM_DIR.mkdir(parents=True, exist_ok=True)
-
 
 @dataclass
 class ChatDeps:
@@ -117,9 +113,9 @@ async def get_current_project_info(ctx: RunContext[ChatDeps]) -> dict:
     return {
         "status": "success",
         "project_id": pid,
-        "project_name": proj["name"],
-        "images_count": proj["images"],
-        "progress": proj["progress"],
+        "project_name": proj.name,
+        "images_count": proj.images,
+        "progress": proj.progress,
         "has_orthophoto": has_ortho,
         "image_resolution": f"{width} x {height}" if has_ortho else "未知",
         "cached_spectral_maps": cached_spectrals,

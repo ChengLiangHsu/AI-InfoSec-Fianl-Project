@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, BinaryIO
 
 import httpx
 
 from src.usecases.ports.odm import OdmPort
+from src.entities.upload import UploadImage
 
 
 def _validate_task_id(task_id: str) -> None:
@@ -14,27 +15,24 @@ def _validate_task_id(task_id: str) -> None:
         raise ValueError("任務 ID 不得為空")
 
 
-def _validate_files_payload(files: list[tuple[str, bytes, str]]) -> None:
+def _validate_files_payload(files: list[UploadImage]) -> None:
     """校驗上傳相片資料包是否符合非空規範。"""
     if not files or not isinstance(files, list):
         raise ValueError("上傳相片檔案清單不得為空")
     for item in files:
-        if not isinstance(item, tuple) or len(item) != 3:
-            raise ValueError(f"無效的相片資料規格，預期為 (檔名, 內容, 類型): {item}")
-        filename, content, _ = item
-        if not filename or not filename.strip():
+        if not item.filename.strip():
             raise ValueError("相片檔名不得為空")
-        if not content:
-            raise ValueError(f"相片檔案內容不得為空: {filename}")
+        if item.size <= 0:
+            raise ValueError(f"相片檔案內容不得為空: {item.filename}")
 
 
 def _build_multipart_payload(
-    files: list[tuple[str, bytes, str]],
-) -> list[tuple[str, tuple[str, bytes, str]]]:
+    files: list[UploadImage],
+) -> list[tuple[str, tuple[str, BinaryIO, str]]]:
     """將原始檔案 tuple 列表轉換為 httpx multipart 檔案上傳格式。"""
     return [
-        ("images", (filename, content, content_type))
-        for filename, content, content_type in files
+        ("images", (file.filename, file.stream, file.content_type))
+        for file in files
     ]
 
 
@@ -66,6 +64,10 @@ class OdmRequester(OdmPort):
         self.base_url = base_url.rstrip("/")
         self._client = httpx.AsyncClient(base_url=self.base_url)
 
+    async def aclose(self) -> None:
+        """釋放 HTTP 連線池。"""
+        await self._client.aclose()
+
     async def check_alive(self, timeout: float = 2.0) -> bool:
         """非同步檢查 NodeODM 節點是否存活且正常運作。"""
         try:
@@ -82,7 +84,7 @@ class OdmRequester(OdmPort):
 
     async def create_task(
         self,
-        files: list[tuple[str, bytes, str]],
+        files: list[UploadImage],
         name: str | None = None,
         options: list[dict[str, Any]] | None = None,
         timeout: float = 120.0,
@@ -100,6 +102,22 @@ class OdmRequester(OdmPort):
         )
         resp.raise_for_status()
         return _parse_task_uuid(resp.json())
+
+    async def count_active_tasks(self) -> int:
+        """由 NodeODM 狀態統計全站待處理任務，避免瀏覽器關閉後佔額不釋放。"""
+        response = await self._client.get("/task/list", timeout=10.0)
+        response.raise_for_status()
+        count = 0
+        for item in response.json():
+            try:
+                info = await self.get_task_info(item["uuid"])
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 404:
+                    continue
+                raise
+            if info.get("status", {}).get("code") in (10, 20):
+                count += 1
+        return count
 
     async def get_task_info(
         self, task_id: str, timeout: float = 10.0

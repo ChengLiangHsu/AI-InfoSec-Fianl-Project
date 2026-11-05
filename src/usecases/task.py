@@ -6,16 +6,13 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from src.entities.task import Plot, Task
+from src.entities.upload import UploadImage
+from src.config import MAX_ACTIVE_TASKS, ODM_DIR
 from src.usecases.ports import TaskPort
 from src.usecases.ports.odm import OdmPort
 from src.utility.imagery import extract_orthophoto_from_zip
 from src.utility.marker_detection import detect_white_marker_corners
 from src.utility.spectral import generate_spectral_image
-
-SRC_DIR = Path(__file__).resolve().parents[1]
-ODM_DIR = SRC_DIR / "odm"
-ODM_DIR.mkdir(parents=True, exist_ok=True)
-
 
 def _validate_task_id(task_id: str) -> None:
     """校驗任務 ID 是否有效。"""
@@ -148,16 +145,23 @@ class TaskUseCase:
         self.odm_port = odm_port
 
     async def create_task(
-        self, name: str, files: list[tuple[str, bytes, str]]
+        self, name: str, files: list[UploadImage]
     ) -> Task:
         """主流程：接收空拍相片清單、派送 NodeODM 拼圖並持久化建立任務。"""
         _validate_task_name(name)
         if not files:
             raise ValueError("上傳相片清單不得為空")
 
+        if await self.odm_port.count_active_tasks() >= MAX_ACTIVE_TASKS:
+            raise RuntimeError(f"目前已有 {MAX_ACTIVE_TASKS} 個待處理任務，請稍後再試")
+
         uuid_str = await self.odm_port.create_task(files=files, name=name)
         task = Task(id=uuid_str, name=name, images=len(files), progress=0)
-        await self.task_port.add_task(task)
+        try:
+            await self.task_port.add_task(task)
+        except Exception:
+            await self.odm_port.remove_task(uuid_str)
+            raise
         return task
 
     async def get_task(self, task_id: str) -> Task:
@@ -172,6 +176,7 @@ class TaskUseCase:
     async def sync_task_progress(self, task_id: str) -> tuple[Task, int | None]:
         """向 NodeODM 查詢最新進度與狀態碼，同步持久化至資料庫並回傳 (Task, status_code)。"""
         _validate_task_id(task_id)
+        await self.get_task(task_id)
         code = None
         try:
             info = await self.odm_port.get_task_info(task_id)
@@ -206,6 +211,7 @@ class TaskUseCase:
     async def delete_task(self, task_id: str) -> None:
         """主流程：調度 NodeODM 遠端任務移除、本機影像暫存清除與資料庫任務刪除。"""
         _validate_task_id(task_id)
+        await self.get_task(task_id)
         await self._cleanup_task_assets(task_id)
         await self.task_port.delete_task(task_id)
 
@@ -245,7 +251,10 @@ class TaskUseCase:
     ) -> Path:
         """主流程：取得或計算指定專案在特定植生指標（如 VARI）下之光譜熱圖路徑。"""
         _validate_task_id(task_id)
+        await self.get_task(task_id)
         formula_upper = formula.strip().upper()
+        from src.utility.formulas import lookup_formula
+        lookup_formula(formula_upper, "RGB")
         spectral_file_path = ODM_DIR / f"{task_id}_{formula_upper}.png"
         if spectral_file_path.exists():
             return spectral_file_path

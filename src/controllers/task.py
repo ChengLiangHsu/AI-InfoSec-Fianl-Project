@@ -17,6 +17,8 @@ from src.controllers.dependencies import (
     get_task_repo,
     get_task_usecase,
 )
+from src.controllers.limits import SUBMISSION_LOCK, consume_chat_quota
+from src.controllers.uploads import prepare_uploads
 from src.entities.task import ModelMessageResponse, Task, Version
 from src.presenter.response_wrapper import success_response
 from src.usecases.ports.task import TaskPort
@@ -31,7 +33,7 @@ router = APIRouter(tags=["task"])
 # ============================================================================
 
 class PostChatRequest(BaseModel):
-    prompt: str
+    prompt: str = Field(min_length=1, max_length=8000)
     project_id: str = "home"
 
 
@@ -77,17 +79,6 @@ def _is_task_finished(progress: int, status_code: int | None) -> bool:
     if progress >= 100:
         return True
     return status_code in (30, 40, 50)
-
-
-async def _extract_upload_payload(
-    files: list[UploadFile],
-) -> list[tuple[str, bytes, str]]:
-    """自 FastAPI UploadFile 清單提煉純 Python 上傳位元組清單。"""
-    payload = []
-    for f in files:
-        content = await f.read()
-        payload.append((f.filename or "image.jpg", content, f.content_type or "image/jpeg"))
-    return payload
 
 
 def _to_model_message_response(m: ModelMessage) -> ModelMessageResponse | None:
@@ -192,8 +183,9 @@ async def create_odm_task(
     usecase: TaskUseCase = Depends(get_task_usecase),
 ) -> JSONResponse:
     """主流程：接收空拍相片、派送 NodeODM 拼圖並持久化建立任務。"""
-    files_payload = await _extract_upload_payload(files)
-    task = await usecase.create_task(name=name, files=files_payload)
+    files_payload = await prepare_uploads(files)
+    async with SUBMISSION_LOCK:
+        task = await usecase.create_task(name=name, files=files_payload)
     return success_response(data={"id": task.id, "name": task.name})
 
 
@@ -214,6 +206,7 @@ async def stream_odm_task_progress(
     usecase: TaskUseCase = Depends(get_task_usecase),
 ) -> StreamingResponse:
     """主流程：建立 Server-Sent Events (SSE) 串流推播任務進度。"""
+    await usecase.get_task(task_id)
     stream = _generate_task_progress_events(task_id, request, usecase)
     return StreamingResponse(
         stream,
@@ -317,13 +310,15 @@ async def detect_markers(
     return success_response(data={"corners": corners})
 
 
-@router.post("/chat")
+@router.post("/chat", dependencies=[Depends(consume_chat_quota)])
 async def post_chat(
     request: PostChatRequest,
     usecase: TaskUseCase = Depends(get_task_usecase),
     task_port: TaskPort = Depends(get_task_repo),
 ) -> StreamingResponse:
     """主流程：接收使用者提問並啟動 Pydantic AI Agent 串流回應。"""
+    if request.project_id and request.project_id != "home":
+        await usecase.get_task(request.project_id)
     stream = _stream_agent_dialogue(
         request.prompt, request.project_id, usecase, task_port
     )

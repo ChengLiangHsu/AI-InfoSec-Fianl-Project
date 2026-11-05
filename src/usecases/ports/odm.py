@@ -1,4 +1,5 @@
 from typing import Any, Protocol
+from src.entities.upload import UploadImage
 
 
 class OdmPort(Protocol):
@@ -14,7 +15,7 @@ class OdmPort(Protocol):
 
     async def create_task(
         self,
-        files: list[tuple[str, bytes, str]],
+        files: list[UploadImage],
         name: str | None = None,
         options: list[dict[str, Any]] | None = None,
         timeout: float = 120.0,
@@ -26,6 +27,10 @@ class OdmPort(Protocol):
         self, task_id: str, timeout: float = 10.0
     ) -> dict[str, Any]:
         """非同步向 NodeODM /task/{uuid}/info 查詢指定任務之執行進度與狀態。"""
+        ...
+
+    async def count_active_tasks(self) -> int:
+        """查詢節點上排隊與執行中的任務總數。"""
         ...
 
     async def download_task_assets(
