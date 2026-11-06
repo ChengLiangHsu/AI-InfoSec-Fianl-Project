@@ -7,7 +7,7 @@ from typing import Any, Sequence
 
 from src.entities.task import Plot, Task
 from src.entities.upload import UploadImage
-from src.config import MAX_ACTIVE_TASKS, ODM_DIR
+from src.config import MAX_ACTIVE_TASKS, ODM_DIR, ODM_MAX_CONCURRENCY
 from src.usecases.ports import TaskPort
 from src.usecases.ports.odm import OdmPort
 from src.utility.imagery import extract_orthophoto_from_zip
@@ -155,7 +155,10 @@ class TaskUseCase:
         if await self.odm_port.count_active_tasks() >= MAX_ACTIVE_TASKS:
             raise RuntimeError(f"目前已有 {MAX_ACTIVE_TASKS} 個待處理任務，請稍後再試")
 
-        uuid_str = await self.odm_port.create_task(files=files, name=name)
+        uuid_str = await self.odm_port.create_task(
+            files=files, name=name,
+            options=[{"name": "max-concurrency", "value": ODM_MAX_CONCURRENCY}],
+        )
         task = Task(id=uuid_str, name=name, images=len(files), progress=0)
         try:
             await self.task_port.add_task(task)

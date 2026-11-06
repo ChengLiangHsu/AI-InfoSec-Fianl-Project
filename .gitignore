@@ -1,4 +1,11 @@
 # Byte-compiled / optimized / DLL files
+# 本機部署憑證與備份
+deploy-state/
+backups/
+.env.cloud
+.env.cloud.*
+!.env.cloud.example
+!.env.example
 __pycache__/
 *.py[codz]
 *$py.class

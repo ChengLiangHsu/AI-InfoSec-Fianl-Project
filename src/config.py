@@ -20,6 +20,7 @@ MAX_IMAGES = int(os.getenv("MAX_IMAGES", "100"))
 MAX_IMAGE_BYTES = int(os.getenv("MAX_IMAGE_BYTES", str(25 * 1024 * 1024)))
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_BYTES", str(1024 * 1024 * 1024)))
 MAX_ACTIVE_TASKS = int(os.getenv("MAX_ACTIVE_TASKS", "3"))
+ODM_MAX_CONCURRENCY = int(os.getenv("ODM_MAX_CONCURRENCY", "3"))
 MAX_CHAT_REQUESTS_PER_DAY = int(os.getenv("MAX_CHAT_REQUESTS_PER_DAY", "100"))
 
 

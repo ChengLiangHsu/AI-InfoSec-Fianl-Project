@@ -17,6 +17,7 @@ from pydantic_ai import (
     BinaryContent,
     RunContext,
 )
+from pydantic_ai.usage import UsageLimits
 
 from src.usecases.ports.task import TaskPort
 from src.config import ODM_DIR
@@ -30,8 +31,8 @@ class ChatDeps:
 
 
 model = os.getenv("PYDANTIC_AI_MODEL", "google:gemini-3.7-flash")
-agent = Agent(model, deps_type=ChatDeps)
-vision_agent = Agent(model)
+agent = Agent(model, deps_type=ChatDeps, defer_model_check=True)
+vision_agent = Agent(model, defer_model_check=True)
 
 
 @agent.system_prompt
@@ -199,6 +200,8 @@ async def calculate_spectral_statistics(
     if not pid or pid == "home":
         return {"status": "error", "message": "目前未選擇具體專案，無法計算田間光譜統計。"}
 
+    await ctx.deps.task_port.get_task(pid)
+
     ortho_path = ODM_DIR / f"{pid}.png"
     if not ortho_path.exists():
             return {"status": "error", "message": "尚未找到該專案的正射圖，航拍拼接可能尚未完成。"}
@@ -260,12 +263,15 @@ async def inspect_field_imagery(
     if not pid or pid == "home":
         return "目前未選擇具體專案，無法讀取田間影像。"
 
+    await ctx.deps.task_port.get_task(pid)
+
     ortho_path = ODM_DIR / f"{pid}.png"
     if not ortho_path.exists():
             return "正射圖檔案不存在，請確認空拍拼接任務是否已完成。"
 
     formula_upper = formula.strip().upper()
     if image_target == "spectral":
+        lookup_formula(formula_upper, "RGB")
         target_img_path = ODM_DIR / f"{pid}_{formula_upper}.png"
         if not target_img_path.exists():
             try:
@@ -290,7 +296,10 @@ async def inspect_field_imagery(
             "請精簡扼要以條列重點陳述具體觀察。"
         )
         binary_content = BinaryContent(data=img_bytes, media_type="image/png")
-        vision_result = await vision_agent.run([vision_prompt, binary_content])
+        vision_result = await vision_agent.run(
+            [vision_prompt, binary_content], usage=ctx.usage,
+            usage_limits=UsageLimits(request_limit=6, output_tokens_limit=6000),
+        )
         return f"【多模態視覺判讀成果 - {image_desc}】\n{vision_result.output}"
     except Exception as e:
         return f"影像多模態視覺判讀時發生錯誤: {e}"

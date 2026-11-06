@@ -19,6 +19,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import exifr from 'exifr'
+import { getUploadError, uploadLimits } from '@/lib/visitorSession'
 
 interface Project {
   id: string
@@ -170,6 +171,12 @@ async function handleStartOdmTask() {
     return
   }
 
+  const uploadError = getUploadError(selectedFiles.value.map(item => item.file))
+  if (uploadError) {
+    alert(uploadError)
+    return
+  }
+
   isUploading.value = true
   const currentName = projectName.value.trim() || generateDefaultProjectName()
   const filesToUpload = selectedFiles.value.map((item) => item.file)
@@ -245,6 +252,10 @@ async function handleStartOdmTask() {
         </h3>
         <p class="mt-2 text-sm text-muted-foreground sm:text-base">
           支援批次拖入多張高解析度航拍影像（.jpg、.jpeg、.png）
+        </p>
+        <p class="mt-2 text-sm text-muted-foreground">
+          每次最多 {{ uploadLimits.images }} 張；任務依序拼接。
+          請使用同一個瀏覽器查看歷史任務，清除網站資料後將無法找回。
         </p>
 
         <div class="mt-6">

@@ -14,6 +14,8 @@ class UsageCounter(SQLModel, table=True):
 
 def reserve_chat_request(session: Session) -> bool:
     """使用原子更新保留每日全站 AI 額度，重啟後仍維持累計。"""
+    if MAX_CHAT_REQUESTS_PER_DAY <= 0:
+        return False
     day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     row = session.execute(text(
         "INSERT INTO usage_counters (key, count) VALUES (:key, 1) "

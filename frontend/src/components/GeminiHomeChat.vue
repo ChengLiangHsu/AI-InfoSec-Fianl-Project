@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { getUploadError } from '@/lib/visitorSession'
 import { computed, ref, onMounted } from 'vue'
 import { Sparkles, ImageIcon, ArrowUp, X, CheckCircle2, Clock, Upload, HelpCircle, FileText, Trash2 } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
@@ -118,6 +119,11 @@ async function handleSend() {
 
   // Case 1: Files are attached -> create ODM task first, then notify agent in chat
   if (hasFiles) {
+    const uploadError = getUploadError(selectedFiles.value.map(item => item.file))
+    if (uploadError) {
+      alert(uploadError)
+      return
+    }
     isUploadingOdm.value = true
     const currentName = projectName.value.trim() || `田間航拍_${Date.now()}`
     const filesToUpload = selectedFiles.value.map(item => item.file)

@@ -11,6 +11,8 @@ from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFil
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from pydantic_ai import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
+from pydantic_ai.usage import UsageLimits
+from sqlmodel import Session
 
 from src.agents import ChatDeps, agent
 from src.controllers.dependencies import (
@@ -20,6 +22,7 @@ from src.controllers.dependencies import (
 from src.controllers.limits import SUBMISSION_LOCK, consume_chat_quota
 from src.controllers.uploads import prepare_uploads
 from src.entities.task import ModelMessageResponse, Task, Version
+from src.database import get_session
 from src.presenter.response_wrapper import success_response
 from src.usecases.ports.task import TaskPort
 from src.usecases.task import TaskUseCase
@@ -127,7 +130,8 @@ async def _stream_agent_dialogue(
     messages = await usecase.get_messages(project_id) if is_task_scoped else []
     deps = ChatDeps(project_id=project_id, task_port=task_port)
 
-    async with agent.run_stream(prompt, message_history=messages, deps=deps) as result:
+    limits = UsageLimits(request_limit=6, tool_calls_limit=6, output_tokens_limit=6000)
+    async with agent.run_stream(prompt, message_history=messages, deps=deps, usage_limits=limits) as result:
         async for text in result.stream_output(debounce_by=0.01):
             m = ModelResponse(parts=[TextPart(text)], timestamp=result.timestamp)
             converted = _to_model_message_response(m)
@@ -310,15 +314,17 @@ async def detect_markers(
     return success_response(data={"corners": corners})
 
 
-@router.post("/chat", dependencies=[Depends(consume_chat_quota)])
+@router.post("/chat")
 async def post_chat(
     request: PostChatRequest,
     usecase: TaskUseCase = Depends(get_task_usecase),
     task_port: TaskPort = Depends(get_task_repo),
+    session: Session = Depends(get_session),
 ) -> StreamingResponse:
     """主流程：接收使用者提問並啟動 Pydantic AI Agent 串流回應。"""
     if request.project_id and request.project_id != "home":
         await usecase.get_task(request.project_id)
+    consume_chat_quota(session)
     stream = _stream_agent_dialogue(
         request.prompt, request.project_id, usecase, task_port
     )
@@ -334,10 +340,7 @@ async def get_chat(
     """主流程：查詢指定專案之對話歷史列表。"""
     if not project_id or project_id == "home":
         return Response(b"", media_type="text/plain")
-    try:
-        msgs = await usecase.get_messages(project_id=project_id)
-    except KeyError:
-        return Response(b"", media_type="text/plain")
+    msgs = await usecase.get_messages(project_id)
 
     serialized = []
     for m in msgs:
@@ -355,8 +358,5 @@ async def delete_chat(
 ) -> JSONResponse:
     """主流程：清空指定專案之對話歷史紀錄。"""
     if project_id and project_id != "home":
-        try:
-            await usecase.clear_messages(project_id)
-        except KeyError:
-            pass
+        await usecase.clear_messages(project_id)
     return success_response()
