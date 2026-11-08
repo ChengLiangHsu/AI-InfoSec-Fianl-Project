@@ -4,6 +4,7 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
 load_settings() {
     cd "$ROOT_DIR"
+    export CLOUDSDK_CORE_DISABLE_PROMPTS=1
     [[ -f .env.cloud && -f .env ]] || { printf '%s\n' '請先設定 .env.cloud 與 .env。' >&2; exit 1; }
     set -a
     # 此檔由部署者建立，僅包含本機部署設定，不接受網頁輸入。
@@ -16,6 +17,13 @@ load_settings() {
     : "${SITE_DOMAIN:?請設定 SITE_DOMAIN}"
     : "${DUCKDNS_TOKEN:?請設定 DUCKDNS_TOKEN}"
     [[ "$SITE_DOMAIN" =~ ^[a-z0-9-]+\.duckdns\.org$ ]] || { printf '%s\n' 'DuckDNS 子網域格式錯誤。' >&2; exit 1; }
+    if ! command -v gcloud >/dev/null 2>&1; then
+        if [[ -n "${LOCALAPPDATA:-}" && -d "$LOCALAPPDATA/Google/Cloud SDK/google-cloud-sdk/bin" ]]; then
+            export PATH="$PATH:$LOCALAPPDATA/Google/Cloud SDK/google-cloud-sdk/bin"
+        elif [[ -d "$HOME/AppData/Local/Google/Cloud SDK/google-cloud-sdk/bin" ]]; then
+            export PATH="$PATH:$HOME/AppData/Local/Google/Cloud SDK/google-cloud-sdk/bin"
+        fi
+    fi
     command -v gcloud >/dev/null || { printf '%s\n' '請先安裝 Google Cloud CLI 並執行 gcloud auth login。' >&2; exit 1; }
     gcloud projects describe "$GCP_PROJECT" --format='value(projectId)' >/dev/null
     region=${GCP_ZONE%-*}
@@ -76,7 +84,7 @@ wait_for_ssh() {
     local attempt
     for attempt in {1..12}; do
         if gcloud compute ssh "$GCP_INSTANCE" --zone="$GCP_ZONE" --project="$GCP_PROJECT" \
-            --tunnel-through-iap --ssh-flag='-o ConnectTimeout=10' \
+            --tunnel-through-iap \
             --command='mkdir -p ~/drone-field-incoming && chmod 700 ~/drone-field-incoming'; then
             return
         fi

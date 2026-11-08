@@ -116,6 +116,14 @@
 - **懸浮 Persona AI 代理人組件（Floating Persona AI Agent Component）**：以 AI Elements Vue 的 Persona 組件（預設 `obsidian` 變體，64px 球體）取代原先右下角固定對話按鈕，懸浮於選定專案之工作視窗，支援滑鼠按住拖曳（位移 > 5px 視為拖曳）並限制於視窗可視範圍內自由停放（預設右下角），單純點擊 Persona 本身直接開啟或收合完整 AskAgent 對話視窗。
 - **即時串流迷你文字氣泡與身旁避障彈窗（Realtime Streaming Speech Bubble & Adaptive Anchored Dialog）**：Agent 產生回覆時文字同步即時串流至 Persona 身旁的迷你文字氣泡（寬度上限 280px，附帶關閉 ✕ 按鈕與點擊展開提示），點擊文字氣泡可展開完整 AskAgent 對話視窗；完整視窗展開時自動緊鄰 Persona 並依據螢幕邊界進行智慧避障展開（避免超出視窗），展開時自動隱藏迷你氣泡。
 - **Persona 動畫狀態即時連動（Persona State-Agent Lifecycle Sync）**：Persona 動畫狀態緊密映射後端 Agent 生命週期，於等待推論處理時呈現 `thinking`、串流輸出文字時呈現 `speaking`，完成後或平時維持 `idle` 休憩狀態。
+- **GCP Compute Engine 單機容器化架構（GCP Compute Engine with Docker Compose）**：採用 Google Cloud Platform (GCP) Compute Engine 虛擬主機作為雲端部署平台，以 Docker Compose 統一編排管理 FastAPI 後端、NodeODM 空拍影像拼接運算服務與 Caddy 反向代理。
+- **Compute Engine 機型與儲存規格（GCP E2-Highmem-4 & Balanced PD）**：採用台灣彰化機房 `asia-east1-b` 之 `e2-highmem-4`（4 vCPU / 32 GiB 記憶體）實例，搭配 150GB pd-balanced 持久磁碟，為 NodeODM 提供足額 24GB 記憶體避免空拍拼接發生 OOM 崩潰。
+- **DuckDNS 與 Caddy 自動 HTTPS 憑證管理（DuckDNS Dynamic DNS & Caddy Automated TLS）**：採用 DuckDNS 免費動態子網域搭配 Caddy 2 反向代理，透過腳本自動更新 GCP 靜態外部 IP，並由 Caddy 全自動向 Let's Encrypt 完成 ACME HTTP-01 憑證簽發與定期續期，強制啟用 Secure Cookie 與 HTTPS 傳輸。
+- **極小化攻擊面與 IAP 零暴露存取（Minimal Attack Surface & GCP IAP TCP Forwarding）**：防火牆僅對公開網際網路開放 80/443 連接埠；管理 SSH 連線（Port 22）嚴格限制僅允許 Google Cloud IAP 來源網段（`35.235.240.0/20`），全面阻絕全網 Port 22 掃描與暴力破解；FastAPI 與 NodeODM 嚴格限定僅綁定於本機或 Docker 虛擬網路；VM 實例配置 `--no-service-account --no-scopes` 防範權限提升。
+- **本機宣告式一鍵自動化部署（Local Declarative One-Click Deployment Script）**：採用本機 `scripts/deploy_gcp.sh` 腳本搭配 `.env.cloud` 宣告式參數，自動化完成 GCP 服務啟用、VPC 防火牆配置、靜態 IP 保留、VM 實例生命週期管理、DuckDNS 紀錄同步、程式打包傳輸（IAP SCP）、遠端 Docker 部署與 `/healthz` 健康檢查探針驗證。
+- **分層清理閒置檔案（Layered Dead Code & File Purge）**：明確移除確認無效之檔案（根目錄 0 位元組 `.aws`、已廢棄前端死代碼 `GeminiHomeChat.vue`、預設無用靜態圖示 `vite.svg`、`vue.svg`、`hero.png`、空目錄殘留 `tests/__pycache__`、以及孤立 `.pyc` 快取），維護專案極簡整潔。
+- **課程簡報納入版本控制（Course Presentation in Git）**：將 `docs/田間無人機影像智慧決策 期中報告.pptx` 納入 Git 追蹤管理，作為期中作業成果歸檔。
+- **本機測試快取定期重置（Purge Local ODM Output Cache）**：清空 `src/odm/` 底下過期的本機測試正射與光譜圖檔（約 28 MB），釋放磁碟空間，同時保留本機 `database.sqlite` 維持開發資料與訪客 Session。
 
 ## 拒絕
 - **拒絕 DESIGN.md 擴充非規範獨立章節**：不於 DESIGN.md 中新增額外獨立的 Problem、Requirements 或 How to Run 章節，How to Run 集中於 README.md，Problem/Requirements 歸屬提案章節與需求清單。
@@ -205,3 +213,12 @@
 - **拒絕常駐遮擋式固定右下角對話框（No Permanent Obstructive Fixed Dialog）**：淘汰固定於右下角佔用 420x600 空間之僵硬對話框與簡易按鈕，改以輕量自由拖曳懸浮之 Persona 取代，避免遮蔽正射拼接底圖與小區邊界。
 - **拒絕拖曳點擊行為混淆（No Drag-Click Ambiguity）**：拖曳移動位移大於 5px 時嚴禁誤觸發點擊展開對話視窗，避免使用者拖放 Persona 調整位置時跳出干擾彈窗。
 - **拒絕超出版面無限拖曳迷航（No Out-of-Bounds Persona Drifting）**：拖曳懸浮 Persona 時強制實施 Viewport 視窗邊界限制（Clamping），嚴禁拖出螢幕可視範圍外造成組件遺失。
+- **拒絕無伺服器/分散式跨節點過度工程（No Serverless or Multi-Node Overengineering）**：不拆分為 Cloud Run 或跨節點 Kubernetes/Worker 架構，避免增加分散式檔案同步、大容量影像傳輸延遲與維運複雜度。
+- **拒絕過度降規導致 OOM 崩潰（No Premature Downscaling Causing OOM）**：不採用小於 32GB RAM 的主機規格，杜絕 NodeODM 正射影像特徵匹配與稠密點雲運算時因記憶體耗盡而中斷任務。
+- **拒絕未加密 HTTP 或自簽無效憑證（No Insecure HTTP or Self-Signed Certs）**：公開服務強制一律使用合格權威機構簽發之 HTTPS 加密通道，禁止在雲端開放未加密 HTTP 或採用讓瀏覽器警告之自簽憑證。
+- **拒絕公開直接暴露內部運算服務與 SSH（No Direct Public Exposure of Internal Ports or SSH）**：嚴禁將未具備存取授權機制的 NodeODM 3000 埠、FastAPI 8000 埠或 SSH 22 埠對 `0.0.0.0/0` 全網公開。
+- **拒絕繁瑣手動維運與憑證外洩至第三方（No Manual Console Operations & No Third-Party Credential Sprawl）**：不依賴手動於 GCP Console 點擊建立基礎設施或手動登入 VM 維護，亦不將雲端專案完整高權限憑證儲存於第三方 CI/CD 平台，金鑰與設定檔嚴格保留於本機受控環境。
+- **拒絕盲目全量刪除 UI 元件庫（No Blind Purge of UI Component Libraries）**：暫不清理 `frontend/src/components/ai-elements` 與 `ui/*` 下未直接引用的原子元件，保留設計系統擴充彈性，杜絕過度刪減導致後續介面擴展困難。
+- **拒絕無效空檔案納入版本控制（No Zero-Byte Dummy Files in Git）**：嚴禁在版本庫中保留 0 位元組之無效設定檔或意外產物（如 `.aws`）。
+- **拒絕死代碼殘留（No Dead Code Accumulation）**：嚴格杜絕已被新架構（`DroneHomeUpload` / `FloatingPersona`）取代之舊版組件（`GeminiHomeChat.vue`）持續留存於原始碼樹。
+- **拒絕測試快取成為幽靈目錄（No Phantom Test Cache Directories）**：在所有測試程式碼均已移除的情況下，禁止殘留僅含 `__pycache__` 的空 `tests/` 目錄。

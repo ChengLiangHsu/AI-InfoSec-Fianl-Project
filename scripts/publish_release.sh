@@ -12,7 +12,7 @@ prepare_release() {
 start_release() {
     cd "$release_dir"
     docker compose -p drone-field --profile public build app
-    docker compose -p drone-field --profile public up -d --wait --wait-timeout 180
+    docker compose -p drone-field --profile public up -d --wait --wait-timeout 300
     ln -sfn "$release_dir" /opt/drone-field/current
 }
 

@@ -275,4 +275,48 @@
 - [Nielsen Norman Group - Steppers and Multi-step Form Design Patterns](https://www.nngroup.com/articles/step-by-step-wizards/)
 - **採用架構**：建立 7 步驟農業科技色彩鏈（1 航拍上傳 [科技藍] ➔ 2 正射拼接 [運算紫] ➔ 3 試驗情境 [陽光橘] ➔ 4 植生指標 [光譜青] ➔ 5 小區標註 [田間綠] ➔ 6 處理對照 [試驗紅] ➔ 7 藥效評估 [豐收金]），於 AI Agent 對話訊息中透過 `StepBadgeText.vue` 動態識別步驟並渲染為高彩度膠囊徽章，一眼區隔一般文字與行動焦點，首頁則移除繁瑣橫幅維持簡潔俐落。
 
+### Google Cloud Compute Engine 與單機容器化部署 (GCP Compute Engine & Docker Compose)
+- [Google Cloud Compute Engine 官方文件](https://cloud.google.com/compute/docs)
+- [Google Cloud 一般用途機器類型規格 (E2 High-Memory)](https://cloud.google.com/compute/docs/general-purpose-machines#e2_machine_types)
+- [Docker Compose 官方規範與部署指南](https://docs.docker.com/compose/)
+- [Google Cloud 持久磁碟 (Persistent Disk) 儲存類型與效能指南](https://cloud.google.com/compute/docs/disks#pdspecs)
+- [OpenDroneMap 硬體需求與記憶體規劃手冊](https://docs.opendronemap.org/hardware/)
+- **採用架構**：以 GCP Compute Engine 單機規格運行完整多容器服務（FastAPI、NodeODM、Caddy），兼顧 NodeODM 巨量記憶體需求與維運單純性。
+
+### Caddy 反向代理與自動 HTTPS (Caddy 2 & DuckDNS Dynamic DNS)
+- [Caddy 2 官方文件：Automatic HTTPS 全自動憑證](https://caddyserver.com/docs/automatic-https)
+- [Caddy reverse_proxy 指令規範](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
+- [DuckDNS 官方規範與 HTTP API 規格](https://www.duckdns.org/spec.jsp)
+- [Let's Encrypt ACME HTTP-01 挑戰驗證原則](https://letsencrypt.org/docs/challenge-types/#http-01-challenge)
+- **採用架構**：以 Caddy 容器監聽 80 與 443 連接埠，自動向 Let's Encrypt 申請 TLS 憑證，並將流量反向代理至內網之 FastAPI 服務，結合 DuckDNS 腳本動態綁定雲端外部靜態 IP。
+
+### Google Cloud IAP 安全通道與 VPC 防火牆 (GCP IAP & VPC Firewall Rules)
+- [Google Cloud IAP TCP 轉送（TCP Forwarding）官方指南](https://cloud.google.com/iap/docs/using-tcp-forwarding)
+- [Google Cloud VPC 防火牆規則設定規範](https://cloud.google.com/firewall/docs/firewalls-overview)
+- [NIST SP 800-207 零信任架構原則 (Zero Trust Architecture)](https://csrc.nist.gov/publications/detail/sp/800-207/final)
+- **採用架構**：僅開放 80/443 對全網開放供 Caddy 反向代理，SSH (22) 連線一律透過 IAP 通道（限制 `35.235.240.0/20`），內部運算服務不向外暴露，落實最小授權與零暴露原則。
+
+### Google Cloud CLI 與宣告式自動化部署腳本 (gcloud CLI & Bash Automation)
+- [Google Cloud CLI 官方安裝與參考指南](https://cloud.google.com/sdk/docs/install)
+- [gcloud compute instances 指令參考手冊](https://cloud.google.com/sdk/gcloud/reference/compute/instances)
+- [Google Cloud 免費試用與信用額度規範](https://cloud.google.com/free/docs/free-cloud-features)
+- **採用架構**：透過 `scripts/deploy_gcp.sh` 以宣告式環境變數檔 `.env.cloud` 一鍵驅動 `gcloud` 自動化建立專屬網路、靜態 IP、Compute Engine 主機，並透過 IAP 安全傳輸程式碼與 Docker 環境初始化。
+
+### Git 版本控制與死檔案清理管理 (Git Rm, Clean & Asset Hygiene)
+- [Git 官方文件：git-rm 指令參考手冊](https://git-scm.com/docs/git-rm)
+- [Git 官方文件：git-clean 清理工作目錄指南](https://git-scm.com/docs/git-clean)
+- [GitHub 官方指南：忽略與管理未追蹤檔案 (Ignoring Files)](https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files)
+- **採用方法**：以 `git rm` 安全抹除誤入版本控制的 0 位元組空檔案（`.aws`）、已被新組件取代之死代碼（`GeminiHomeChat.vue`）與未引用之預設靜態資源（`hero.png`、`vite.svg`、`vue.svg`），並將期中報告簡報正式納入版本控制歸檔。
+
+### Python 位元組編譯快取與暫存管理 (Python Bytecode Cache & PEP 3147)
+- [Python 官方教學：編譯的 Python 檔案 (__pycache__)](https://docs.python.org/3/tutorial/modules.html#compiled-python-files)
+- [PEP 3147 – PYC Repository Directories 規格標準](https://peps.python.org/pep-3147/)
+- **採用方法**：清除測試完全刪除後殘留之空 `tests/` 幽靈快取目錄，以及清查並移除原始碼已被刪除但仍遺留在 `__pycache__/` 中的孤立 `.pyc` 位元組碼檔案。
+
+### Vite 靜態資源處理與死代碼消除 (Vite Asset Handling & Dead Code Elimination)
+- [Vite 官方文件：靜態資源處理指南 (Static Asset Handling)](https://vite.dev/guide/assets.html)
+- [Rollup 官方文件：Tree Shaking 與未引用模組清理原則](https://rollupjs.org/introduction/#tree-shaking)
+- **採用方法**：移除前端專案建立時殘留且未在任何組件中引用的展示用圖檔與廢棄組件，維持建置產出物純淨度並消除建置歧義。
+
+
 

@@ -2,8 +2,15 @@
 import ipaddress
 import os
 import re
+import sys
 from urllib.parse import urlencode
 from urllib.request import urlopen
+
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 
 def build_update_url() -> str:
@@ -30,7 +37,7 @@ def main() -> None:
         update_dns()
     except Exception:
         raise SystemExit("DuckDNS 更新失敗，請檢查設定與網路；憑證未輸出。") from None
-    print("DuckDNS 更新完成")
+    print("DuckDNS DNS record updated successfully")
 
 
 if __name__ == "__main__":
