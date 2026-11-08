@@ -1,5 +1,7 @@
 # 田間無人機影像智慧決策
 
+> 🌐 **線上系統體驗入口**：[https://5114050012.duckdns.org](https://5114050012.duckdns.org)
+
 ![DEMO 主畫面](docs/assets/demo.png)
 
 ## 人工智慧與資訊安全期末專題提案
@@ -29,25 +31,23 @@
 
 ---
 
-## 本機整合啟動
+## 線上系統體驗
 
-需要 [Docker Engine 與 Compose](https://docs.docker.com/compose/install/)。首次設定時複製 `.env.example` 為 `.env`，填入自己的 `GEMINI_API_KEY` 與可用模型；既有 `.env` 請保留並補齊設定。
+本專案已完成自動化雲端部署並公開上線，使用者無需在本地端配置 Docker 或安裝任何環境，可直接透過瀏覽器造訪線上系統體驗完整功能：
 
-```bash
-docker compose up -d --build --wait
-```
+👉 **線上展示入口**：[https://5114050012.duckdns.org](https://5114050012.duckdns.org)
 
-開啟 <http://localhost:8000>。映像檔會使用 Node 24 建置 Vue，再將 `frontend/dist` 放入 Python 3.13／FastAPI 容器；NodeODM 只供內部連線。資料放在具名 Volume，正式程序採單一 worker，確保任務派送鎖有效。[多階段建置](https://docs.docker.com/build/building/multi-stage/)、[Compose 網路](https://docs.docker.com/compose/how-tos/networking/)
+### 線上服務端點與架構
 
 | 路徑 | 用途 |
 |---|---|
-| `/`、`/assets/...` | Vue 網頁及靜態檔案 |
-| `/api/session` | 建立／延長匿名訪客身分，回傳上傳限制 |
-| `/api/task/...` | 任務、影像、小區與對話 API |
-| `/healthz` | 應用存活狀態，不代表 NodeODM 或 AI 可用 |
-| `/docs`、`/openapi.json` | 最新 API 契約 |
+| `/`、`/assets/...` | Vue 3 互動前端介面（空拍圖上傳、小區標註、光譜指標熱圖與 AskAgent） |
+| `/api/session` | 建立／延長匿名訪客身分（基於安全 Cookie 隔離），回傳上傳限制與配額 |
+| `/api/task/...` | 任務、影像、小區標註與 AI 互動 API |
+| `/healthz` | 系統存活狀態檢查探針 |
+| `/docs`、`/openapi.json` | [最新 OpenAPI / Swagger API 契約](https://5114050012.duckdns.org/docs) |
 
-後端路由已由 `/task/...` 統一為 `/api/task/...`；直接呼叫舊路徑的用戶端需要更新。Vite 開發代理也保留 `/api`。靜態檔案掛載在 API 之後，不將不存在的 API 回傳成首頁。[FastAPI 靜態檔案](https://fastapi.tiangolo.com/tutorial/static-files/)
+公開入口全面由 [Caddy 反向代理](https://caddyserver.com/docs/automatic-https) 提供全自動 HTTPS 憑證加密與安全防護，靜態檔案與前端 SPA 由 [FastAPI](https://fastapi.tiangolo.com/tutorial/static-files/) 託管，後端 API 統一採用 `/api/task/...` 路由規範。
 
 ## 個別資料與容量
 
@@ -106,24 +106,3 @@ docker compose exec app python -m src.manage assign-owner --task-id 任務UUID -
 ```
 
 此管理命令只接受尚未指派的舊任務，不提供公開認領 API。
-
-## 分開開發
-
-本機使用 Python 3.13、[uv](https://docs.astral.sh/uv/) 與 Node 24；以下命令分別在不同終端機執行。
-
-```bash
-uv sync
-uv run fastapi dev src/main.py
-```
-
-```bash
-cd frontend
-npm ci
-npm run dev
-```
-
-```bash
-docker run --rm -p 127.0.0.1:3002:3000 opendronemap/nodeodm:3.6.2 --parallel_queue_processing 1
-```
-
-本機開發 `.env` 保持 `COOKIE_SECURE=false`、`PUBLIC_ORIGIN` 留空；雲端部署腳本會設定 HTTPS 網域及安全 Cookie。本機預設資料路徑仍為根目錄 `database.sqlite` 與 `src/odm`，可用 `DATABASE_PATH`、`ODM_DIR` 覆寫。
