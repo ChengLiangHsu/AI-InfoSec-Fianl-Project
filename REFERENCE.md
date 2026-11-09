@@ -318,5 +318,16 @@
 - [Rollup 官方文件：Tree Shaking 與未引用模組清理原則](https://rollupjs.org/introduction/#tree-shaking)
 - **採用方法**：移除前端專案建立時殘留且未在任何組件中引用的展示用圖檔與廢棄組件，維持建置產出物純淨度並消除建置歧義。
 
+### Docker 容器映像檔生命週期與快取清理 (Docker Image Prune & Space Management)
+- [Docker 官方文件：docker image prune 規格手冊](https://docs.docker.com/reference/cli/docker/image/prune/)
+- [Docker 官方文件：Docker 磁碟使用量與儲存清理指南](https://docs.docker.com/build/cache/garbage-collection/)
+- **採用方法**：在 `scripts/publish_release.sh` 中完成容器熱切換與軟連結指向後，自動執行 `docker image prune -f` 清除過期建置層與未被引用的懸掛映像檔，維持 150GB 磁碟空間清潔與系統穩定。
+
+### Docker 具名資料卷與資料庫持久化 (Docker Named Volume Data Persistence)
+- [Docker 官方文件：Volumes 持久化存儲指南](https://docs.docker.com/engine/storage/volumes/)
+- [Docker Compose 官方文件：Volume 宣告與生命週期管理](https://docs.docker.com/compose/how-tos/use-volumes/)
+- **採用架構**：以具名資料卷 `app_data` 掛載至 `/data`，確保 SQLite 資料庫（`database.sqlite`）與正射拼接結果（`/data/odm`）在容器更新與版本替換時平滑無縫繼承，避免非預期停機或手動備份中斷發布流程。
+
+
 
 

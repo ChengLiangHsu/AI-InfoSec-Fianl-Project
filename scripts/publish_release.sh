@@ -14,6 +14,7 @@ start_release() {
     docker compose -p drone-field --profile public build app
     docker compose -p drone-field --profile public up -d --wait --wait-timeout 300
     ln -sfn "$release_dir" /opt/drone-field/current
+    docker image prune -f
 }
 
 main() {

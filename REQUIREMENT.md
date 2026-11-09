@@ -124,6 +124,8 @@
 - **分層清理閒置檔案（Layered Dead Code & File Purge）**：明確移除確認無效之檔案（根目錄 0 位元組 `.aws`、已廢棄前端死代碼 `GeminiHomeChat.vue`、預設無用靜態圖示 `vite.svg`、`vue.svg`、`hero.png`、空目錄殘留 `tests/__pycache__`、以及孤立 `.pyc` 快取），維護專案極簡整潔。
 - **課程簡報納入版本控制（Course Presentation in Git）**：將 `docs/田間無人機影像智慧決策 期中報告.pptx` 納入 Git 追蹤管理，作為期中作業成果歸檔。
 - **本機測試快取定期重置（Purge Local ODM Output Cache）**：清空 `src/odm/` 底下過期的本機測試正射與光譜圖檔（約 28 MB），釋放磁碟空間，同時保留本機 `database.sqlite` 維持開發資料與訪客 Session。
+- **自動清理遠端舊映像檔（Remote Docker Image Prune on Release）**：在每次線上發布新版容器並成功通過健康檢查探針後，於遠端主機自動執行 `docker image prune -f` 清理無標籤或未被引用的懸掛映像檔，維持 150GB 磁碟空間清潔與系統穩定。
+- **標準具名資料卷無縫熱切換持久化（Docker Named Volume Persistence Across Releases）**：線上發布時維持使用 Docker 具名資料卷（`app_data`），在容器重新建置與啟動時無縫保留 SQLite 資料庫（`/data/database.sqlite`）與航拍快取，避免不必要的停機或手動備份流程中斷部署流水線。
 
 ## 拒絕
 - **拒絕 DESIGN.md 擴充非規範獨立章節**：不於 DESIGN.md 中新增額外獨立的 Problem、Requirements 或 How to Run 章節，How to Run 集中於 README.md，Problem/Requirements 歸屬提案章節與需求清單。
@@ -222,3 +224,5 @@
 - **拒絕無效空檔案納入版本控制（No Zero-Byte Dummy Files in Git）**：嚴禁在版本庫中保留 0 位元組之無效設定檔或意外產物（如 `.aws`）。
 - **拒絕死代碼殘留（No Dead Code Accumulation）**：嚴格杜絕已被新架構（`DroneHomeUpload` / `FloatingPersona`）取代之舊版組件（`GeminiHomeChat.vue`）持續留存於原始碼樹。
 - **拒絕測試快取成為幽靈目錄（No Phantom Test Cache Directories）**：在所有測試程式碼均已移除的情況下，禁止殘留僅含 `__pycache__` 的空 `tests/` 目錄。
+- **拒絕累積懸掛容器映像檔（No Lingering Dangling Docker Images）**：嚴禁在線上發布完成後放任未清理的舊版或未標籤映像檔長期累積佔用磁碟空間，杜絕引發磁碟溢滿風險。
+- **拒絕非標準手動登入覆蓋部署（No Ad-hoc Manual SSH In-place Deployment）**：嚴格杜絕略過標準本機一鍵發布腳本而直接手動連線至遠端 VM 修改檔案或手動更新，確保部署環境完全可追溯、版本化與一致性。
