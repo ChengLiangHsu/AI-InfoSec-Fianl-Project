@@ -30,7 +30,7 @@
 [agridoctor]: https://arxiv.org/abs/2509.17044
 [weed-vlm]: https://doi.org/10.3389/fpls.2025.1735096
 [qu2023]: https://doi.org/10.3389/fpls.2023.1135918
-[eppo]: https://www.eppo.int/RESOURCES/eppo_standards/standards_pp1
+[eppo]: https://pp1.eppo.int/standards/pp1-152-4
 [plot-seg]: https://doi.org/10.3389/fpls.2020.591886
 
 ### 3.4 Existing Research $\longrightarrow$ Limitations $\longrightarrow$ Research Gap $\longrightarrow$ Our Project

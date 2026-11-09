@@ -30,5 +30,5 @@
   * **客觀平抑田間自然變異**：透過 3 重複小區 Treatment Mean 去平均計算，預期能有效濾除田間微地形與土壤自然異質性雜訊，清晰呈現不同試驗處理組相對於對照組的生長活力或抑制差異。
   * **完全根除數據黑箱與主觀偏差**：評估結果全程以確定性演算法計算，且每一項數據均可即時回溯對應之原始空拍影像與小區座標，預期能提供具備 100% 可重現性與可稽核性之科學試驗佐證。
 
-[eppo]: https://www.eppo.int/RESOURCES/eppo_standards/standards_pp1
+[eppo]: https://pp1.eppo.int/standards/pp1-152-4
 [qu2023]: https://doi.org/10.3389/fpls.2023.1135918

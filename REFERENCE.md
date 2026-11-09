@@ -36,7 +36,7 @@
 ### 依試驗配置比較與重複去平均（Replications & Treatment Mean）
 - **採用方法**：以小區為單位保存結果，彈性支援重複小區配置（典型為 3 重複），依相同「農藥＋劑量」計算去平均數值（Treatment Mean）作為處理組代表值，並與明確指定對照組進行差異比較；比較表完整保留個別小區明細。
 - [明尼蘇達大學田間研究指南：對照、重複、配置與小區內取樣的區別](https://extension.umn.edu/courses-and-events/for-professionals/on-farm-research/how-to-do-research-on-your-farm)
-- [EPPO Standard PP 1/152(4)：植保產品藥效評估試驗設計與分析標準指南（重複試驗規範）](https://www.eppo.int/RESOURCES/eppo_standards/standards_pp1)
+- [EPPO Standard PP 1/152(4)：植保產品藥效評估試驗設計與分析標準指南（重複試驗規範）](https://pp1.eppo.int/standards/pp1-152-4)
 
 
 ### 結果可追溯
@@ -105,7 +105,7 @@
 - [W3C WAI-ARIA Dialog (Modal) 互動模式規範](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/)
 
 ### 農業植保與藥效評估背景（正式藥效與法定判定為後續待確認範圍）
-- [EPPO PP 1 植保產品藥效評估標準指南](https://www.eppo.int/RESOURCES/eppo_standards/standards_pp1)
+- [EPPO PP 1 植保產品藥效評估標準指南](https://pp1.eppo.int/standards/pp1-152-4)
 - [Abbott's Formula 藥效計算公式文獻](https://academic.oup.com/jee/article-abstract/18/2/265/891391)
 - [農業部農業藥物試驗所 (TACTRI) 官網與技術指引](https://www.tactri.gov.tw/)
 
@@ -134,7 +134,7 @@
 - [Xia et al.（2022）：作物感染初期光學響應與多光譜/RGB 差異](https://doi.org/10.3389/fpls.2022.938604)
 - [Peña et al.（2013）：小區雜草覆蓋與土壤背景對光譜訊號之干擾](https://doi.org/10.1371/journal.pone.0077151)
 - [OpenDroneMap 航拍採集指南：超低空旋翼下洗流、拼接畸變與太陽角度 BRDF 光影梯度](https://docs.opendronemap.org/flying/)
-- [EPPO Standard PP 1/152(4)：小區邊際效應（Border Effect）與獨立重複避免偽重複規範](https://www.eppo.int/RESOURCES/eppo_standards/standards_pp1)
+- [EPPO Standard PP 1/152(4)：小區邊際效應（Border Effect）與獨立重複避免偽重複規範](https://pp1.eppo.int/standards/pp1-152-4)
 - [明尼蘇達大學田間研究指南：小區緩衝區設定與空間異質性平抑](https://extension.umn.edu/courses-and-events/for-professionals/on-farm-research/how-to-do-research-on-your-farm)
 - [NIST 異常觀測處理原則：保留異常數據以排查微環境與施藥偏差](https://www.itl.nist.gov/div898/handbook/eda/section3/eda35h.htm)
 - [農業部農業藥物試驗所 (TACTRI)：田間藥效試驗規範與法定藥效判定標準](https://www.tactri.gov.tw/)
@@ -148,7 +148,7 @@
 - [Zhang et al.（2025）：AgriDoctor: A Multimodal Intelligent Assistant for Agriculture (arXiv:2509.17044)](https://arxiv.org/abs/2509.17044)
 - [Vision-language models for zero-shot weed detection and visual reasoning in UAV-based precision agriculture (Front. Plant Sci. 2025)](https://doi.org/10.3389/fpls.2025.1735096)
 - [Qu et al.（2023）：A latent scale model to minimize subjectivity in the analysis of visual rating data (Front. Plant Sci.)](https://doi.org/10.3389/fpls.2023.1135918)
-- [EPPO Standard PP 1/152(4)：Design and analysis of efficacy evaluation trials](https://www.eppo.int/RESOURCES/eppo_standards/standards_pp1)
+- [EPPO Standard PP 1/152(4)：Design and analysis of efficacy evaluation trials](https://pp1.eppo.int/standards/pp1-152-4)
 - [Semi-Automated Field Plot Segmentation From UAS Imagery for Experimental Agriculture (Front. Plant Sci. 2020)](https://doi.org/10.3389/fpls.2020.591886)
 
 ### Clean Architecture (整潔架構)

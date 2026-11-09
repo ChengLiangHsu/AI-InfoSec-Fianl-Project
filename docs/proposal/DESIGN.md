@@ -122,7 +122,7 @@ graph TD
 系統將農業植保與田間試驗學科規範轉化為確定性的軟體邏輯：
 
 1. **空間異質性與重複試驗 (Replications)**：
-   農田存在土壤肥力與微地形之天然異質性。依據 [EPPO PP 1/152](https://www.eppo.int/RESOURCES/eppo_standards/standards_pp1) 標準，系統強制支援 3 至 4 次重複配置，以同組「處理＋劑量」之小區去平均值（Treatment Mean）作為統計基準：
+   農田存在土壤肥力與微地形之天然異質性。依據 [EPPO PP 1/152](https://pp1.eppo.int/standards/pp1-152-4) 標準，系統強制支援 3 至 4 次重複配置，以同組「處理＋劑量」之小區去平均值（Treatment Mean）作為統計基準：
    $$\text{Treatment Mean} = \frac{1}{N} \sum_{i=1}^{N} \text{Metric}_{\text{Plot}_i}$$
 2. **小區邊際效應防護 (Buffer Zone)**：
    小區邊界預設支援幾何向內縮減（Buffer Zone），消除處理偏差與相鄰行走道裸土像素混雜干擾（[UMN Field Research Guide](https://extension.umn.edu/courses-and-events/for-professionals/on-farm-research/how-to-do-research-on-your-farm)）。

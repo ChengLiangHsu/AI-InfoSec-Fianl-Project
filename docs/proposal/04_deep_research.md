@@ -70,7 +70,7 @@
 [odm]: https://docs.opendronemap.org/flying/
 [nist]: https://www.itl.nist.gov/div898/handbook/eda/section3/eda35h.htm
 [trial]: https://extension.umn.edu/courses-and-events/for-professionals/on-farm-research/how-to-do-research-on-your-farm
-[eppo]: https://www.eppo.int/RESOURCES/eppo_standards/standards_pp1
+[eppo]: https://pp1.eppo.int/standards/pp1-152-4
 [fair]: https://www.nature.com/articles/sdata201618
 [duddu]: https://doi.org/10.34133/2019/6036453
 [jay]: https://doi.org/10.34133/2020/9452123

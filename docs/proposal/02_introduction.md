@@ -44,7 +44,7 @@
 [pydantic-ai]: https://ai.pydantic.dev/
 [vari]: https://step.esa.int/main/wp-content/help/versions/13.0.0/snap-toolboxes/eu.esa.opt.opttbx.radiometric.indices.ui/vari/VariAlgorithmSpecification.html
 [exg]: https://elibrary.asabe.org/abstract.asp?aid=27838
-[eppo]: https://www.eppo.int/RESOURCES/eppo_standards/standards_pp1
+[eppo]: https://pp1.eppo.int/standards/pp1-152-4
 [fastapi]: https://fastapi.tiangolo.com/
 [nodeodm]: https://github.com/OpenDroneMap/NodeODM
 [canvas]: https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API
