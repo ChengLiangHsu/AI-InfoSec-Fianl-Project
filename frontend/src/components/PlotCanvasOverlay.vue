@@ -45,8 +45,9 @@ const emit = defineEmits<{
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const containerRef = ref<HTMLDivElement | null>(null)
 
-// 網格角點把手拖曳狀態
+// 網格角點把手拖曳與懸停狀態
 const draggingGridCornerIndex = ref<number | null>(null)
+const hoveredGridCornerIndex = ref<number | null>(null)
 
 // 矩形拖曳拉框狀態
 const isDraggingRect = ref(false)
@@ -312,22 +313,25 @@ function drawGridBoundingQuad(ctx: CanvasRenderingContext2D, screenCorners: { x:
 function drawGridCornerHandles(
   ctx: CanvasRenderingContext2D,
   screenCorners: { x: number; y: number }[],
-  draggingIndex: number | null
+  draggingIndex: number | null,
+  hoveredIndex: number | null
 ): void {
   const cornerLabels = ['TL', 'TR', 'BR', 'BL']
   for (let i = 0; i < 4; i++) {
     const sc = screenCorners[i]
     const isDragging = draggingIndex === i
+    const isHovered = hoveredIndex === i
 
     ctx.save()
     ctx.beginPath()
-    ctx.arc(sc.x, sc.y, isDragging ? 15 : HANDLE_RADIUS_PX, 0, Math.PI * 2)
-    ctx.fillStyle = isDragging ? '#7e22ce' : '#9333ea'
-    ctx.shadowColor = 'rgba(126, 34, 206, 0.6)'
-    ctx.shadowBlur = 8
+    const radius = isDragging ? 15 : isHovered ? 14 : HANDLE_RADIUS_PX
+    ctx.arc(sc.x, sc.y, radius, 0, Math.PI * 2)
+    ctx.fillStyle = isDragging ? '#7e22ce' : isHovered ? '#a855f7' : '#9333ea'
+    ctx.shadowColor = isHovered || isDragging ? 'rgba(126, 34, 206, 0.85)' : 'rgba(126, 34, 206, 0.6)'
+    ctx.shadowBlur = isHovered || isDragging ? 12 : 8
     ctx.fill()
     ctx.strokeStyle = '#ffffff'
-    ctx.lineWidth = 2.5
+    ctx.lineWidth = isHovered || isDragging ? 3 : 2.5
     ctx.stroke()
     ctx.restore()
 
@@ -365,7 +369,7 @@ function drawGridGeneratorOverlay(ctx: CanvasRenderingContext2D): void {
 
   // 2. 繪製母區邊界框與 4 角錨點把手
   drawGridBoundingQuad(ctx, screenCorners)
-  drawGridCornerHandles(ctx, screenCorners, draggingGridCornerIndex.value)
+  drawGridCornerHandles(ctx, screenCorners, draggingGridCornerIndex.value, hoveredGridCornerIndex.value)
 }
 
 function drawSingleExistingPlot(
@@ -705,14 +709,23 @@ function handleEraserMove(screenX: number, screenY: number): void {
   drawCanvas()
 }
 
-function handleGridHandleDown(screenX: number): boolean {
-  if (!props.gridState?.corners || props.gridState.corners.length < 4) return false
+function findGridCornerAtPoint(screenX: number, screenY: number): number | null {
+  if (!props.gridState?.corners || props.gridState.corners.length < 4) return null
+  const threshold = 18
   for (let i = 0; i < 4; i++) {
     const sc = props.viewport.normalizedToScreen(props.gridState.corners[i])
-    if (Math.hypot(sc.x - screenX, sc.y - screenX) <= 18) {
-      draggingGridCornerIndex.value = i
-      return true
+    if (Math.hypot(sc.x - screenX, sc.y - screenY) <= threshold) {
+      return i
     }
+  }
+  return null
+}
+
+function handleGridHandleDown(screenX: number, screenY: number): boolean {
+  const hitIndex = findGridCornerAtPoint(screenX, screenY)
+  if (hitIndex !== null) {
+    draggingGridCornerIndex.value = hitIndex
+    return true
   }
   return false
 }
@@ -857,7 +870,7 @@ function onMouseDown(e: MouseEvent): void {
   }
 
   if (props.gridState?.isActive) {
-    handleGridHandleDown(screenX)
+    handleGridHandleDown(screenX, screenY)
     return
   }
 
@@ -896,6 +909,12 @@ function onMouseMove(e: MouseEvent): void {
         point: norm,
       })
       drawCanvas()
+    } else if (props.drawTool !== 'eraser') {
+      const hitCorner = findGridCornerAtPoint(screenX, screenY)
+      if (hoveredGridCornerIndex.value !== hitCorner) {
+        hoveredGridCornerIndex.value = hitCorner
+        drawCanvas()
+      }
     }
     return
   }
@@ -974,6 +993,11 @@ function onMouseUp(e: MouseEvent): void {
   }
 
   draggingVertexIndex.value = null
+}
+
+function onMouseLeave(e: MouseEvent): void {
+  hoveredGridCornerIndex.value = null
+  onMouseUp(e)
 }
 
 function onWheel(e: WheelEvent): void {
@@ -1117,15 +1141,16 @@ watch(
     ref="containerRef"
     class="absolute inset-0 pointer-events-auto select-none"
     :class="{
-      'cursor-grab': viewport.isPanning.value,
+      'cursor-grab': viewport.isPanning.value || (gridState?.isActive && hoveredGridCornerIndex !== null && draggingGridCornerIndex === null && drawTool !== 'eraser'),
+      'cursor-grabbing': draggingGridCornerIndex !== null,
       'cursor-pointer': (activeMode === 'view' && !gridState?.isActive) || drawTool === 'eraser',
       'cursor-crosshair': activeMode === 'draw' && drawTool !== 'eraser' && !gridState?.isActive && !viewport.isPanning.value,
-      'cursor-default': gridState?.isActive && drawTool !== 'eraser' && !viewport.isPanning.value,
+      'cursor-default': gridState?.isActive && drawTool !== 'eraser' && !viewport.isPanning.value && hoveredGridCornerIndex === null && draggingGridCornerIndex === null,
     }"
     @mousedown="onMouseDown"
     @mousemove="onMouseMove"
     @mouseup="onMouseUp"
-    @mouseleave="onMouseUp"
+    @mouseleave="onMouseLeave"
     @wheel="onWheel"
     @contextmenu.prevent
     @dblclick="onDblClick"

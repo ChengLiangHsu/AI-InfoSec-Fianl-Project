@@ -123,6 +123,8 @@
 - **本機宣告式一鍵自動化部署（Local Declarative One-Click Deployment Script）**：採用本機 `scripts/deploy_gcp.sh` 腳本搭配 `.env.cloud` 宣告式參數，自動化完成 GCP 服務啟用、VPC 防火牆配置、靜態 IP 保留、VM 實例生命週期管理、DuckDNS 紀錄同步、程式打包傳輸（IAP SCP）、遠端 Docker 部署與 `/healthz` 健康檢查探針驗證。
 - **分層清理閒置檔案（Layered Dead Code & File Purge）**：明確移除確認無效之檔案（根目錄 0 位元組 `.aws`、已廢棄前端死代碼 `GeminiHomeChat.vue`、預設無用靜態圖示 `vite.svg`、`vue.svg`、`hero.png`、空目錄殘留 `tests/__pycache__`、以及孤立 `.pyc` 快取），維護專案極簡整潔。
 - **課程簡報納入版本控制（Course Presentation in Git）**：將 `docs/田間無人機影像智慧決策 期中報告.pptx` 納入 Git 追蹤管理，作為期中作業成果歸檔。
+- **網格四角錨點點擊拖曳與視覺回饋（Grid Corner Handles Drag & Visual Affordance）**：修復網格模式下 4 個角點把手（TL/TR/BL/BR）之點擊命中判定與座標計算（補齊 `screenY` 參數並修正歐式距離 `Math.hypot(sc.x - screenX, sc.y - screenY)`），並於滑鼠懸停角點把手時提供半徑放大、陰影高亮與 `grab` 抓取游標反饋，支援自由拖曳調整網格四邊形大小與透視形狀。
+- **橡皮擦與角點拖曳職責分離（Eraser Tool Priority over Corner Drag）**：保持橡皮擦工具職責獨立，橡皮擦工具啟用時優先判定與執行網格小區排除消除；切換回常規模式（非橡皮擦）時才啟用角點把手拖曳與大小調整。
 - **本機測試快取定期重置（Purge Local ODM Output Cache）**：清空 `src/odm/` 底下過期的本機測試正射與光譜圖檔（約 28 MB），釋放磁碟空間，同時保留本機 `database.sqlite` 維持開發資料與訪客 Session。
 - **自動清理遠端舊映像檔（Remote Docker Image Prune on Release）**：在每次線上發布新版容器並成功通過健康檢查探針後，於遠端主機自動執行 `docker image prune -f` 清理無標籤或未被引用的懸掛映像檔，維持 150GB 磁碟空間清潔與系統穩定。
 - **標準具名資料卷無縫熱切換持久化（Docker Named Volume Persistence Across Releases）**：線上發布時維持使用 Docker 具名資料卷（`app_data`），在容器重新建置與啟動時無縫保留 SQLite 資料庫（`/data/database.sqlite`）與航拍快取，避免不必要的停機或手動備份流程中斷部署流水線。
@@ -226,3 +228,5 @@
 - **拒絕測試快取成為幽靈目錄（No Phantom Test Cache Directories）**：在所有測試程式碼均已移除的情況下，禁止殘留僅含 `__pycache__` 的空 `tests/` 目錄。
 - **拒絕累積懸掛容器映像檔（No Lingering Dangling Docker Images）**：嚴禁在線上發布完成後放任未清理的舊版或未標籤映像檔長期累積佔用磁碟空間，杜絕引發磁碟溢滿風險。
 - **拒絕非標準手動登入覆蓋部署（No Ad-hoc Manual SSH In-place Deployment）**：嚴格杜絕略過標準本機一鍵發布腳本而直接手動連線至遠端 VM 修改檔案或手動更新，確保部署環境完全可追溯、版本化與一致性。
+- **拒絕座標軸向混淆導致點擊失效（No Axis Mixing in Distance Calculation）**：嚴禁在幾何命中與距離計算中將不同維度座標混淆（如 `sc.y - screenX`），杜絕因座標軸向混淆導致把手點擊與拖曳功能失效。
+- **拒絕無回饋的靜態游標（No Feedback Static Cursor on Interactive Handles）**：在網格把手具備拖曳能力時，嚴禁維持靜態 `cursor-default` 無回饋狀態，杜絕使用者無法直觀辨識可拖曳錨點之體驗。
