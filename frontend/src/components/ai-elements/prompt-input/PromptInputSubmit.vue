@@ -1,8 +1,7 @@
 <script setup lang="ts">
-// import type { InputGroupButtonVariants } from '@/components/ui/input-group'
 import type { ChatStatus } from 'ai'
 import type { HTMLAttributes } from 'vue'
-import { CornerDownLeftIcon, Loader2Icon, SquareIcon, XIcon } from '@lucide/vue'
+import { CornerDownLeftIcon, Loader2Icon, XIcon } from '@lucide/vue'
 import { InputGroupButton } from '@/components/ui/input-group'
 import { cn } from '@/lib/utils'
 import { computed } from 'vue'
@@ -14,19 +13,21 @@ interface Props extends /* @vue-ignore */ InputGroupButtonProps {
   status?: ChatStatus
   variant?: InputGroupButtonProps['variant']
   size?: InputGroupButtonProps['size']
+  disabled?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   variant: 'default',
   size: 'icon-sm',
+  disabled: false,
 })
 
+const isThinking = computed(() => props.status === 'submitted' || props.status === 'streaming')
+const isDisabled = computed(() => props.disabled || isThinking.value)
+
 const icon = computed(() => {
-  if (props.status === 'submitted') {
+  if (isThinking.value) {
     return Loader2Icon
-  }
-  else if (props.status === 'streaming') {
-    return SquareIcon
   }
   else if (props.status === 'error') {
     return XIcon
@@ -35,23 +36,21 @@ const icon = computed(() => {
 })
 
 const iconClass = computed(() => {
-  if (props.status === 'submitted') {
+  if (isThinking.value) {
     return 'size-4 animate-spin'
   }
   return 'size-4'
 })
-
-const { status, size, variant, class: _, ...restProps } = props
 </script>
 
 <template>
   <InputGroupButton
     aria-label="Submit"
-    :class="cn(props.class)"
-    :size="size"
-    :variant="variant"
+    :class="cn('disabled:cursor-not-allowed', props.class)"
+    :size="props.size"
+    :variant="props.variant"
+    :disabled="isDisabled"
     type="submit"
-    v-bind="restProps"
   >
     <slot>
       <component :is="icon" :class="iconClass" />

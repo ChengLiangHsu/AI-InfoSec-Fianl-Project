@@ -11,6 +11,8 @@ services:
     image: drone-field-app:${APP_IMAGE_TAG:-local}
     build: .
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       DATABASE_PATH: /data/database.sqlite
       ODM_DIR: /data/odm

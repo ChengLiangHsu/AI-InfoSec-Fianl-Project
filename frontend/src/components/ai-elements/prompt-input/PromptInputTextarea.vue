@@ -9,14 +9,23 @@ type PromptInputTextareaProps = InstanceType<typeof InputGroupTextarea>['$props'
 
 interface Props extends /* @vue-ignore */ PromptInputTextareaProps {
   class?: HTMLAttributes['class']
+  disabled?: boolean
+  placeholder?: string
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  disabled: false,
+})
 
 const { textInput, setTextInput, addFiles, files, removeFile } = usePromptInput()
 const isComposing = ref(false)
 
 function handleKeyDown(e: KeyboardEvent) {
+  if (props.disabled) {
+    e.preventDefault()
+    return
+  }
+
   if (e.key === 'Enter') {
     if (isComposing.value || e.isComposing || e.shiftKey)
       return
@@ -44,6 +53,11 @@ function handleKeyDown(e: KeyboardEvent) {
 }
 
 function handlePaste(e: ClipboardEvent) {
+  if (props.disabled) {
+    e.preventDefault()
+    return
+  }
+
   const items = e.clipboardData?.items
   if (!items)
     return
@@ -70,7 +84,16 @@ const modelValue = computed({
 </script>
 
 <template>
-  <InputGroupTextarea v-model="modelValue" placeholder="請問可以如何幫助你？" name="message"
-    :class="cn('field-sizing-content max-h-48 min-h-16', props.class)" v-bind="props" @keydown="handleKeyDown"
-    @paste="handlePaste" @compositionstart="isComposing = true" @compositionend="isComposing = false" />
+  <InputGroupTextarea
+    v-model="modelValue"
+    :placeholder="props.placeholder || '請問可以如何幫助你？'"
+    name="message"
+    :disabled="props.disabled"
+    :class="cn('field-sizing-content max-h-48 min-h-16 disabled:cursor-not-allowed disabled:opacity-50', props.class)"
+    v-bind="$attrs"
+    @keydown="handleKeyDown"
+    @paste="handlePaste"
+    @compositionstart="isComposing = true"
+    @compositionend="isComposing = false"
+  />
 </template>

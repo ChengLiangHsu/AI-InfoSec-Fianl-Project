@@ -4,7 +4,12 @@ import {
   type PlotItem,
   type NormalizedPoint,
   type GridGeneratorState,
+  type CellSpan,
   parseCoords,
+  serializePoints,
+  shiftPoints,
+  calculateCellNormalizedSpan,
+  generateSubplotPolygon,
 } from '@/lib/usePlots'
 import type { CanvasViewport } from '@/lib/useCanvasViewport'
 
@@ -12,7 +17,7 @@ const props = withDefaults(
   defineProps<{
     plots: PlotItem[]
     activeMode: 'view' | 'draw'
-    drawTool?: 'rect' | 'polygon'
+    drawTool?: 'rect' | 'polygon' | 'eraser'
     selectedPlotNumber: number | null
     getPlotColor: (plot: PlotItem) => string
     viewport: CanvasViewport
@@ -31,6 +36,10 @@ const emit = defineEmits<{
   (e: 'update-plot-points', payload: { plotNumber: number; points: NormalizedPoint[] }): void
   (e: 'select-plot', plotNumber: number | null): void
   (e: 'update-grid-corner', payload: { index: number; point: NormalizedPoint }): void
+  (e: 'delete-plot', plotNumber: number): void
+  (e: 'duplicate-plot', plotNumber: number): void
+  (e: 'move-plot', payload: { plotNumber: number; delta: { dx: number; dy: number } }): void
+  (e: 'toggle-exclude-grid-cell', cellIndex: number): void
 }>()
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
@@ -51,8 +60,24 @@ const currentMousePos = ref<NormalizedPoint | null>(null)
 const isNearStartPoint = ref(false)
 const draggingVertexIndex = ref<number | null>(null)
 
+// 橡皮擦狀態
+const isErasing = ref(false)
+const hoveredPlotNumber = ref<number | null>(null)
+const hoveredGridCellIndex = ref<number | null>(null)
+
+// 整體小區拖曳移動 / Alt+拖曳複製狀態
+const isDraggingWholePlot = ref(false)
+const wholePlotDragStartNorm = ref<NormalizedPoint | null>(null)
+const wholePlotCurrentDelta = ref<{ dx: number; dy: number }>({ dx: 0, dy: 0 })
+const isAltDragging = ref(false)
+
 const SNAP_THRESHOLD_PX = 18
 const MIN_RECT_DRAG_PX = 8
+const HANDLE_RADIUS_PX = 12
+
+// ==========================================
+// 幾何與座標輔助子函式 (Single Responsibility)
+// ==========================================
 
 function getCanvasRelativeCoords(e: MouseEvent): { screenX: number; screenY: number; norm: NormalizedPoint } {
   if (!canvasRef.value) {
@@ -91,9 +116,43 @@ function findPlotAtPoint(screenX: number, screenY: number): PlotItem | null {
   return null
 }
 
+function findGridCellAtPoint(
+  screenX: number,
+  screenY: number
+): { cellIndex: number; row: number; col: number; poly: NormalizedPoint[] } | null {
+  if (!canvasRef.value || !props.gridState || !props.gridState.isActive || props.gridState.corners.length < 4) {
+    return null
+  }
+  const ctx = canvasRef.value.getContext('2d')
+  if (!ctx) return null
+
+  const { rows, cols, corners } = props.gridState
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const span = calculateCellNormalizedSpan(c, r, props.gridState)
+      const poly = generateSubplotPolygon(span, corners)
+      if (poly.length < 3) continue
+
+      const path = new Path2D()
+      const first = props.viewport.normalizedToScreen(poly[0])
+      path.moveTo(first.x, first.y)
+      for (let j = 1; j < poly.length; j++) {
+        const sp = props.viewport.normalizedToScreen(poly[j])
+        path.lineTo(sp.x, sp.y)
+      }
+      path.closePath()
+
+      if (ctx.isPointInPath(path, screenX, screenY)) {
+        return { cellIndex: r * cols + c, row: r, col: c, poly }
+      }
+    }
+  }
+  return null
+}
+
 function findVertexNearPoint(screenX: number, screenY: number, plot: PlotItem): number | null {
   const pts = parseCoords(plot.coords)
-  const threshold = 12 // 螢幕點擊半徑 px
+  const threshold = 12
   for (let i = 0; i < pts.length; i++) {
     const sp = props.viewport.normalizedToScreen(pts[i])
     if (Math.hypot(sp.x - screenX, sp.y - screenY) <= threshold) {
@@ -103,330 +162,17 @@ function findVertexNearPoint(screenX: number, screenY: number, plot: PlotItem): 
   return null
 }
 
-function syncCanvasSize() {
-  if (!canvasRef.value || !containerRef.value) return
-  const rect = containerRef.value.getBoundingClientRect()
-  const dpr = window.devicePixelRatio || 1
-  canvasRef.value.width = rect.width * dpr
-  canvasRef.value.height = rect.height * dpr
-  drawCanvas()
-}
-
-function drawCanvas() {
-  if (!canvasRef.value) return
-  const ctx = canvasRef.value.getContext('2d')
-  if (!ctx) return
-
-  const dpr = window.devicePixelRatio || 1
-  ctx.save()
-  ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
-  ctx.scale(dpr, dpr)
-
-  drawExistingPlots(ctx)
-  drawDraggingRectPreview(ctx)
-  drawCurrentDrawingPolyline(ctx)
-
-  // 繪製自動網格動態預覽與 4 角錨點把手
-  if (props.gridState?.isActive) {
-    drawGridGeneratorOverlay(ctx)
-  }
-
-  ctx.restore()
-}
-
-function drawGridGeneratorOverlay(ctx: CanvasRenderingContext2D) {
-  if (!props.gridState || !props.gridState.isActive || props.gridState.corners.length < 4) return
-
-  const corners = props.gridState.corners
-  const screenCorners = corners.map((c) => props.viewport.normalizedToScreen(c))
-
-  // 1. 繪製預覽子小區 (Subplots Preview)
-  if (props.previewPlots && props.previewPlots.length > 0) {
-    let plotIdx = 1
-    for (const plotPoly of props.previewPlots) {
-      if (plotPoly.length < 3) continue
-      const spStart = props.viewport.normalizedToScreen(plotPoly[0])
-
-      ctx.beginPath()
-      ctx.moveTo(spStart.x, spStart.y)
-      for (let j = 1; j < plotPoly.length; j++) {
-        const sp = props.viewport.normalizedToScreen(plotPoly[j])
-        ctx.lineTo(sp.x, sp.y)
-      }
-      ctx.closePath()
-
-      // 填充淡紫色半透明背景
-      ctx.fillStyle = 'rgba(168, 85, 247, 0.16)'
-      ctx.fill()
-
-      // 繪製虛線邊框
-      ctx.strokeStyle = '#a855f7'
-      ctx.lineWidth = 1.5
-      ctx.setLineDash([4, 3])
-      ctx.stroke()
-      ctx.setLineDash([])
-
-      // 繪製子小區中心編號標籤
-      let sumX = 0
-      let sumY = 0
-      for (const p of plotPoly) {
-        const sp = props.viewport.normalizedToScreen(p)
-        sumX += sp.x
-        sumY += sp.y
-      }
-      const cx = sumX / plotPoly.length
-      const cy = sumY / plotPoly.length
-
-      ctx.save()
-      ctx.font = 'bold 10px system-ui, sans-serif'
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'
-      ctx.beginPath()
-      ctx.arc(cx, cy, 9, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.strokeStyle = '#a855f7'
-      ctx.lineWidth = 1
-      ctx.stroke()
-
-      ctx.fillStyle = '#7e22ce'
-      ctx.fillText(`#${plotIdx}`, cx, cy)
-      ctx.restore()
-
-      plotIdx++
-    }
-  }
-
-  // 2. 繪製母區四邊形邊界 (Bounding Quad)
-  ctx.beginPath()
-  ctx.moveTo(screenCorners[0].x, screenCorners[0].y)
-  for (let i = 1; i < 4; i++) {
-    ctx.lineTo(screenCorners[i].x, screenCorners[i].y)
-  }
-  ctx.closePath()
-  ctx.strokeStyle = '#6b21a8'
-  ctx.lineWidth = 2.2
-  ctx.setLineDash([6, 4])
-  ctx.stroke()
-  ctx.setLineDash([])
-
-  // 3. 繪製 4 個角點可拖曳把手 (Draggable Handles)
-  const cornerLabels = ['TL', 'TR', 'BR', 'BL']
-  for (let i = 0; i < 4; i++) {
-    const sc = screenCorners[i]
-    const isDragging = draggingGridCornerIndex.value === i
-
-    // 外圈光暈與陰影
-    ctx.save()
-    ctx.beginPath()
-    ctx.arc(sc.x, sc.y, isDragging ? 15 : 12, 0, Math.PI * 2)
-    ctx.fillStyle = isDragging ? '#7e22ce' : '#9333ea'
-    ctx.shadowColor = 'rgba(126, 34, 206, 0.6)'
-    ctx.shadowBlur = 8
-    ctx.fill()
-    ctx.strokeStyle = '#ffffff'
-    ctx.lineWidth = 2.5
-    ctx.stroke()
-    ctx.restore()
-
-    // 內圈文字
-    ctx.save()
-    ctx.font = 'bold 9px system-ui, sans-serif'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillStyle = '#ffffff'
-    ctx.fillText(cornerLabels[i], sc.x, sc.y)
-    ctx.restore()
-  }
-}
-
-function drawExistingPlots(ctx: CanvasRenderingContext2D) {
-  for (const plot of props.plots) {
-    const pts = parseCoords(plot.coords)
-    if (pts.length < 3) continue
-
-    const isSelected = plot.plot_number === props.selectedPlotNumber
-    const color = props.getPlotColor(plot)
-
-    ctx.beginPath()
-    const start = props.viewport.normalizedToScreen(pts[0])
-    ctx.moveTo(start.x, start.y)
-    for (let i = 1; i < pts.length; i++) {
-      const sp = props.viewport.normalizedToScreen(pts[i])
-      ctx.lineTo(sp.x, sp.y)
-    }
-    ctx.closePath()
-
-    // 填充半透明色
-    ctx.fillStyle = hexToRgba(color, isSelected ? 0.45 : 0.22)
-    ctx.fill()
-
-    // 邊框繪製
-    ctx.strokeStyle = isSelected ? '#ffffff' : color
-    ctx.lineWidth = isSelected ? 3 : 1.8
-    if (isSelected) {
-      ctx.shadowColor = 'rgba(0,0,0,0.6)'
-      ctx.shadowBlur = 6
-    }
-    ctx.stroke()
-    ctx.shadowBlur = 0
-
-    // 繪製中心標籤
-    drawPlotCentroidBadge(ctx, pts, plot, isSelected)
-
-    // 若處於繪製模式且為選取的小區，繪製頂點手柄
-    if (props.activeMode === 'draw' && isSelected) {
-      drawPlotHandles(ctx, pts)
-    }
-  }
-}
-
-function drawDraggingRectPreview(ctx: CanvasRenderingContext2D) {
-  if (!isDraggingRect.value || !rectStartNorm.value || !rectCurrentNorm.value) return
-
-  const sp1 = props.viewport.normalizedToScreen(rectStartNorm.value)
-  const sp2 = props.viewport.normalizedToScreen(rectCurrentNorm.value)
-  const sx = Math.min(sp1.x, sp2.x)
-  const sy = Math.min(sp1.y, sp2.y)
-  const sw = Math.abs(sp2.x - sp1.x)
-  const sh = Math.abs(sp2.y - sp1.y)
-
-  ctx.save()
-  // 填色預覽
-  ctx.fillStyle = 'rgba(56, 189, 248, 0.25)'
-  ctx.fillRect(sx, sy, sw, sh)
-
-  // 邊框預覽
-  ctx.strokeStyle = '#0284c7'
-  ctx.lineWidth = 2
-  ctx.setLineDash([6, 4])
-  ctx.strokeRect(sx, sy, sw, sh)
-  ctx.setLineDash([])
-
-  // 四個角標記
-  const corners = [
-    { x: sx, y: sy },
-    { x: sx + sw, y: sy },
-    { x: sx + sw, y: sy + sh },
-    { x: sx, y: sy + sh },
-  ]
-  for (const c of corners) {
-    ctx.beginPath()
-    ctx.arc(c.x, c.y, 4, 0, Math.PI * 2)
-    ctx.fillStyle = '#38bdf8'
-    ctx.fill()
-    ctx.strokeStyle = '#ffffff'
-    ctx.lineWidth = 1.5
-    ctx.stroke()
-  }
-  ctx.restore()
-}
-
-function drawPlotHandles(ctx: CanvasRenderingContext2D, pts: NormalizedPoint[]) {
-  for (let i = 0; i < pts.length; i++) {
-    const sp = props.viewport.normalizedToScreen(pts[i])
-    ctx.beginPath()
-    ctx.arc(sp.x, sp.y, 5, 0, Math.PI * 2)
-    ctx.fillStyle = '#ffffff'
-    ctx.fill()
-    ctx.strokeStyle = '#2563eb'
-    ctx.lineWidth = 2
-    ctx.stroke()
-  }
-}
-
-function drawCurrentDrawingPolyline(ctx: CanvasRenderingContext2D) {
-  if (currentDrawingPoints.value.length === 0) return
-
-  const pts = currentDrawingPoints.value
-  ctx.beginPath()
-  const start = props.viewport.normalizedToScreen(pts[0])
-  ctx.moveTo(start.x, start.y)
-  for (let i = 1; i < pts.length; i++) {
-    const sp = props.viewport.normalizedToScreen(pts[i])
-    ctx.lineTo(sp.x, sp.y)
-  }
-  if (currentMousePos.value) {
-    const curSp = props.viewport.normalizedToScreen(currentMousePos.value)
-    ctx.lineTo(curSp.x, curSp.y)
-  }
-  ctx.strokeStyle = '#06b6d4'
-  ctx.lineWidth = 2
-  ctx.setLineDash([5, 3])
-  ctx.stroke()
-  ctx.setLineDash([])
-
-  // 繪製頂點圓點
-  for (let i = 0; i < pts.length; i++) {
-    const sp = props.viewport.normalizedToScreen(pts[i])
-    ctx.beginPath()
-    ctx.arc(sp.x, sp.y, 4.5, 0, Math.PI * 2)
-    ctx.fillStyle = i === 0 ? '#10b981' : '#06b6d4'
-    ctx.fill()
-    ctx.strokeStyle = '#ffffff'
-    ctx.lineWidth = 1.5
-    ctx.stroke()
-  }
-
-  // 起點吸附提示圈
-  if (isNearStartPoint.value && pts.length >= 3) {
-    const startSp = props.viewport.normalizedToScreen(pts[0])
-    ctx.beginPath()
-    ctx.arc(startSp.x, startSp.y, 10, 0, Math.PI * 2)
-    ctx.strokeStyle = '#10b981'
-    ctx.lineWidth = 2.5
-    ctx.stroke()
-
-    ctx.fillStyle = 'rgba(16, 185, 129, 0.35)'
-    ctx.fill()
-  }
-}
-
-function drawPlotCentroidBadge(
-  ctx: CanvasRenderingContext2D,
-  pts: NormalizedPoint[],
-  plot: PlotItem,
-  isSelected: boolean
-) {
-  let avgX = 0
-  let avgY = 0
+function calculateCentroid(pts: NormalizedPoint[]): { cx: number; cy: number } {
+  let sumX = 0
+  let sumY = 0
   for (const p of pts) {
-    avgX += p.x
-    avgY += p.y
+    sumX += p.x
+    sumY += p.y
   }
-  avgX /= pts.length
-  avgY /= pts.length
-
-  const sp = props.viewport.normalizedToScreen({ x: avgX, y: avgY })
-
-  let text = `#${plot.plot_number}`
-  if (plot.is_control) {
-    text += ' (CK)'
-  } else if (plot.treatment) {
-    text += ` (${plot.treatment}${plot.dose ? ' ' + plot.dose : ''})`
+  return {
+    cx: sumX / pts.length,
+    cy: sumY / pts.length,
   }
-
-  ctx.font = 'bold 11px system-ui, sans-serif'
-  const textMetrics = ctx.measureText(text)
-  const paddingX = 6
-  const paddingY = 3.5
-  const badgeW = textMetrics.width + paddingX * 2
-  const badgeH = 18
-
-  ctx.save()
-  ctx.beginPath()
-  roundRect(ctx, sp.x - badgeW / 2, sp.y - badgeH / 2, badgeW, badgeH, 4)
-  ctx.fillStyle = isSelected ? 'rgba(30, 41, 59, 0.95)' : 'rgba(15, 23, 42, 0.8)'
-  ctx.fill()
-  ctx.strokeStyle = isSelected ? '#38bdf8' : 'rgba(255, 255, 255, 0.4)'
-  ctx.lineWidth = isSelected ? 1.5 : 1
-  ctx.stroke()
-
-  ctx.fillStyle = '#ffffff'
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  ctx.fillText(text, sp.x, sp.y)
-  ctx.restore()
 }
 
 function roundRect(
@@ -436,7 +182,7 @@ function roundRect(
   width: number,
   height: number,
   radius: number
-) {
+): void {
   ctx.moveTo(x + radius, y)
   ctx.lineTo(x + width - radius, y)
   ctx.quadraticCurveTo(x + width, y, x + width, y + radius)
@@ -460,194 +206,616 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
-function onMouseDown(e: MouseEvent) {
-  // 1. 滑鼠右鍵拖曳平移 (Pan)
-  if (e.button === 2) {
-    e.preventDefault()
-    props.viewport.startPan(e.clientX, e.clientY)
+// ==========================================
+// 繪製子函式 (Sub-renderers)
+// ==========================================
+
+function drawSinglePreviewPlotCell(
+  ctx: CanvasRenderingContext2D,
+  poly: NormalizedPoint[],
+  isExcluded: boolean,
+  isHovered: boolean,
+  displayLabel: string
+): void {
+  if (poly.length < 3) return
+  const spStart = props.viewport.normalizedToScreen(poly[0])
+
+  ctx.beginPath()
+  ctx.moveTo(spStart.x, spStart.y)
+  for (let j = 1; j < poly.length; j++) {
+    const sp = props.viewport.normalizedToScreen(poly[j])
+    ctx.lineTo(sp.x, sp.y)
+  }
+  ctx.closePath()
+
+  if (isExcluded) {
+    // 排除狀態：半透明深紅背景 + 紅色虛線
+    ctx.fillStyle = 'rgba(239, 68, 68, 0.22)'
+    ctx.fill()
+    ctx.strokeStyle = '#ef4444'
+    ctx.lineWidth = isHovered ? 2.2 : 1.5
+    ctx.setLineDash([4, 3])
+    ctx.stroke()
+    ctx.setLineDash([])
+  } else if (isHovered && props.drawTool === 'eraser') {
+    // 橡皮擦懸停欲排除狀態：醒目紅橘色高亮
+    ctx.fillStyle = 'rgba(244, 63, 94, 0.35)'
+    ctx.fill()
+    ctx.strokeStyle = '#f43f5e'
+    ctx.lineWidth = 2.4
+    ctx.setLineDash([3, 2])
+    ctx.stroke()
+    ctx.setLineDash([])
+  } else {
+    // 正常網格預覽：紫色半透明 + 紫色虛線
+    ctx.fillStyle = 'rgba(168, 85, 247, 0.16)'
+    ctx.fill()
+    ctx.strokeStyle = '#a855f7'
+    ctx.lineWidth = 1.5
+    ctx.setLineDash([4, 3])
+    ctx.stroke()
+    ctx.setLineDash([])
+  }
+
+  // 繪製單元格中心標籤
+  const centroidNorm = calculateCentroid(poly)
+  const centroidScreen = props.viewport.normalizedToScreen(centroidNorm)
+
+  ctx.save()
+  ctx.font = 'bold 10px system-ui, sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+
+  if (isExcluded) {
+    ctx.fillStyle = 'rgba(239, 68, 68, 0.95)'
+    ctx.beginPath()
+    roundRect(ctx, centroidScreen.x - 22, centroidScreen.y - 9, 44, 18, 4)
+    ctx.fill()
+    ctx.fillStyle = '#ffffff'
+    ctx.fillText('✖ 排除', centroidScreen.x, centroidScreen.y)
+  } else if (isHovered && props.drawTool === 'eraser') {
+    ctx.fillStyle = 'rgba(244, 63, 94, 0.95)'
+    ctx.beginPath()
+    roundRect(ctx, centroidScreen.x - 22, centroidScreen.y - 9, 44, 18, 4)
+    ctx.fill()
+    ctx.fillStyle = '#ffffff'
+    ctx.fillText('✖ 消除', centroidScreen.x, centroidScreen.y)
+  } else {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)'
+    ctx.beginPath()
+    ctx.arc(centroidScreen.x, centroidScreen.y, 9.5, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = '#a855f7'
+    ctx.lineWidth = 1
+    ctx.stroke()
+
+    ctx.fillStyle = '#7e22ce'
+    ctx.fillText(displayLabel, centroidScreen.x, centroidScreen.y)
+  }
+  ctx.restore()
+}
+
+function drawGridBoundingQuad(ctx: CanvasRenderingContext2D, screenCorners: { x: number; y: number }[]): void {
+  ctx.beginPath()
+  ctx.moveTo(screenCorners[0].x, screenCorners[0].y)
+  for (let i = 1; i < 4; i++) {
+    ctx.lineTo(screenCorners[i].x, screenCorners[i].y)
+  }
+  ctx.closePath()
+  ctx.strokeStyle = '#6b21a8'
+  ctx.lineWidth = 2.2
+  ctx.setLineDash([6, 4])
+  ctx.stroke()
+  ctx.setLineDash([])
+}
+
+function drawGridCornerHandles(
+  ctx: CanvasRenderingContext2D,
+  screenCorners: { x: number; y: number }[],
+  draggingIndex: number | null
+): void {
+  const cornerLabels = ['TL', 'TR', 'BR', 'BL']
+  for (let i = 0; i < 4; i++) {
+    const sc = screenCorners[i]
+    const isDragging = draggingIndex === i
+
+    ctx.save()
+    ctx.beginPath()
+    ctx.arc(sc.x, sc.y, isDragging ? 15 : HANDLE_RADIUS_PX, 0, Math.PI * 2)
+    ctx.fillStyle = isDragging ? '#7e22ce' : '#9333ea'
+    ctx.shadowColor = 'rgba(126, 34, 206, 0.6)'
+    ctx.shadowBlur = 8
+    ctx.fill()
+    ctx.strokeStyle = '#ffffff'
+    ctx.lineWidth = 2.5
+    ctx.stroke()
+    ctx.restore()
+
+    ctx.save()
+    ctx.font = 'bold 9px system-ui, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillStyle = '#ffffff'
+    ctx.fillText(cornerLabels[i], sc.x, sc.y)
+    ctx.restore()
+  }
+}
+
+function drawGridGeneratorOverlay(ctx: CanvasRenderingContext2D): void {
+  if (!props.gridState || !props.gridState.isActive || props.gridState.corners.length < 4) return
+
+  const { rows, cols, corners } = props.gridState
+  const screenCorners = corners.map((c) => props.viewport.normalizedToScreen(c))
+  const excludedSet = new Set(props.gridState.excludedIndices || [])
+
+  // 1. 遍歷網格所有單元格，繪製子小區預覽與排除標籤
+  let activePlotCounter = 1
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cellIdx = r * cols + c
+      const span: CellSpan = calculateCellNormalizedSpan(c, r, props.gridState)
+      const poly = generateSubplotPolygon(span, corners)
+      const isExcluded = excludedSet.has(cellIdx)
+      const isHovered = hoveredGridCellIndex.value === cellIdx
+      const label = isExcluded ? '' : `#${activePlotCounter++}`
+
+      drawSinglePreviewPlotCell(ctx, poly, isExcluded, isHovered, label)
+    }
+  }
+
+  // 2. 繪製母區邊界框與 4 角錨點把手
+  drawGridBoundingQuad(ctx, screenCorners)
+  drawGridCornerHandles(ctx, screenCorners, draggingGridCornerIndex.value)
+}
+
+function drawSingleExistingPlot(
+  ctx: CanvasRenderingContext2D,
+  plot: PlotItem,
+  pts: NormalizedPoint[],
+  isSelected: boolean,
+  isEraserHover: boolean
+): void {
+  if (pts.length < 3) return
+
+  ctx.beginPath()
+  const start = props.viewport.normalizedToScreen(pts[0])
+  ctx.moveTo(start.x, start.y)
+  for (let i = 1; i < pts.length; i++) {
+    const sp = props.viewport.normalizedToScreen(pts[i])
+    ctx.lineTo(sp.x, sp.y)
+  }
+  ctx.closePath()
+
+  if (isEraserHover) {
+    // 橡皮擦滑過待刪除標記
+    ctx.fillStyle = 'rgba(239, 68, 68, 0.35)'
+    ctx.fill()
+    ctx.strokeStyle = '#ef4444'
+    ctx.lineWidth = 2.6
+    ctx.setLineDash([4, 3])
+    ctx.stroke()
+    ctx.setLineDash([])
+    drawPlotCentroidBadge(ctx, pts, plot, isSelected, true)
     return
   }
 
-  // 2. 僅滑鼠左鍵進行繪製與選取
-  if (e.button !== 0) return
+  const color = props.getPlotColor(plot)
+  ctx.fillStyle = hexToRgba(color, isSelected ? 0.45 : 0.22)
+  ctx.fill()
 
-  const { screenX, screenY, norm } = getCanvasRelativeCoords(e)
-
-  // 自動網格生成模式：檢查是否點擊在 4 個角點錨點把手上以進行拖曳
-  if (props.gridState?.isActive) {
-    if (props.gridState.corners && props.gridState.corners.length >= 4) {
-      for (let i = 0; i < 4; i++) {
-        const sc = props.viewport.normalizedToScreen(props.gridState.corners[i])
-        if (Math.hypot(sc.x - screenX, sc.y - screenY) <= 18) {
-          draggingGridCornerIndex.value = i
-          return
-        }
-      }
-    }
-    return
+  ctx.strokeStyle = isSelected ? '#ffffff' : color
+  ctx.lineWidth = isSelected ? 3 : 1.8
+  if (isSelected) {
+    ctx.shadowColor = 'rgba(0,0,0,0.6)'
+    ctx.shadowBlur = 6
   }
+  ctx.stroke()
+  ctx.shadowBlur = 0
 
-  // 檢視模式：點擊小區選取並彈窗編輯
-  if (props.activeMode === 'view') {
-    const hitPlot = findPlotAtPoint(screenX, screenY)
-    if (hitPlot) {
-      emit('select-plot', hitPlot.plot_number)
-      emit('edit-plot', hitPlot)
-    } else {
-      emit('select-plot', null)
-    }
-    return
+  drawPlotCentroidBadge(ctx, pts, plot, isSelected, false)
+}
+
+function drawGhostDuplicatePreview(
+  ctx: CanvasRenderingContext2D,
+  plot: PlotItem,
+  delta: { dx: number; dy: number }
+): void {
+  const pts = parseCoords(plot.coords)
+  if (pts.length < 3) return
+  const shifted = shiftPoints(pts, delta.dx, delta.dy)
+
+  ctx.beginPath()
+  const start = props.viewport.normalizedToScreen(shifted[0])
+  ctx.moveTo(start.x, start.y)
+  for (let i = 1; i < shifted.length; i++) {
+    const sp = props.viewport.normalizedToScreen(shifted[i])
+    ctx.lineTo(sp.x, sp.y)
   }
+  ctx.closePath()
 
-  // 繪製模式
-  if (props.activeMode === 'draw') {
-    // 檢查是否點擊在已選取小區的頂點手柄上以進行拖曳
-    if (props.selectedPlotNumber !== null && currentDrawingPoints.value.length === 0 && !isDraggingRect.value) {
-      const selectedPlot = props.plots.find((p) => p.plot_number === props.selectedPlotNumber)
-      if (selectedPlot) {
-        const vIdx = findVertexNearPoint(screenX, screenY, selectedPlot)
-        if (vIdx !== null) {
-          draggingVertexIndex.value = vIdx
-          return
-        }
-      }
+  ctx.fillStyle = 'rgba(16, 185, 129, 0.3)'
+  ctx.fill()
+  ctx.strokeStyle = '#10b981'
+  ctx.lineWidth = 2.2
+  ctx.setLineDash([5, 3])
+  ctx.stroke()
+  ctx.setLineDash([])
+
+  const centroid = calculateCentroid(shifted)
+  const sp = props.viewport.normalizedToScreen(centroid)
+  ctx.save()
+  ctx.font = 'bold 10px system-ui, sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillStyle = '#10b981'
+  ctx.beginPath()
+  roundRect(ctx, sp.x - 26, sp.y - 9, 52, 18, 4)
+  ctx.fill()
+  ctx.fillStyle = '#ffffff'
+  ctx.fillText('+ 複製副本', sp.x, sp.y)
+  ctx.restore()
+}
+
+function drawExistingPlots(ctx: CanvasRenderingContext2D): void {
+  for (const plot of props.plots) {
+    const rawPts = parseCoords(plot.coords)
+    if (rawPts.length < 3) continue
+
+    const isSelected = plot.plot_number === props.selectedPlotNumber
+    const isEraserHover = props.drawTool === 'eraser' && hoveredPlotNumber.value === plot.plot_number
+
+    // 若正在拖曳移動（非 Alt 複製模式），渲染平移後位置
+    let pts = rawPts
+    if (isSelected && isDraggingWholePlot.value && !isAltDragging.value) {
+      pts = shiftPoints(rawPts, wholePlotCurrentDelta.value.dx, wholePlotCurrentDelta.value.dy)
     }
 
-    // 矩形拖曳拉框工具
-    if (props.drawTool === 'rect') {
-      const hitPlot = findPlotAtPoint(screenX, screenY)
-      if (hitPlot) {
-        emit('select-plot', hitPlot.plot_number)
-        emit('edit-plot', hitPlot)
-      } else {
-        emit('select-plot', null)
-        isDraggingRect.value = true
-        rectStartScreen.value = { x: screenX, y: screenY }
-        rectStartNorm.value = { x: norm.x, y: norm.y }
-        rectCurrentNorm.value = { x: norm.x, y: norm.y }
-        drawCanvas()
-      }
-      return
+    drawSingleExistingPlot(ctx, plot, pts, isSelected, isEraserHover)
+
+    // 若處於繪製模式且為選取的小區，繪製頂點手柄
+    if (props.activeMode === 'draw' && isSelected && !isDraggingWholePlot.value && props.drawTool !== 'eraser') {
+      drawPlotHandles(ctx, pts)
     }
 
-    // 多邊形點繪工具
-    if (props.drawTool === 'polygon') {
-      if (currentDrawingPoints.value.length > 0) {
-        if (isNearStartPoint.value && currentDrawingPoints.value.length >= 3) {
-          finishDrawing()
-          return
-        }
-        currentDrawingPoints.value.push({ x: norm.x, y: norm.y })
-        drawCanvas()
-        return
-      }
-
-      const hitPlot = findPlotAtPoint(screenX, screenY)
-      if (hitPlot) {
-        emit('select-plot', hitPlot.plot_number)
-        emit('edit-plot', hitPlot)
-      } else {
-        emit('select-plot', null)
-        currentDrawingPoints.value = [{ x: norm.x, y: norm.y }]
-        drawCanvas()
-      }
+    // 若處於 Alt 拖曳複製中，渲染幽靈副本
+    if (isSelected && isDraggingWholePlot.value && isAltDragging.value) {
+      drawGhostDuplicatePreview(ctx, plot, wholePlotCurrentDelta.value)
     }
   }
 }
 
-function onMouseMove(e: MouseEvent) {
-  // 1. 若處於右鍵平移中
-  if (props.viewport.isPanning.value) {
-    const w = containerRef.value?.clientWidth
-    const h = containerRef.value?.clientHeight
-    if (props.viewport.updatePan(e.clientX, e.clientY, w, h)) {
-      drawCanvas()
+function drawDraggingRectPreview(ctx: CanvasRenderingContext2D): void {
+  if (!isDraggingRect.value || !rectStartNorm.value || !rectCurrentNorm.value) return
+
+  const sp1 = props.viewport.normalizedToScreen(rectStartNorm.value)
+  const sp2 = props.viewport.normalizedToScreen(rectCurrentNorm.value)
+  const sx = Math.min(sp1.x, sp2.x)
+  const sy = Math.min(sp1.y, sp2.y)
+  const sw = Math.abs(sp2.x - sp1.x)
+  const sh = Math.abs(sp2.y - sp1.y)
+
+  ctx.save()
+  ctx.fillStyle = 'rgba(56, 189, 248, 0.25)'
+  ctx.fillRect(sx, sy, sw, sh)
+
+  ctx.strokeStyle = '#0284c7'
+  ctx.lineWidth = 2
+  ctx.setLineDash([6, 4])
+  ctx.strokeRect(sx, sy, sw, sh)
+  ctx.setLineDash([])
+
+  const corners = [
+    { x: sx, y: sy },
+    { x: sx + sw, y: sy },
+    { x: sx + sw, y: sy + sh },
+    { x: sx, y: sy + sh },
+  ]
+  for (const c of corners) {
+    ctx.beginPath()
+    ctx.arc(c.x, c.y, 4, 0, Math.PI * 2)
+    ctx.fillStyle = '#38bdf8'
+    ctx.fill()
+    ctx.strokeStyle = '#ffffff'
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+  }
+  ctx.restore()
+}
+
+function drawPlotHandles(ctx: CanvasRenderingContext2D, pts: NormalizedPoint[]): void {
+  for (let i = 0; i < pts.length; i++) {
+    const sp = props.viewport.normalizedToScreen(pts[i])
+    ctx.beginPath()
+    ctx.arc(sp.x, sp.y, 5, 0, Math.PI * 2)
+    ctx.fillStyle = '#ffffff'
+    ctx.fill()
+    ctx.strokeStyle = '#2563eb'
+    ctx.lineWidth = 2
+    ctx.stroke()
+  }
+}
+
+function drawCurrentDrawingPolyline(ctx: CanvasRenderingContext2D): void {
+  if (currentDrawingPoints.value.length === 0) return
+
+  const pts = currentDrawingPoints.value
+  ctx.beginPath()
+  const start = props.viewport.normalizedToScreen(pts[0])
+  ctx.moveTo(start.x, start.y)
+  for (let i = 1; i < pts.length; i++) {
+    const sp = props.viewport.normalizedToScreen(pts[i])
+    ctx.lineTo(sp.x, sp.y)
+  }
+  if (currentMousePos.value) {
+    const curSp = props.viewport.normalizedToScreen(currentMousePos.value)
+    ctx.lineTo(curSp.x, curSp.y)
+  }
+  ctx.strokeStyle = '#06b6d4'
+  ctx.lineWidth = 2
+  ctx.setLineDash([5, 3])
+  ctx.stroke()
+  ctx.setLineDash([])
+
+  for (let i = 0; i < pts.length; i++) {
+    const sp = props.viewport.normalizedToScreen(pts[i])
+    ctx.beginPath()
+    ctx.arc(sp.x, sp.y, 4.5, 0, Math.PI * 2)
+    ctx.fillStyle = i === 0 ? '#10b981' : '#06b6d4'
+    ctx.fill()
+    ctx.strokeStyle = '#ffffff'
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+  }
+
+  if (isNearStartPoint.value && pts.length >= 3) {
+    const startSp = props.viewport.normalizedToScreen(pts[0])
+    ctx.beginPath()
+    ctx.arc(startSp.x, startSp.y, 10, 0, Math.PI * 2)
+    ctx.strokeStyle = '#10b981'
+    ctx.lineWidth = 2.5
+    ctx.stroke()
+    ctx.fillStyle = 'rgba(16, 185, 129, 0.35)'
+    ctx.fill()
+  }
+}
+
+function drawPlotCentroidBadge(
+  ctx: CanvasRenderingContext2D,
+  pts: NormalizedPoint[],
+  plot: PlotItem,
+  isSelected: boolean,
+  isEraserHover: boolean
+): void {
+  const centroid = calculateCentroid(pts)
+  const sp = props.viewport.normalizedToScreen(centroid)
+
+  let text = `#${plot.plot_number}`
+  if (isEraserHover) {
+    text = `✖ 消除 #${plot.plot_number}`
+  } else if (plot.is_control) {
+    text += ' (CK)'
+  } else if (plot.treatment) {
+    text += ` (${plot.treatment}${plot.dose ? ' ' + plot.dose : ''})`
+  }
+
+  ctx.font = 'bold 11px system-ui, sans-serif'
+  const textMetrics = ctx.measureText(text)
+  const paddingX = 6
+  const paddingY = 3.5
+  const badgeW = textMetrics.width + paddingX * 2
+  const badgeH = 18
+
+  ctx.save()
+  ctx.beginPath()
+  roundRect(ctx, sp.x - badgeW / 2, sp.y - badgeH / 2, badgeW, badgeH, 4)
+
+  if (isEraserHover) {
+    ctx.fillStyle = 'rgba(239, 68, 68, 0.95)'
+    ctx.fill()
+    ctx.strokeStyle = '#ffffff'
+    ctx.lineWidth = 1
+    ctx.stroke()
+  } else {
+    ctx.fillStyle = isSelected ? 'rgba(30, 41, 59, 0.95)' : 'rgba(15, 23, 42, 0.8)'
+    ctx.fill()
+    ctx.strokeStyle = isSelected ? '#38bdf8' : 'rgba(255, 255, 255, 0.4)'
+    ctx.lineWidth = isSelected ? 1.5 : 1
+    ctx.stroke()
+  }
+
+  ctx.fillStyle = '#ffffff'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(text, sp.x, sp.y)
+  ctx.restore()
+}
+
+// ==========================================
+// 主繪製調度器 (Main Orchestrator)
+// ==========================================
+
+function drawCanvas(): void {
+  if (!canvasRef.value) return
+  const ctx = canvasRef.value.getContext('2d')
+  if (!ctx) return
+
+  const dpr = window.devicePixelRatio || 1
+  ctx.save()
+  ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height)
+  ctx.scale(dpr, dpr)
+
+  drawExistingPlots(ctx)
+  drawDraggingRectPreview(ctx)
+  drawCurrentDrawingPolyline(ctx)
+
+  if (props.gridState?.isActive) {
+    drawGridGeneratorOverlay(ctx)
+  }
+
+  ctx.restore()
+}
+
+function syncCanvasSize(): void {
+  if (!canvasRef.value || !containerRef.value) return
+  const rect = containerRef.value.getBoundingClientRect()
+  const dpr = window.devicePixelRatio || 1
+  canvasRef.value.width = rect.width * dpr
+  canvasRef.value.height = rect.height * dpr
+  drawCanvas()
+}
+
+// ==========================================
+// 滑鼠事件處理子函式 (Event Handlers)
+// ==========================================
+
+function handleEraserDown(screenX: number, screenY: number): void {
+  if (props.gridState?.isActive) {
+    const hitCell = findGridCellAtPoint(screenX, screenY)
+    if (hitCell) {
+      emit('toggle-exclude-grid-cell', hitCell.cellIndex)
+      isErasing.value = true
     }
     return
   }
 
-  const { screenX, screenY, norm } = getCanvasRelativeCoords(e)
-  currentMousePos.value = norm
+  const hitPlot = findPlotAtPoint(screenX, screenY)
+  if (hitPlot) {
+    emit('delete-plot', hitPlot.plot_number)
+    isErasing.value = true
+  }
+}
 
-  // 2. 自動網格模式下拖曳 4 角錨點或懸停檢測
+function handleEraserMove(screenX: number, screenY: number): void {
   if (props.gridState?.isActive) {
-    if (draggingGridCornerIndex.value !== null) {
-      emit('update-grid-corner', {
-        index: draggingGridCornerIndex.value,
-        point: norm,
-      })
-      drawCanvas()
-      return
-    }
-
-    let isHoverHandle = false
-    if (props.gridState.corners && props.gridState.corners.length >= 4) {
-      for (let i = 0; i < 4; i++) {
-        const sc = props.viewport.normalizedToScreen(props.gridState.corners[i])
-        if (Math.hypot(sc.x - screenX, sc.y - screenY) <= 18) {
-          isHoverHandle = true
-          break
-        }
+    const hitCell = findGridCellAtPoint(screenX, screenY)
+    hoveredGridCellIndex.value = hitCell ? hitCell.cellIndex : null
+    if (isErasing.value && hitCell) {
+      const excluded = new Set(props.gridState.excludedIndices || [])
+      if (!excluded.has(hitCell.cellIndex)) {
+        emit('toggle-exclude-grid-cell', hitCell.cellIndex)
       }
     }
-    if (canvasRef.value) {
-      canvasRef.value.style.cursor = isHoverHandle ? 'grab' : 'crosshair'
+  } else {
+    const hitPlot = findPlotAtPoint(screenX, screenY)
+    hoveredPlotNumber.value = hitPlot ? hitPlot.plot_number : null
+    if (isErasing.value && hitPlot) {
+      emit('delete-plot', hitPlot.plot_number)
     }
-    return
   }
+  drawCanvas()
+}
 
-  // 3. 頂點拖曳微調
-  if (draggingVertexIndex.value !== null && props.selectedPlotNumber !== null) {
+function handleGridHandleDown(screenX: number): boolean {
+  if (!props.gridState?.corners || props.gridState.corners.length < 4) return false
+  for (let i = 0; i < 4; i++) {
+    const sc = props.viewport.normalizedToScreen(props.gridState.corners[i])
+    if (Math.hypot(sc.x - screenX, sc.y - screenX) <= 18) {
+      draggingGridCornerIndex.value = i
+      return true
+    }
+  }
+  return false
+}
+
+function handleViewModeDown(screenX: number, screenY: number): void {
+  const hitPlot = findPlotAtPoint(screenX, screenY)
+  if (hitPlot) {
+    emit('select-plot', hitPlot.plot_number)
+    emit('edit-plot', hitPlot)
+  } else {
+    emit('select-plot', null)
+  }
+}
+
+function handlePlotSelectionAndDragDown(
+  screenX: number,
+  screenY: number,
+  norm: NormalizedPoint,
+  e: MouseEvent
+): boolean {
+  // 1. 先檢驗是否點擊於選中小區的頂點手柄
+  if (props.selectedPlotNumber !== null && currentDrawingPoints.value.length === 0 && !isDraggingRect.value) {
     const selectedPlot = props.plots.find((p) => p.plot_number === props.selectedPlotNumber)
     if (selectedPlot) {
-      const pts = parseCoords(selectedPlot.coords)
-      if (draggingVertexIndex.value >= 0 && draggingVertexIndex.value < pts.length) {
-        pts[draggingVertexIndex.value] = { x: norm.x, y: norm.y }
-        emit('update-plot-points', { plotNumber: selectedPlot.plot_number, points: pts })
+      const vIdx = findVertexNearPoint(screenX, screenY, selectedPlot)
+      if (vIdx !== null) {
+        draggingVertexIndex.value = vIdx
+        return true
       }
     }
-    drawCanvas()
-    return
   }
 
-  // 3. 矩形拖曳中
-  if (isDraggingRect.value && rectStartNorm.value) {
-    rectCurrentNorm.value = norm
-    drawCanvas()
-    return
+  // 2. 檢驗是否點擊中小區多邊形本體
+  const hitPlot = findPlotAtPoint(screenX, screenY)
+  if (hitPlot) {
+    emit('select-plot', hitPlot.plot_number)
+    isDraggingWholePlot.value = true
+    wholePlotDragStartNorm.value = { x: norm.x, y: norm.y }
+    wholePlotCurrentDelta.value = { dx: 0, dy: 0 }
+    isAltDragging.value = e.altKey
+    return true
   }
 
-  // 4. 多邊形起點吸附判定
-  if (props.drawTool === 'polygon' && currentDrawingPoints.value.length >= 3) {
-    const startSp = props.viewport.normalizedToScreen(currentDrawingPoints.value[0])
-    const dist = Math.hypot(startSp.x - screenX, startSp.y - screenY)
-    isNearStartPoint.value = dist <= SNAP_THRESHOLD_PX
-  } else {
-    isNearStartPoint.value = false
-  }
+  return false
+}
 
-  if (currentDrawingPoints.value.length > 0) {
+function handleDrawModeDown(
+  screenX: number,
+  screenY: number,
+  norm: NormalizedPoint,
+  e: MouseEvent
+): void {
+  const handled = handlePlotSelectionAndDragDown(screenX, screenY, norm, e)
+  if (handled) return
+
+  // 點擊空白處取消選取
+  emit('select-plot', null)
+
+  if (props.drawTool === 'rect') {
+    isDraggingRect.value = true
+    rectStartScreen.value = { x: screenX, y: screenY }
+    rectStartNorm.value = { x: norm.x, y: norm.y }
+    rectCurrentNorm.value = { x: norm.x, y: norm.y }
     drawCanvas()
+  } else if (props.drawTool === 'polygon') {
+    if (currentDrawingPoints.value.length > 0) {
+      if (isNearStartPoint.value && currentDrawingPoints.value.length >= 3) {
+        finishDrawing()
+        return
+      }
+      currentDrawingPoints.value.push({ x: norm.x, y: norm.y })
+      drawCanvas()
+    } else {
+      currentDrawingPoints.value = [{ x: norm.x, y: norm.y }]
+      drawCanvas()
+    }
   }
 }
 
-function onMouseUp(e: MouseEvent) {
-  if (draggingGridCornerIndex.value !== null) {
-    draggingGridCornerIndex.value = null
-    drawCanvas()
-    return
+function finishWholePlotDrag(): void {
+  if (isDraggingWholePlot.value && props.selectedPlotNumber !== null) {
+    const delta = wholePlotCurrentDelta.value
+    const dist = Math.hypot(delta.dx, delta.dy)
+    if (dist >= 0.004) {
+      if (isAltDragging.value) {
+        emit('duplicate-plot', props.selectedPlotNumber)
+      } else {
+        emit('move-plot', { plotNumber: props.selectedPlotNumber, delta })
+      }
+    } else if (!isAltDragging.value) {
+      const plot = props.plots.find((p) => p.plot_number === props.selectedPlotNumber)
+      if (plot) emit('edit-plot', plot)
+    }
   }
+  isDraggingWholePlot.value = false
+  wholePlotDragStartNorm.value = null
+  wholePlotCurrentDelta.value = { dx: 0, dy: 0 }
+  isAltDragging.value = false
+}
 
-  if (e.button === 2 || props.viewport.isPanning.value) {
-    props.viewport.endPan()
-    return
-  }
-
-  // 矩形拖曳結束判定
+function finishRectDrag(screenX: number, screenY: number): void {
   if (isDraggingRect.value && rectStartScreen.value && rectStartNorm.value && rectCurrentNorm.value) {
-    const { screenX, screenY } = getCanvasRelativeCoords(e)
     const dist = Math.hypot(screenX - rectStartScreen.value.x, screenY - rectStartScreen.value.y)
-
     if (dist >= MIN_RECT_DRAG_PX) {
       const minX = Math.min(rectStartNorm.value.x, rectCurrentNorm.value.x)
       const maxX = Math.max(rectStartNorm.value.x, rectCurrentNorm.value.x)
@@ -662,11 +830,145 @@ function onMouseUp(e: MouseEvent) {
       ]
       emit('plot-drawn', points)
     }
-
     isDraggingRect.value = false
     rectStartScreen.value = null
     rectStartNorm.value = null
     rectCurrentNorm.value = null
+  }
+}
+
+// ==========================================
+// 滑鼠主流程調度 (Event Orchestrators)
+// ==========================================
+
+function onMouseDown(e: MouseEvent): void {
+  if (e.button === 2) {
+    e.preventDefault()
+    props.viewport.startPan(e.clientX, e.clientY)
+    return
+  }
+  if (e.button !== 0) return
+
+  const { screenX, screenY, norm } = getCanvasRelativeCoords(e)
+
+  if (props.drawTool === 'eraser') {
+    handleEraserDown(screenX, screenY)
+    return
+  }
+
+  if (props.gridState?.isActive) {
+    handleGridHandleDown(screenX)
+    return
+  }
+
+  if (props.activeMode === 'view') {
+    handleViewModeDown(screenX, screenY)
+    return
+  }
+
+  if (props.activeMode === 'draw') {
+    handleDrawModeDown(screenX, screenY, norm, e)
+  }
+}
+
+function onMouseMove(e: MouseEvent): void {
+  if (props.viewport.isPanning.value) {
+    const w = containerRef.value?.clientWidth
+    const h = containerRef.value?.clientHeight
+    if (props.viewport.updatePan(e.clientX, e.clientY, w, h)) {
+      drawCanvas()
+    }
+    return
+  }
+
+  const { screenX, screenY, norm } = getCanvasRelativeCoords(e)
+  currentMousePos.value = norm
+
+  if (props.drawTool === 'eraser') {
+    handleEraserMove(screenX, screenY)
+    return
+  }
+
+  if (props.gridState?.isActive) {
+    if (draggingGridCornerIndex.value !== null) {
+      emit('update-grid-corner', {
+        index: draggingGridCornerIndex.value,
+        point: norm,
+      })
+      drawCanvas()
+    }
+    return
+  }
+
+  // 頂點微調拖曳中
+  if (draggingVertexIndex.value !== null && props.selectedPlotNumber !== null) {
+    const selectedPlot = props.plots.find((p) => p.plot_number === props.selectedPlotNumber)
+    if (selectedPlot) {
+      const pts = parseCoords(selectedPlot.coords)
+      if (draggingVertexIndex.value >= 0 && draggingVertexIndex.value < pts.length) {
+        pts[draggingVertexIndex.value] = { x: norm.x, y: norm.y }
+        emit('update-plot-points', { plotNumber: selectedPlot.plot_number, points: pts })
+      }
+    }
+    drawCanvas()
+    return
+  }
+
+  // 整體小區拖曳中
+  if (isDraggingWholePlot.value && wholePlotDragStartNorm.value) {
+    wholePlotCurrentDelta.value = {
+      dx: norm.x - wholePlotDragStartNorm.value.x,
+      dy: norm.y - wholePlotDragStartNorm.value.y,
+    }
+    drawCanvas()
+    return
+  }
+
+  // 矩形拖曳拉框中
+  if (isDraggingRect.value && rectStartNorm.value) {
+    rectCurrentNorm.value = norm
+    drawCanvas()
+    return
+  }
+
+  // 多邊形點繪起點吸附
+  if (props.drawTool === 'polygon' && currentDrawingPoints.value.length >= 3) {
+    const startSp = props.viewport.normalizedToScreen(currentDrawingPoints.value[0])
+    const dist = Math.hypot(startSp.x - screenX, startSp.y - screenY)
+    isNearStartPoint.value = dist <= SNAP_THRESHOLD_PX
+  } else {
+    isNearStartPoint.value = false
+  }
+
+  if (currentDrawingPoints.value.length > 0) {
+    drawCanvas()
+  }
+}
+
+function onMouseUp(e: MouseEvent): void {
+  isErasing.value = false
+
+  if (draggingGridCornerIndex.value !== null) {
+    draggingGridCornerIndex.value = null
+    drawCanvas()
+    return
+  }
+
+  if (e.button === 2 || props.viewport.isPanning.value) {
+    props.viewport.endPan()
+    return
+  }
+
+  const { screenX, screenY } = getCanvasRelativeCoords(e)
+
+  if (isDraggingWholePlot.value) {
+    finishWholePlotDrag()
+    drawCanvas()
+    return
+  }
+
+  if (isDraggingRect.value) {
+    finishRectDrag(screenX, screenY)
     drawCanvas()
     return
   }
@@ -674,7 +976,7 @@ function onMouseUp(e: MouseEvent) {
   draggingVertexIndex.value = null
 }
 
-function onWheel(e: WheelEvent) {
+function onWheel(e: WheelEvent): void {
   e.preventDefault()
   if (!canvasRef.value) return
   const rect = canvasRef.value.getBoundingClientRect()
@@ -686,13 +988,33 @@ function onWheel(e: WheelEvent) {
   drawCanvas()
 }
 
-function onDblClick() {
+function onDblClick(): void {
   if (props.activeMode === 'draw' && props.drawTool === 'polygon' && currentDrawingPoints.value.length >= 3) {
     finishDrawing()
   }
 }
 
-function finishDrawing() {
+function onKeyDown(e: KeyboardEvent): void {
+  const targetTag = (e.target as HTMLElement)?.tagName?.toLowerCase()
+  if (targetTag === 'input' || targetTag === 'textarea' || targetTag === 'select') return
+
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (props.selectedPlotNumber !== null && !isDraggingRect.value && currentDrawingPoints.value.length === 0) {
+      e.preventDefault()
+      emit('delete-plot', props.selectedPlotNumber)
+    }
+  } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+    if (props.selectedPlotNumber !== null) {
+      e.preventDefault()
+      emit('duplicate-plot', props.selectedPlotNumber)
+    }
+  } else if (e.key === 'Escape') {
+    cancelDrawing()
+    emit('select-plot', null)
+  }
+}
+
+function finishDrawing(): void {
   if (currentDrawingPoints.value.length >= 3) {
     emit('plot-drawn', [...currentDrawingPoints.value])
   }
@@ -701,14 +1023,14 @@ function finishDrawing() {
   drawCanvas()
 }
 
-function undoLastPoint() {
+function undoLastPoint(): void {
   if (currentDrawingPoints.value.length > 0) {
     currentDrawingPoints.value.pop()
     drawCanvas()
   }
 }
 
-function cancelDrawing() {
+function cancelDrawing(): void {
   currentDrawingPoints.value = []
   isDraggingRect.value = false
   rectStartScreen.value = null
@@ -729,6 +1051,7 @@ defineExpose({
 let resizeObserver: ResizeObserver | null = null
 
 onMounted(() => {
+  window.addEventListener('keydown', onKeyDown)
   nextTick(() => {
     syncCanvasSize()
     if (containerRef.value) {
@@ -741,6 +1064,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('keydown', onKeyDown)
   if (resizeObserver) {
     resizeObserver.disconnect()
   }
@@ -757,6 +1081,12 @@ watch(
     props.gridState?.rows,
     props.gridState?.cols,
     props.gridState?.marginRatio,
+    props.gridState?.scaleX,
+    props.gridState?.scaleY,
+    props.gridState?.paddingRatio,
+    props.gridState?.offsetX,
+    props.gridState?.offsetY,
+    props.gridState?.excludedIndices,
     props.previewPlots,
     props.viewport.scale.value,
     props.viewport.panX.value,
@@ -788,9 +1118,9 @@ watch(
     class="absolute inset-0 pointer-events-auto select-none"
     :class="{
       'cursor-grab': viewport.isPanning.value,
-      'cursor-pointer': activeMode === 'view' && !gridState?.isActive,
-      'cursor-crosshair': activeMode === 'draw' && !gridState?.isActive && !viewport.isPanning.value,
-      'cursor-default': gridState?.isActive && !viewport.isPanning.value,
+      'cursor-pointer': (activeMode === 'view' && !gridState?.isActive) || drawTool === 'eraser',
+      'cursor-crosshair': activeMode === 'draw' && drawTool !== 'eraser' && !gridState?.isActive && !viewport.isPanning.value,
+      'cursor-default': gridState?.isActive && drawTool !== 'eraser' && !viewport.isPanning.value,
     }"
     @mousedown="onMouseDown"
     @mousemove="onMouseMove"

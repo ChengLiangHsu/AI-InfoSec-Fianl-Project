@@ -25,7 +25,7 @@ import { Conversation, ConversationContent, ConversationScrollButton } from '@/c
 import type { AttachmentData } from '@/components/ai-elements/attachments'
 
 import { onMounted, watch, computed } from 'vue'
-import { Eye, BarChart2, Sparkles, HelpCircle, FileText, Bug, Sprout, ShieldAlert } from '@lucide/vue'
+import { Eye, BarChart2, Sparkles, HelpCircle, FileText, Bug, Sprout, ShieldAlert, Loader2 } from '@lucide/vue'
 import { useChatAgent } from '@/lib/useChatAgent'
 
 const props = withDefaults(
@@ -44,6 +44,14 @@ const props = withDefaults(
 
 const { status, messages, loadInitialMessages, sendPrompt } = useChatAgent(() => props.projectId)
 
+const isBusy = computed(() => status.value === 'submitted' || status.value === 'streaming')
+
+const isThinking = computed(() => {
+  if (!isBusy.value) return false
+  const lastMsg = messages.value[messages.value.length - 1]
+  return !lastMsg || lastMsg.role === 'user'
+})
+
 onMounted(() => {
   loadInitialMessages(props.projectId)
 })
@@ -58,15 +66,19 @@ watch(
 )
 
 async function onSubmit(payload: PromptInputMessage): Promise<void> {
+  if (isBusy.value) return
   await sendPrompt(payload.text, props.projectId)
 }
 
 async function triggerQuickPrompt(promptText: string): Promise<void> {
-  if (status.value === 'streaming') return
+  if (isBusy.value) return
   await sendPrompt(promptText, props.projectId)
 }
 
 const placeholderText = computed(() => {
+  if (isBusy.value) {
+    return 'AI 正在思考與分析中，請稍候...'
+  }
   if (props.isHome) {
     return '跟田間助理聊聊系統功能、相片拼接或植生指標...'
   }
@@ -98,6 +110,15 @@ const placeholderText = computed(() => {
             <MessageBranchNext />
           </MessageBranchSelector>
         </MessageBranch>
+
+        <!-- 當 AI 正在思考中且尚未回傳內容時顯示載入指示器 -->
+        <div
+          v-if="isThinking"
+          class="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/40 px-3 py-2 text-xs text-muted-foreground w-fit animate-pulse my-2"
+        >
+          <Loader2 class="size-3.5 animate-spin text-primary" />
+          <span>田間助理正在思考與分析中...</span>
+        </div>
       </ConversationContent>
       <ConversationScrollButton />
     </Conversation>
@@ -110,8 +131,8 @@ const placeholderText = computed(() => {
         <template v-if="isHome">
           <button
             type="button"
-            :disabled="status === 'streaming'"
-            class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border/80 bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:opacity-50 cursor-pointer shadow-2xs"
+            :disabled="isBusy"
+            class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border/80 bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none cursor-pointer shadow-2xs"
             @click="triggerQuickPrompt('系統功能介紹')"
           >
             <HelpCircle class="size-3 text-primary" />
@@ -119,8 +140,8 @@ const placeholderText = computed(() => {
           </button>
           <button
             type="button"
-            :disabled="status === 'streaming'"
-            class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border/80 bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:opacity-50 cursor-pointer shadow-2xs"
+            :disabled="isBusy"
+            class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border/80 bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none cursor-pointer shadow-2xs"
             @click="triggerQuickPrompt('空拍拍攝建議')"
           >
             <FileText class="size-3 text-sky-500" />
@@ -128,8 +149,8 @@ const placeholderText = computed(() => {
           </button>
           <button
             type="button"
-            :disabled="status === 'streaming'"
-            class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border/80 bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:opacity-50 cursor-pointer shadow-2xs"
+            :disabled="isBusy"
+            class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border/80 bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none cursor-pointer shadow-2xs"
             @click="triggerQuickPrompt('支援植生指標')"
           >
             <Sparkles class="size-3 text-amber-500" />
@@ -141,8 +162,8 @@ const placeholderText = computed(() => {
         <template v-else-if="!hasPlots">
           <button
             type="button"
-            :disabled="status === 'streaming'"
-            class="inline-flex shrink-0 items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-primary/20 disabled:opacity-50 cursor-pointer shadow-2xs"
+            :disabled="isBusy"
+            class="inline-flex shrink-0 items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-primary/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none cursor-pointer shadow-2xs"
             @click="triggerQuickPrompt('殺蟲劑藥效評估')"
           >
             <Bug class="size-3 text-primary" />
@@ -150,8 +171,8 @@ const placeholderText = computed(() => {
           </button>
           <button
             type="button"
-            :disabled="status === 'streaming'"
-            class="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-emerald-500/20 disabled:opacity-50 cursor-pointer shadow-2xs"
+            :disabled="isBusy"
+            class="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none cursor-pointer shadow-2xs"
             @click="triggerQuickPrompt('除草劑防除試驗')"
           >
             <ShieldAlert class="size-3 text-emerald-500" />
@@ -159,8 +180,8 @@ const placeholderText = computed(() => {
           </button>
           <button
             type="button"
-            :disabled="status === 'streaming'"
-            class="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-amber-500/20 disabled:opacity-50 cursor-pointer shadow-2xs"
+            :disabled="isBusy"
+            class="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none cursor-pointer shadow-2xs"
             @click="triggerQuickPrompt('長勢與缺株監測')"
           >
             <Sprout class="size-3 text-amber-500" />
@@ -172,8 +193,8 @@ const placeholderText = computed(() => {
         <template v-if="!isHome">
           <button
             type="button"
-            :disabled="status === 'streaming'"
-            class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border/80 bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:opacity-50 cursor-pointer shadow-2xs"
+            :disabled="isBusy"
+            class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border/80 bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none cursor-pointer shadow-2xs"
             @click="triggerQuickPrompt('視覺診斷光譜')"
           >
             <Eye class="size-3 text-primary" />
@@ -181,8 +202,8 @@ const placeholderText = computed(() => {
           </button>
           <button
             type="button"
-            :disabled="status === 'streaming'"
-            class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border/80 bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:opacity-50 cursor-pointer shadow-2xs"
+            :disabled="isBusy"
+            class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border/80 bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none cursor-pointer shadow-2xs"
             @click="triggerQuickPrompt('光譜數值統計')"
           >
             <BarChart2 class="size-3 text-emerald-500" />
@@ -190,8 +211,8 @@ const placeholderText = computed(() => {
           </button>
           <button
             type="button"
-            :disabled="status === 'streaming'"
-            class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border/80 bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:opacity-50 cursor-pointer shadow-2xs"
+            :disabled="isBusy"
+            class="inline-flex shrink-0 items-center gap-1 rounded-full border border-border/80 bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none cursor-pointer shadow-2xs"
             @click="triggerQuickPrompt('正射全景檢查')"
           >
             <Sparkles class="size-3 text-amber-500" />
@@ -203,10 +224,10 @@ const placeholderText = computed(() => {
       <PromptInputProvider @submit="onSubmit">
         <PromptInput multiple global-drop class="w-full">
           <PromptInputBody>
-            <PromptInputTextarea :placeholder="placeholderText" />
+            <PromptInputTextarea :placeholder="placeholderText" :disabled="isBusy" />
           </PromptInputBody>
           <PromptInputFooter>
-            <PromptInputSubmit :disabled="status === 'streaming'" :status="status" />
+            <PromptInputSubmit :disabled="isBusy" :status="status" />
           </PromptInputFooter>
         </PromptInput>
       </PromptInputProvider>

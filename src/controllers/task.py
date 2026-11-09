@@ -131,15 +131,22 @@ async def _stream_agent_dialogue(
     deps = ChatDeps(project_id=project_id, task_port=task_port)
 
     limits = UsageLimits(request_limit=6, tool_calls_limit=6, output_tokens_limit=6000)
-    async with agent.run_stream(prompt, message_history=messages, deps=deps, usage_limits=limits) as result:
-        async for text in result.stream_output(debounce_by=0.01):
-            m = ModelResponse(parts=[TextPart(text)], timestamp=result.timestamp)
-            converted = _to_model_message_response(m)
-            if converted:
-                yield json.dumps(asdict(converted), ensure_ascii=False).encode("utf-8") + b"\n"
+    try:
+        async with agent.run_stream(prompt, message_history=messages, deps=deps, usage_limits=limits) as result:
+            async for text in result.stream_output(debounce_by=0.01):
+                m = ModelResponse(parts=[TextPart(text)], timestamp=result.timestamp)
+                converted = _to_model_message_response(m)
+                if converted:
+                    yield json.dumps(asdict(converted), ensure_ascii=False).encode("utf-8") + b"\n"
 
-    if is_task_scoped:
-        await usecase.append_messages(project_id, result.new_messages_json())
+        if is_task_scoped:
+            await usecase.append_messages(project_id, result.new_messages_json())
+    except Exception as exc:
+        err_msg = f"抱歉，AI 助理連線遇到問題：{exc}"
+        m = ModelResponse(parts=[TextPart(err_msg)], timestamp=datetime.now(timezone.utc))
+        converted = _to_model_message_response(m)
+        if converted:
+            yield json.dumps(asdict(converted), ensure_ascii=False).encode("utf-8") + b"\n"
 
 
 async def _generate_task_progress_events(

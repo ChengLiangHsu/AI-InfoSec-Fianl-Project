@@ -78,6 +78,7 @@ import DroneHomeUpload from './components/DroneHomeUpload.vue'
 import PlotToolbar from './components/PlotToolbar.vue'
 import PlotCanvasOverlay from './components/PlotCanvasOverlay.vue'
 import PlotTreatmentDialog, { type TreatmentData } from './components/PlotTreatmentDialog.vue'
+import CopyPlotsDialog from './components/CopyPlotsDialog.vue'
 import { usePlots, type NormalizedPoint, type PlotItem } from './lib/usePlots'
 import { useChatAgent } from './lib/useChatAgent'
 import { useOdmProgress } from './lib/useOdmProgress'
@@ -102,18 +103,29 @@ const {
   updatePlotTreatment,
   updatePlotPoints,
   deletePlot,
+  clearAllPlots,
   startGridMode,
   closeGridMode,
   updateGridCorner,
   detectMarkers,
   computeGridPlots,
   confirmBatchGenerate,
+  toggleExcludeGridCell,
+  clearExcludedGridCells,
+  duplicatePlot,
+  duplicateAllPlots,
+  movePlot,
+  copyPlotsToClipboard,
+  pastePlotsFromClipboard,
+  importPlotsFromExternal,
 } = usePlots()
 
 const previewGridPlots = computed(() => {
   if (!gridState.value.isActive) return []
   return computeGridPlots()
 })
+
+const copyDialogOpen = ref(false)
 
 async function handleDetectMarkers() {
   if (!selectedProject.value?.id) return
@@ -131,7 +143,61 @@ function handleConfirmGrid() {
   nextTick(() => plotCanvasOverlayRef.value?.redraw())
 }
 
-const drawTool = ref<'rect' | 'polygon'>('rect')
+function handleDuplicatePlot(plotNum: number) {
+  duplicatePlot(plotNum)
+  nextTick(() => plotCanvasOverlayRef.value?.redraw())
+}
+
+function handleDuplicateAll() {
+  duplicateAllPlots()
+  nextTick(() => plotCanvasOverlayRef.value?.redraw())
+}
+
+function handleCopyToClipboard() {
+  const ok = copyPlotsToClipboard()
+  if (ok) {
+    alert(`已將 ${plots.value.length} 個小區設定複製至剪貼簿！`)
+  } else {
+    alert('畫布上暫無小區可供複製')
+  }
+}
+
+async function handlePasteFromClipboard() {
+  const count = await pastePlotsFromClipboard()
+  if (count > 0) {
+    nextTick(() => plotCanvasOverlayRef.value?.redraw())
+    alert(`已由剪貼簿貼上 ${count} 個小區！`)
+  } else {
+    alert('剪貼簿中未發現有效的小區 JSON 格式資料')
+  }
+}
+
+function handleClearAllPlots() {
+  if (plots.value.length === 0) return
+  if (confirm(`確定要清空畫布上的所有 ${plots.value.length} 個小區嗎？`)) {
+    clearAllPlots()
+    nextTick(() => plotCanvasOverlayRef.value?.redraw())
+  }
+}
+
+async function handleConfirmCopyFromProject(payload: { sourceProjectId: string; mode: 'replace' | 'append' }) {
+  try {
+    const res = await fetch(`/api/task/plots/${payload.sourceProjectId}`)
+    const json = await res.json()
+    if (res.ok && json.result && Array.isArray(json.data)) {
+      const count = importPlotsFromExternal(json.data, payload.mode)
+      copyDialogOpen.value = false
+      nextTick(() => plotCanvasOverlayRef.value?.redraw())
+      alert(`已成功由來源專案匯入 ${count} 個小區！`)
+    } else {
+      alert('無法取得來源專案之小區資料')
+    }
+  } catch (err: any) {
+    alert(`匯入失敗: ${err.message}`)
+  }
+}
+
+const drawTool = ref<'rect' | 'polygon' | 'eraser'>('rect')
 
 const plotCanvasOverlayRef = ref<InstanceType<typeof PlotCanvasOverlay> | null>(null)
 const orthoContainerRef = ref<HTMLDivElement | null>(null)
@@ -447,25 +513,38 @@ watch(selectedProject, async (newProj) => {
     <AppSidebar v-model:is-creating-project="isCreatingProject" v-model:selected-project="selectedProject"
       v-model:projects="projects" />
     <SidebarInset>
-      <header v-if="selectedProject" class="bg-background sticky top-0 flex shrink-0 items-center gap-2 border-b p-4">
-        <SidebarTrigger class="-ml-1" />
+      <header class="bg-background sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b px-4">
+        <SidebarTrigger class="-ml-1 cursor-pointer" title="切換側邊欄" />
         <Separator orientation="vertical" class="mr-2 data-[orientation=vertical]:h-4" />
         <Breadcrumb>
           <BreadcrumbList>
-            <BreadcrumbItem class="hidden md:block">
-              <BreadcrumbLink href="#" class="cursor-pointer" @click.prevent="handleGoHome">
+            <BreadcrumbItem>
+              <BreadcrumbLink
+                href="#"
+                class="cursor-pointer font-medium"
+                :class="{ 'text-foreground font-semibold': !selectedProject }"
+                @click.prevent="handleGoHome"
+              >
                 主畫面
               </BreadcrumbLink>
             </BreadcrumbItem>
-            <BreadcrumbSeparator class="hidden md:block" />
-            <BreadcrumbItem>
-              <BreadcrumbLink>
-                {{ selectedProject.name }}
-              </BreadcrumbLink>
-            </BreadcrumbItem>
+            <template v-if="selectedProject">
+              <BreadcrumbSeparator class="hidden md:block" />
+              <BreadcrumbItem>
+                <BreadcrumbLink class="font-semibold text-foreground">
+                  {{ selectedProject.name }}
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+            </template>
           </BreadcrumbList>
         </Breadcrumb>
-        <Button variant="destructive" size="sm" class="ml-auto" @click="handleDeleteProject(selectedProject.id)">
+        <Button
+          v-if="selectedProject"
+          variant="destructive"
+          size="sm"
+          class="ml-auto cursor-pointer"
+          @click="handleDeleteProject(selectedProject.id)"
+        >
           刪除專案
         </Button>
       </header>
@@ -535,13 +614,21 @@ watch(selectedProject, async (newProj) => {
             @undo-point="plotCanvasOverlayRef?.undoLastPoint()"
             @cancel-drawing="plotCanvasOverlayRef?.cancelDrawing()"
             @delete-selected="selectedPlotNumber !== null && deletePlot(selectedPlotNumber)"
+            @duplicate-selected="selectedPlotNumber !== null && handleDuplicatePlot(selectedPlotNumber)"
+            @duplicate-all="handleDuplicateAll"
+            @copy-to-clipboard="handleCopyToClipboard"
+            @paste-from-clipboard="handlePasteFromClipboard"
+            @open-copy-from-project="copyDialogOpen = true"
+            @clear-all="handleClearAllPlots"
             @start-grid="startGridMode"
             @close-grid="closeGridMode"
-            @detect-markers="handleDetectMarkers"
             @confirm-grid="handleConfirmGrid"
+            @clear-excluded-cells="clearExcludedGridCells"
             @update:grid-rows="gridState.rows = $event"
             @update:grid-cols="gridState.cols = $event"
-            @update:grid-margin="gridState.marginRatio = $event"
+            @update:grid-margin="gridState.marginRatio = $event; gridState.scaleX = Math.max(0.05, 1 - 2 * $event); gridState.scaleY = Math.max(0.05, 1 - 2 * $event)"
+            @update:grid-scale-x="gridState.scaleX = $event; gridState.marginRatio = Number(((1 - $event) / 2).toFixed(3))"
+            @update:grid-scale-y="gridState.scaleY = $event"
           />
 
           <CardContent class="p-4">
@@ -717,6 +804,10 @@ watch(selectedProject, async (newProj) => {
                   @update-plot-points="onUpdatePlotPoints"
                   @select-plot="onSelectPlot"
                   @update-grid-corner="updateGridCorner($event.index, $event.point)"
+                  @delete-plot="deletePlot"
+                  @duplicate-plot="handleDuplicatePlot"
+                  @move-plot="movePlot($event.plotNumber, $event.delta)"
+                  @toggle-exclude-grid-cell="toggleExcludeGridCell"
                 />
               </div>
             </div>
@@ -734,6 +825,13 @@ watch(selectedProject, async (newProj) => {
             @cancel="onDialogCancel"
             @delete="onDialogDelete"
           />
+
+          <CopyPlotsDialog
+            v-model:open="copyDialogOpen"
+            :projects="projects"
+            :current-project-id="selectedProject?.id"
+            @confirm="handleConfirmCopyFromProject"
+          />
         </Card>
 
         <!-- 運算中提示 -->
@@ -745,7 +843,7 @@ watch(selectedProject, async (newProj) => {
           </div>
         </Card>
       </div>
-      <div v-if="!selectedProject" class="h-[calc(100vh-1rem)] w-full">
+      <div v-if="!selectedProject" class="h-[calc(100vh-3.5rem)] w-full overflow-hidden">
         <DroneHomeUpload @project-created="onProjectCreated" />
       </div>
     </SidebarInset>

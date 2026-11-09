@@ -2,13 +2,11 @@
 import type { SidebarProps } from "@/components/ui/sidebar"
 import { Clock, Command, Images, Plus } from "@lucide/vue"
 import { computed, defineModel, ref } from "vue"
-import NavUser from "@/components/NavUser.vue"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarHeader,
@@ -16,11 +14,12 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarRail,
 } from "@/components/ui/sidebar"
 import { useChatAgent } from "@/lib/useChatAgent"
 
 const props = withDefaults(defineProps<SidebarProps>(), {
-  collapsible: "icon",
+  collapsible: "offcanvas",
 })
 
 const isCreatingProject = defineModel("isCreatingProject")
@@ -47,29 +46,21 @@ const filteredProjects = computed(() => {
       p.id?.toLowerCase().includes(query)
   )
 })
-
-const data = {
-  user: {
-    name: "shadcn",
-    email: "m@example.com",
-    avatar: "",
-  },
-}
 </script>
 
 <template>
   <Sidebar v-bind="props">
     <SidebarHeader class="gap-3.5 border-b p-4">
-      <div class="flex items-center justify-between">
-        <SidebarMenu class="flex-1">
+      <div class="flex items-center justify-between gap-1">
+        <SidebarMenu class="flex-1 min-w-0">
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" as-child class="h-9 p-1">
               <a href="#" @click.prevent="handleGoHome" class="flex items-center gap-2">
                 <div
-                  class="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
+                  class="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg shrink-0">
                   <Command class="size-4" />
                 </div>
-                <div class="grid flex-1 text-left text-sm leading-tight">
+                <div class="grid flex-1 text-left text-sm leading-tight min-w-0">
                   <span class="truncate font-semibold">Acme Inc</span>
                   <span class="truncate text-xs text-muted-foreground">航拍影像分析平台</span>
                 </div>
@@ -81,14 +72,14 @@ const data = {
           type="button"
           size="icon"
           variant="ghost"
-          class="size-8 shrink-0 text-muted-foreground hover:text-foreground"
+          class="size-8 shrink-0 text-muted-foreground hover:text-foreground cursor-pointer"
           title="回到主畫面並清空對話"
           @click="handleGoHome"
         >
           <Plus class="size-4" />
         </Button>
       </div>
-      <SidebarInput v-model="searchQuery" placeholder="Type to search..." />
+      <SidebarInput v-model="searchQuery" placeholder="搜尋專案..." />
     </SidebarHeader>
 
     <SidebarContent>
@@ -131,8 +122,6 @@ const data = {
       </SidebarGroup>
     </SidebarContent>
 
-    <SidebarFooter class="border-t p-2">
-      <NavUser :user="data.user" />
-    </SidebarFooter>
+    <SidebarRail />
   </Sidebar>
 </template>
