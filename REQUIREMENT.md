@@ -1,232 +1,52 @@
 # 需求與決策清單 (REQUIREMENT)
 
-## 同意
-- **小區切割（Plot Segmentation）**：使用者在合併影像上框出試驗田並輸入行列數，系統產生小區網格，允許手動微調確認後再裁切。
-- **植生指標計算（Vegetation Index Calculation）**：本階段計算 RGB 可取得的植生指標（如 VARI、EXG）並排除背景雜訊，原列 NDRE 移出本階段範圍。
-- **AI 摘要與報告延後**：第一版先完成畫布著色與數值比較表，AI 結果摘要、報告草稿生成及匯出列為後續工作。
-- **確定性計算**：第一版的影像指標與比較數值由純 Python 函式計算，AI 負責推薦指標與說明選擇理由，正式藥效公式列為後續待確認項目。
-- **通俗單句摘要風格**：回覆與文檔以短句、重點條列或精簡表格呈現，每項只留一個重點，刪除重複說明並保留必要來源連結。
-- **第四章研究主軸**：Deep Research 以通用小區比較為主軸，圍繞影像品質、處理組、對照與結果解讀展開。
-- **五個核心思維三面向高中生程度精簡**：第四章 Q1 採用「理解指標、確認輸入、保留差異並查因、依試驗配置比較、結果可追溯」五項原則，依「核心意義」、「具體佐證」、「系統行為」三面向以高中生能清楚理解的科學語言精簡呈現。
-- **三個專業爭論方向**：第四章 Q2 探討「影像與人工調查、RGB 與多光譜、小區整體與細部分辨」，分別整理雙方證據、可歸納共識、未解問題與本專題選擇。
-- **深度問題附答題要點**：第四章的十個深度理解問題各附一句答題要點，供理解檢核與口頭質詢準備。
-- **指標意義優先說明**：指標的公式與現象意義皆重要，但現階段提案以反映的現象及數值高低意義為主要說明，計算原理作為輔助。
-- **保留差異並核對原因**：相同農藥與劑量的小區出現明顯指標差異時，先保留各小區結果，回看對應影像與設定以釐清原因，再決定如何解讀。
-- **前端固定指標說明**：前端先顯示固定且簡要的指標說明，協助使用者理解指標意義。
-- **AI 指標深入解釋延後實作**：使用者希望深入探討時，先由 AI Agent 依自身既有知識解釋，不加入文獻搜尋與讀取，提案先描述此能力並於影像比較流程完成後再實作。
-- **真實試驗資料集**：以使用者實際上傳的多張 RGB 空拍照片為基準，不鎖定特定地點或既定示範資料集。
-- **Pydantic AI 協調層**：採用 Pydantic AI 作為 AI Agent 協調層，專注於型別安全工具調度與 FastAPI 服務整合。
-- **指定區域像素分析（ROI Pixel Analysis）**：以使用者指定或幾何標記之小區範圍（ROI）為基準進行光譜像素統計，取代缺乏實體邊界的影像分割。
-- **小區與處理對照綁定（Plot-Treatment Mapping）**：使用者先選好農藥與劑量，再依序點選不同小區套用，建立小區編號、空間座標與處理設定的對應關係。
-- **農藥與劑量組合**：以「農藥＋劑量」區分處理組，相同農藥的不同劑量分開設定與比較。
-- **明確指定未施藥對照**：對照組與處理組採用相同的小區規劃及點選套用方式，對照組明確標記為 CK 或 UTC 且不填農藥與劑量，空白小區僅代表尚未設定。
-- **核心影像比較流程**：使用多張 RGB 空拍照片，依序完成「合併影像 → 網格切割與處理套用 → AI 推薦指標並人工確認 → 指標比較 → 畫布著色與數值比較表」。
-- **實際影像輸入**：目前使用者已具備多張 RGB 彩色空拍照片，先合併影像後再切割小區。
-- **選單指定評估目的**：小區切割後，使用者先從選單指定評估目的（例如殺蟲劑或除草劑），再由 AI 選擇評估指標。
-- **AI 輔助指標推薦與手動覆寫彈性（AI Index Recommendation with Override）**：AI 依選單指定的評估目的推薦 RGB 可計算的指標並顯示理由，使用者可透過選單修改，明確確認後才開始計算與比較。
-- **收穫分析延後實作**：先完成農藥試驗影像比較流程並驗證可完整跑通，再開始實作收穫期成熟度分析。
-- **前端互動式網格標註**：使用者在前端影像畫布設定試驗田範圍、行列數並微調小區網格，完成後以「先選農藥與劑量、再點小區」方式套用處理設定。
-- **使用者確認後的 ReAct 工具調度（ReAct Agent Tool-Calling Architecture）**：使用者明確確認指標後，由 AI Agent 動態調用像素萃取、指標計算與小區比較等確定性工具。
-- **第一版僅比較影像指標**：比較各小區及各「農藥＋劑量」組的 RGB 指標與明確指定對照組的差異，人工調查資料、藥效百分比與法定效力判定列為後續待確認項目。
-- **第一版結果畫面**：提供依指標數值著色的畫布、各小區數值比較表及各「農藥＋劑量」組的彙整與對照差異。
-- **小區指標持久化（SQLite Plot Metrics Storage）**：保存小區設定、確認的指標與計算結果以供結果畫面讀取，Agent 對話追問工具留待後續階段討論。
-- **Clean Architecture 四層架構分層（Clean Architecture Layering）**：後端採用實體（Entities）、用例（Use Cases）、倉儲（Repositories）與控制器（Controllers）四層架構，嚴格劃分關注點邊界與依賴倒置原則。
-- **純領域資料實體（Dataclass Entities）**：於 `src/entities/` 使用 Python 原生 `dataclass` 定義純領域物件（`Project`、`ConversationMessage`、`PlotGrid`），不依賴任何外部 ORM 或資料庫套件。
-- **SQLModel 專責倉儲持久化（SQLModel Dedicated Repositories）**：於 `src/repositories/` 定義 SQLModel 資料表模型，並透過領域專責倉儲類別（`ProjectRepository`、`ConversationRepository`、`PlotGridRepository`）封裝 SQLite 資料存取邏輯。
-- **標準非同步執行緒調度（Standard asyncio.to_thread Execution）**：倉儲方法以 `async def` 封裝，內部透過 Python 標準函式庫 `asyncio.to_thread` 調度同步 SQLModel Session 查詢，不引入 anyio，確保主事件迴圈無阻塞。
-- **領域聚合應用層用例（Domain Aggregated Use Cases）**：於 `src/usecases/` 建立 `OdmUseCase` 與 `ConversationUseCase` 聚合業務流程，控制器僅負責參數驗證與調度 Use Case。
-- **全面刪除測試與嚴格受控（Total Test Deletion & Permission Control）**：依開發者明確指令刪除專案內所有既有測試檔案，未獲明確許可前嚴禁新增任何測試。
-- **模組分層命名結構（Controllers / UseCases / Repositories / Entities / Agents / Utility）**：FastAPI 路由統一歸入 `src/controllers/`，業務流程歸入 `src/usecases/`，資料持久化歸入 `src/repositories/`，純資料物件歸入 `src/entities/`，Pydantic AI 代理人歸入 `src/agents/`，公式與影像輔助運算歸入 `src/utility/`。
-- **Agent 模組命名與組織（src/agents/pydantic_agent.py）**：將 Pydantic AI 代理人核心、System Prompt 與關聯 Tools 集中於 `src/agents/pydantic_agent.py`，並依賴專責倉儲介面。
-- **控制器專責拆分（Controllers Division）**：對話歷史與 Agent 串流互動收錄於 `src/controllers/conversation.py`，航拍任務與影像生成收錄於 `src/controllers/odm.py`。
-- **公用運算庫整合（Utility Modules）**：植生公式、光譜熱圖生成與 NodeODM 管理收納至 `src/utility/`。
-- **嚴格職責純粹之主程式進入點**：`src/main.py` 僅保留 FastAPI 實例、生命週期與控制器掛載，不進行任何非必要的符號 re-export，外部調用端直接對齊新模組路徑。
-- **清理無用過度工程目錄**：移除專案內殘留之空的 `src/adapter` 分層目錄，落實精簡服務導向架構。
-- **精簡合規提案章節架構（Proposal Chapter Compliance）**：嚴格依循課程規範（01 摘要、02 緒論、03 相關文獻、04 深度探討、05 系統設計、07 參考文獻），移除未在規範中之 06 執行規劃與 00 專案概述章節，確保提案結構精準達標。
-- **清理說明文件衝突與統一服務啟動指令**：修復 `README.md` 衝突標記，統整 NodeODM Docker 容器標準啟動命令與更新章節索引連結至 `docs/proposal/`。
-- **泛用實測航測規格定義（Generalized UAV Dataset Spec）**：移除 4RL / Concil 等特定代號，改以具備 GSD < 1 cm/px 與 EXIF GPS 之任意真實無人機空拍照片集作為通用標準輸入與驗證規格。
-- **影像輸入標準化**：上傳影像限定為空拍機拍攝的高解析度 RGB JPG、PNG 或 JPEG 檔案。
-- **GSD 由使用者確認**：GSD < 1 cm/px 作為資料準備規範，由使用者確認，第一版不以系統自動檢核 GSD 作為拒絕分析的條件。
-- **概述內容整合至 README.md（Overview Consolidation）**：將團隊成員分工與泛用空拍資料規格整合至根目錄 `README.md`，使 `docs/proposal/` 專注於期末提案核心論述。
-- **獨立 SSE 任務進度串流端點（SSE Task Progress Streaming Endpoint）**：後端提供獨立 `/api/odm-task-stream/{task_id}` 路由，以 Server-Sent Events (SSE) 即時推播 NodeODM 任務進度。
-- **即時主動抓取與狀態更新（Immediate NodeODM Sync on Stream Connect）**：串流建立當下立即主動向 NodeODM 查詢最新進度、同步寫入資料庫並即刻推送首筆狀態，消除前端等待間隔。
-- **變化觸發推播與自動關閉（Change-Triggered Push with Auto Termination）**：後端以每秒頻率輪詢 NodeODM，僅在進度變更或狀態更新時推送完整 Project 模型資料，並於進度達 100% 或異常時自動優雅關閉串流。
-- **前端 Vue Composable 串流管理（useOdmProgress Composable）**：前端抽出獨立 `useOdmProgress` 模組，統一封裝 `EventSource` 監聽、生命週期清理與響應式進度綁定。
-- **處理組重複與去平均機制（Treatment Replications & Mean Calculation）**：系統彈性支援多小區重複配置（田間試驗設計典型為 3 重複），以相同「農藥＋劑量」的小區指標平均值（Treatment Mean）代表處理組整體表現，比較表同時完整列出個別重複小區數值以供追溯。
-- **小區指標差異雙軌解讀機制（Dual-Track Interpretation for Plot Discrepancy）**：同農藥劑量之小區出現明顯指標差異時，以 3 重複平均值平抑田間微地形與土壤自然異質性，同時保留個別小區原始數值供使用者回看正射影像與噴灑設定排查異常原因，不自動刪除離群小區。
-- **極簡統計比較呈現（Minimalist Descriptive Statistics）**：結果畫面僅呈現各小區原始指標與處理組平均值，第一版不引入標準差（SD）、變異數分析（ANOVA）或顯著性檢定。
-- **第四章 Q3 深度理解問題重構（Deep Understanding Questions Restructuring）**：嚴格依循「以 RGB 空拍影像比較試驗小區」專案主軸，依課程規範涵蓋 Why、Comparison、What-if、Trade-off、Failure Case、Design Decision、Evidence、Real-world Scenario 等面向，設立 10 個具備推論深度與專業答題要點的領域問題。
-- **第三章文獻整理摘要表 1/2 配比（Article Summary Table Balance）**：文獻摘要表精選 6 篇具代表性核心文獻（3 篇 AI 技術多模態/Agent [1, 2, 3] + 3 篇領域試驗設計/小區分割 [11, 17, 20]），嚴格貫徹 1/2 AI 技術與 1/2 領域知識之評核規範。
-- **第三章研究切入點邏輯鏈定調（Research Gap Logic Chain）**：以「通用農業 AI 欠缺試驗結構與公式 ＋ 純遙測工具欠缺人機協同與指標理由說明」為矛盾，切入「互動式小區配置＋AI 指標推薦協調＋雙向可追溯影像指標比較」專用領域智慧代理人（Domain AI Agent）。
-- **第二章三大創新點與兩大貢獻（Introduction Innovation & Contributions）**：緒論確立三大創新（人機協同網格配置、AI 推薦指標附帶物理理由、試驗規範級重複去平均與雙向可溯性）及兩大貢獻（開源輕量本機 Agent 系統架構、大幅降低田間試驗客觀評估門檻）。
-- **第一章實驗評估與預期成果規格（Abstract Experiments & Expected Findings）**：以真實田間無人機 RGB 空拍影像（GSD < 1 cm/px）為基準，對比傳統人工目測與全田粗算 Baseline，評估小區處理效率、3 重複 Treatment Mean 去平均平抑田間變異效果與雙向可追溯性。
-- **系統設計規格書嚴格對齊九大核心項目（DESIGN.md 9 Core Sections Alignment）**：DESIGN.md 嚴格依據課程規範 Table B 限制為且僅包含 9 大核心章節（Architecture、Components、Data Flow、AI Model、Domain Knowledge、Algorithm、Implementation Mapping、Results、Limitations），完全杜絕多餘章節。
-- **提案章節全量合規校準（Proposal Consistency Across Chapters）**：第 1 至 6 章與 DESIGN.md 嚴格對齊一致性規範，全面移除 NDRE、將小區切割統一為人機協同網格標註、將第一版成果定調為著色畫布與數值比較表（AI 摘要與報告生成列為後續工作）。
-- **參考文獻雙向完整對照（Bidirectional References Alignment）**：重整 `06_references.md` 為 23 篇有效核心文獻，正文引用與參考文獻編號維持 100% 雙向對應，納入 VARI、FAIR、Peña、Xia、Jay、TACTRI 等實測學理來源。
-- **演算法與工程模組規格統一（Algorithm & Module Mapping Synchronization）**：第 5 章與 DESIGN.md 之 Pseudocode 同步為 17 行完整迴圈版本，網格繪製與點選套用明確對齊前端 Canvas 與倉儲層，杜絕未規劃的虛構模組。
-- **文獻精簡至 23 篇雙向引用閉環（23 Core References Bidirectional Alignment）**：移除未於正文編號引用的文獻 [7]，全量重整 01 至 06 章與 DESIGN.md 引用編號（[8..24] 映射為 [7..23]），達成 100% 雙向對應。
-- **實體與控制器模組規格校準（Schema & Controller Mapping Synchronization）**：統一小區實體命名為 `PlotGrid`、資料庫初始化函式對齊 `init_db()`，並於第 5 章補入 `src/controllers/conversation.py` 控制器。
-- **README Demo 成果介面更新（README Demo Orthophoto UI Update）**：README.md 之 Demo 圖片統一以最新正射影像成果主畫面呈現，包含專案資訊卡片（田間航拍_1027_1153、65 張、100% 已完成）、RGB 原始拼接影像、懸浮光譜演算法切換器（VARI/EXG 等）及展開的側邊欄導覽，維持既有 Markdown 圖片語法直接覆蓋更新。
-- **維持本機 SQLite 專案中繼資料持久化（SQLite Project Metadata Persistence）**：後端維持在 `src/repositories/` 中持久化記錄航拍任務 ID、名稱、照片數量與運算進度，作為專案元資訊之單一事實來源（Single Source of Truth），以支援對話歷史關聯、小區指標綁定及離線清單查詢。
-- **小區實體內嵌與聚合架構（Task Plots Aggregate & Flat JSON Storage）**：將試驗小區定義為 `Plot` dataclass 並整併至 `src/entities/task.py`，使 `Task.plots` 以 `list[Plot]` 作為領域聚合欄位；底層 SQLite `TaskModel.plots` 則扁平化為純 JSON 字串存儲，兼顧領域強型別與輕量持久化。
-- **清理獨立小區倉儲與實體（Purge Standalone Plot Entities & Repositories）**：刪除舊有獨立的 `src/entities/plot.py` 與 `src/repositories/plot_repo.py`，小區存取與序列化全面收納至 `TaskRepository` 與 `TaskPort` 統一管理。
-- **TaskUseCase 聚合業務封裝（TaskUseCase Aggregate Orchestration）**：實作 `TaskUseCase` 專責封裝任務生命週期（CRUD 與進度管理）、小區配置與指標維護、以及對話歷史紀錄，建構子強制依賴注入抽象 `TaskPort` 介面。
-- **前端整包小區座標 JSON 更新（Batch Plots JSON Update）**：小區更新支援接收前端傳送之整包座標與設定 JSON，於 UseCase 進行反序列化與資料結構校驗（編號唯一性、座標非空、CK 標記規格）。
-- **小區指標增量保護（Merge Plot Metrics on Update）**：前端重送座標或處理設定時，若傳入項目未附帶 metrics，自動繼承保留該小區既有之已計算指標，防止光譜分析成果因網格微調而被覆蓋抹除。
-- **Python 原生例外與 Presenter 錯誤轉譯架構（Native Exceptions & Presenter Error Handlers）**：UseCase 層全面採用 Python 原生例外（`KeyError` 代表任務不存在、`ValueError` 代表小區格式校驗失敗、`RuntimeError` 代表狀態衝突），不引用任何 Web 框架異常，統一由 Presenter 全域例外處理器轉譯為語意化 HTTP 狀態碼與標準回應格式。
-- **NodeODM 專責通訊埠與契約宣告（OdmPort Interface Contract）**：於 `src/usecases/ports/odm.py` 使用 `typing.Protocol` 宣告 `OdmPort`，完整涵蓋五項 NodeODM 核心操作契約：節點探針 (`check_alive` / `get_node_info`)、建立任務 (`create_task`)、查詢進度與狀態 (`get_task_info`)、下載打包成果資產 (`download_task_assets`)、以及移除任務 (`remove_task`)。
-- **純 Python 影像檔案傳遞結構（Decoupled Upload File Abstraction）**：建立任務時影像資料採用純 Python 資料結構（`list[tuple[str, bytes, str]]` 檔名、位元組、檔案類型），確保 Port 與 UseCase 邊界與 FastAPI `UploadFile` 等 Web 框架實作徹底解耦。
-- **純原生回傳型別與例外轉譯（Native Types & Exception Mapping）**：`OdmPort` 方法回傳值採用純原生型別（`str`, `dict[str, Any]`, `bytes`, `bool`）。
-- **允許拋出 httpx 例外與 Presenter 集中攔截（Allow HTTPX Exceptions with Presenter Handling）**：Requester 允許直接拋出 `httpx.HTTPStatusError` 與 `httpx.RequestError` 例外，由 FastAPI Presenter 全域例外處理器統一攔截並包裝為標準錯誤格式，回傳訊息須明確標註為 NodeODM 服務錯誤（包含狀態碼、錯誤原因或連線失敗說明）。
-- **OdmRequester 實體內部自主管理連線客戶端（Self-Managed HTTP Client in OdmRequester）**：於 `src/requesters/odm.py` 實作 `OdmRequester`，建構子僅保留 Base URL 設定（預設 `http://localhost:3002`），連線客戶端 `httpx.AsyncClient` 由實例內部自主建立與維護，不強制自外部注入 client 參數，簡化實例化流程。
-- **階層式差異化操作超時機制（Tiered Operation Timeouts）**：針對大檔影像上傳與正射成果下載提供預設 120 秒超時，節點探針與狀態查詢提供預設 10 秒超時，並允許呼叫端傳入自訂超時或任務 options 參數。
-- **優先修復既有後端對接斷點（Prioritize Backend-Frontend Alignment Fix）**：優先將控制器（Controllers）與 Pydantic AI Agent 完整對齊至 `TaskUseCase` 與 `TaskRepository`，確保現有前端功能（空拍相片上傳、NodeODM 正射拼接、SSE 即時進度、光譜圖切換、AskAgent 多模態對話）完全正常運作。
-- **標準請求生命週期依賴注入（Request-Scoped Dependency Injection via Depends）**：在 `src/controllers/dependencies.py` 透過 FastAPI `Depends(get_session)` 動態解析 `TaskRepository` 與 `TaskUseCase`，確保每個 HTTP 請求具備獨立的資料庫 Session 生命週期與自動釋放機制。
-- **嚴格任務專屬對話持久化（Strict Task-Scoped Dialogue Persistence）**：對話歷史僅限於已建立或選定之特定航拍任務（Task ID）寫入 SQLite `tasks.messages` 欄位；首頁未選定專案時不進行資料庫持久化，確保任務與對話生命週期單一歸屬。
-- **正射成果下載與解壓職責分離（Decoupled Asset Download and Extraction）**：正射成果資產統一透過 `OdmRequester.download_task_assets` 經由 HTTP 下載位元組，再委由 `src/utility/nodeodm.py` 純影像工具函式進行解壓縮與 GeoTIFF 轉 PNG 處理，落實外部通訊與影像運算之關注點分離。
-- **單一任務控制器整合（Unified Task Controller Consolidation）**：將原先分散之 `conversation.py` 與 `odm.py` 整合為單一 `src/controllers/task.py`，由單一 `task_router` 集中維護航拍任務生命週期、NodeODM 任務調度、正射與光譜影像產出、以及任務關聯對話互動，直接對齊 `TaskUseCase` 業務聚合邊界。
-- **VS Code 三組態獨立啟動與複合調度架構（Three Dedicated Debug Configurations & Compound Launch）**：於 `.vscode/launch.json` 分別配置「後端: FastAPI」（`debugpy`）、「前端: Vite」（`node-terminal`）與「ODM: NodeODM (Docker)」（`node-terminal`）三項獨立啟動組態，並配置 `compounds` 支援一鍵同時平行啟動三者與連動關閉（`stopAll: true`），擺脫對 tasks.json 的依賴。
-- **Vite Proxy 路由重寫機制（Vite Proxy Path Rewrite）**：於 `frontend/vite.config.ts` 設定 `rewrite: (path) => path.replace(/^\/api/, '')`，將 `/api` 統一作為導向後端 FastAPI 服務之代理通道，進入後端時自動剝離 `/api` 並將請求精確導向至 `/task` 等模組化控制器路由。
-- **前端階層式路由命名（Frontend Hierarchical Routing /api/task/*）**：前端所有業務端點（`App.vue`、`DroneHomeUpload.vue`、`GeminiHomeChat.vue`、`useChatAgent.ts` 與 `useOdmProgress.ts`）統一宣告為 `/api/task/*`，兼顧前端通用 `/api` 代理通道與後端 `task_router`（`prefix="/task"`）之模組化分群。
-- **後端結構化錯誤訊息前端動態呈現（Presenter Error Message Feedback）**：前端 API 呼叫攔截異常時，優先解析並彈出後端回傳之結構化 `data.message`（例如 NodeODM 連線逾時或參數校驗失敗），若為網路中斷則提示連線異常，提升可追溯性與除錯體驗。
-- **OdmPort 注入 TaskUseCase 業務編排（OdmPort Dependency Injection in TaskUseCase）**：將 `OdmPort` 介面注入至 `TaskUseCase`，由 UseCase 統一封裝航拍任務建立、進度狀態輪詢、遠端任務移除、本機正射影像快取與光譜熱圖生成流程，貫徹 Clean Architecture 業務流程集中管理。
-- **控制器全面整合 Presenter 回應包裝（ResponseWrapper Integration in Controller）**：`src/controllers/task.py` 所有 JSON 成功回應全面採用 `src/presenter/response_wrapper.py` 之 `success_response(data=...)` 統一包裝，業務異常由 UseCase 拋出原生例外（`KeyError`, `ValueError`, `RuntimeError`）並由 Presenter `error_handlers` 攔截轉譯為標準 `error_response`。
-- **領域實體重用與重複宣告清理（Entity Reuse & Purge Duplicate Schemas）**：全面移除 `src/controllers/task.py` 內部重複宣告之 `Version` 與 `ModelMessageResponse` TypedDict，一律對齊與引用 `src/entities/task.py` 之純 dataclass 領域實體定義。
-- **前端 migrate 殘留呼叫清理（Purge Frontend Migrate Calls）**：清理前端 `GeminiHomeChat.vue` 與 `useChatAgent.ts` 中殘留之 `migrateChat` 呼叫與定義，消除無效網路請求。
-- **逐區手動多邊形繪製（Manual Independent Polygon Plot Segmentation）**：小區分割不採用全田行列自動網格劃分，改由使用者以滑鼠逐一在正射影像畫布上點繪獨立的多邊形頂點標註各小區範圍，適應田間任意走向、畸零地與分散試驗區。
-- **多邊形吸附閉合與遞增編號（Snap Closing & Auto-Increment Plot Numbering）**：點繪單一小區時，滑鼠點擊起點吸附或雙擊自動完成閉合，系統自動依序指派小區編號（#1, #2...），並支援點擊選取以拖曳頂點微調或整區刪除重繪。
-- **正規化相對比例座標儲存（Normalized Ratio Coordinates JSON）**：小區頂點座標以 `[[x1, y1], [x2, y2], ...]` 之 0.0 ~ 1.0 相對寬高比例 JSON 字串持久化於 `Plot.coords`，確保畫布響應式縮放不跑版，後端光譜統計時按正射圖原圖解析度等比放大計算。
-- **主影像疊加互動畫布（Overlay Canvas on Orthophoto）**：於主正射影像卡片直接覆蓋透明 HTML5 Canvas 互動層，提供「檢視」與「繪製小區」模式切換，兼顧即時光譜指標熱圖切換預覽與小區邊界疊合觀察。
-- **完全移除全螢幕機制（Complete Removal of Fullscreen Mechanism）**：取消繪製小區時自動強制進入全螢幕的行為，並從工具列徹底移除全螢幕切換按鈕，所有小區繪製、編輯與檢視直接在既有主工作區卡片畫布中進行，維持上下文連貫。
-- **預設矩形框選並保留多邊形繪製（Default Rectangle Drag-to-Draw with Polygon Option）**：小區繪製預設提供「矩形拖曳拉框（Drag Rectangle）」互動，按住滑鼠左鍵拖曳即可秒速框出小區頂點；同時保留「多邊形點繪（Polygon）」切換工具，供非規則或傾斜小區逐點點擊標註。
-- **繪製後即時彈出農藥表單（Post-Draw Immediate Pesticide Modal）**：小區繪製閉合瞬間（矩形放開或多邊形閉合），自動於畫面中央彈出「小區農藥處理設定」Modal 對話框，焦點自動置於農藥欄位，支援快速填寫農藥與劑量、CK 勾選與既有處理快速標籤按鈕，按 Enter 快速確認套用。
-- **取消與編輯生命週期控制（Cancel Discard & Click-to-Edit Lifecycle）**：若在農藥彈窗中按取消或 Esc，系統自動捨棄該次繪圖並刪除該小區；在畫布上點選既有小區即可重新彈出該 Modal 修改處理設定或刪除小區。
-- **廢除舊版套用處理模式（Deprecate Standalone Assign Mode）**：廢除獨立的「套用處理」筆刷模式，工具列精簡為「檢視」與「繪製小區（支援矩形/多邊形）」雙模式，農藥指派完全融入繪製完成即時彈窗與點選小區修改。
-- **明確按鈕手動儲存（Explicit Manual Save & Dirty Check）**：繪製與設定完成後，由使用者點擊「💾 儲存小區」按鈕批次發送更新請求持久化至後端 SQLite，避免未定稿頻繁發送請求，並提供未儲存變更提示。
-- **純滑鼠平移與縮放（Pure Mouse Pan & Zoom Interaction）**：主畫布下支援純滑鼠手勢控制視角——滑鼠滾輪以游標為中心平滑縮放、按住滑鼠右鍵拖曳平移（Pan）並攔截預設快顯選單、滑鼠左鍵專注於拉框標註與點選小區。
-- **正射圖 CSS GPU Transform 與解除寬高限制（CSS GPU Transform & Unconstrained Dimensions）**：正射影像元素解除 Tailwind CSS 預設 `max-width: 100%` 限制（加入 `max-w-none max-h-none`），改採固定 `baseWidth`/`baseHeight` 搭配硬體加速 `transform: translate3d(panX, panY, 0) scale(scale)` 與 `transform-origin: 0 0`，消除 Layout Reflow 重排並確保高倍率縮放時影像與 Canvas 多邊形 100% 像素級精準貼合不跑版。
-- **視角平移邊界彈性保護（Elastic Viewport Panning Bounds）**：在滑鼠縮放與右鍵拖曳平移時加入彈性視野保護機制，確保正射圖在任意縮放比例下至少保留 20% 影像面積於可視視窗內，防止影像被拖曳至畫面外遺失，並配合右下角 HUD「最適大小 (Fit)」提供即時一鍵復位。
-- **標準平滑取樣插值（Default Smooth Image Interpolation）**：在高倍率縮放檢視下維持瀏覽器標準平滑縮放插值（`image-rendering: auto`），保留空拍正射航拍圖自然漸層與植生指數熱圖展示品質。
-- **白色定位牌自動偵測與四角母框（White Marker Auto-Detection & 4-Point Bounding Quadrilateral）**：以田間最外圍 4 個白色定位牌（空拍圖呈現為高反差白色點點）為基準，後端利用 OpenCV 影像演算法一鍵自動搜尋與定位外圍 4 個角點建立四邊形邊界，畫布提供可拖曳錨點把手供使用者即時微調。
-- **雙線性插值網格即時動態預覽（Bilinear Interpolation Grid Live Preview）**：在 4 角四邊形內，依使用者指定的行列數（Rows x Cols）透過雙線性插值（Bilinear Interpolation）在前端 Canvas 即時渲染半透明虛線小區預覽網格，拖曳 4 角錨點或調整參數時即時動態連動。
-- **走道內縮間距滑桿（Walkway / Alley Margin Gap Slider）**：網格生成工具列提供走道內縮比例（0%~20%）滑桿，自動自小區四邊等比內縮，排除田埂走道、畦溝與邊界雜草裸土干擾。
-- **一鍵確認生成正式小區（Confirm Batch Plot Generation）**：使用者於預覽滿意後，點擊「確認生成」按鈕批次將預覽網格轉化為正式小區（加入 `plots` 陣列並標記未儲存變更），生成後的小區預設為待設定狀態。
-- **小區點擊快速標籤設定（Click Plot with Quick Treatment Tags）**：整批生成後維持現有直覺互動，使用者點擊任一小區即彈出 `PlotTreatmentDialog`，點選既有處理標籤或設為 CK 對照組秒速套用，不強制彈跳連續遮罩視窗。
-- **端點與工具函式 Clean Architecture 實作（Marker Detection Utility & Endpoint）**：於 `src/utility/marker_detection.py` 實作純 OpenCV 影像運算（灰階/高光閥值、輪廓特徵過濾、外圍四角凸包定位），於 `TaskUseCase` 封裝業務流程，並在控制器暴露 `POST /task/{task_id}/detect-markers` 端點。
-- **懸浮 Persona AI 代理人組件（Floating Persona AI Agent Component）**：以 AI Elements Vue 的 Persona 組件（預設 `obsidian` 變體，64px 球體）取代原先右下角固定對話按鈕，懸浮於選定專案之工作視窗，支援滑鼠按住拖曳（位移 > 5px 視為拖曳）並限制於視窗可視範圍內自由停放（預設右下角），單純點擊 Persona 本身直接開啟或收合完整 AskAgent 對話視窗。
-- **即時串流迷你文字氣泡與身旁避障彈窗（Realtime Streaming Speech Bubble & Adaptive Anchored Dialog）**：Agent 產生回覆時文字同步即時串流至 Persona 身旁的迷你文字氣泡（寬度上限 280px，附帶關閉 ✕ 按鈕與點擊展開提示），點擊文字氣泡可展開完整 AskAgent 對話視窗；完整視窗展開時自動緊鄰 Persona 並依據螢幕邊界進行智慧避障展開（避免超出視窗），展開時自動隱藏迷你氣泡。
-- **Persona 動畫狀態即時連動（Persona State-Agent Lifecycle Sync）**：Persona 動畫狀態緊密映射後端 Agent 生命週期，於等待推論處理時呈現 `thinking`、串流輸出文字時呈現 `speaking`，完成後或平時維持 `idle` 休憩狀態。
-- **GCP Compute Engine 單機容器化架構（GCP Compute Engine with Docker Compose）**：採用 Google Cloud Platform (GCP) Compute Engine 虛擬主機作為雲端部署平台，以 Docker Compose 統一編排管理 FastAPI 後端、NodeODM 空拍影像拼接運算服務與 Caddy 反向代理。
-- **Compute Engine 機型與儲存規格（GCP E2-Highmem-4 & Balanced PD）**：採用台灣彰化機房 `asia-east1-b` 之 `e2-highmem-4`（4 vCPU / 32 GiB 記憶體）實例，搭配 150GB pd-balanced 持久磁碟，為 NodeODM 提供足額 24GB 記憶體避免空拍拼接發生 OOM 崩潰。
-- **DuckDNS 與 Caddy 自動 HTTPS 憑證管理（DuckDNS Dynamic DNS & Caddy Automated TLS）**：採用 DuckDNS 免費動態子網域搭配 Caddy 2 反向代理，透過腳本自動更新 GCP 靜態外部 IP，並由 Caddy 全自動向 Let's Encrypt 完成 ACME HTTP-01 憑證簽發與定期續期，強制啟用 Secure Cookie 與 HTTPS 傳輸。
-- **極小化攻擊面與 IAP 零暴露存取（Minimal Attack Surface & GCP IAP TCP Forwarding）**：防火牆僅對公開網際網路開放 80/443 連接埠；管理 SSH 連線（Port 22）嚴格限制僅允許 Google Cloud IAP 來源網段（`35.235.240.0/20`），全面阻絕全網 Port 22 掃描與暴力破解；FastAPI 與 NodeODM 嚴格限定僅綁定於本機或 Docker 虛擬網路；VM 實例配置 `--no-service-account --no-scopes` 防範權限提升。
-- **本機宣告式一鍵自動化部署（Local Declarative One-Click Deployment Script）**：採用本機 `scripts/deploy_gcp.sh` 腳本搭配 `.env.cloud` 宣告式參數，自動化完成 GCP 服務啟用、VPC 防火牆配置、靜態 IP 保留、VM 實例生命週期管理、DuckDNS 紀錄同步、程式打包傳輸（IAP SCP）、遠端 Docker 部署與 `/healthz` 健康檢查探針驗證。
-- **分層清理閒置檔案（Layered Dead Code & File Purge）**：明確移除確認無效之檔案（根目錄 0 位元組 `.aws`、已廢棄前端死代碼 `GeminiHomeChat.vue`、預設無用靜態圖示 `vite.svg`、`vue.svg`、`hero.png`、空目錄殘留 `tests/__pycache__`、以及孤立 `.pyc` 快取），維護專案極簡整潔。
-- **課程簡報納入版本控制（Course Presentation in Git）**：將 `docs/田間無人機影像智慧決策 期中報告.pptx` 納入 Git 追蹤管理，作為期中作業成果歸檔。
-- **網格四角錨點點擊拖曳與視覺回饋（Grid Corner Handles Drag & Visual Affordance）**：修復網格模式下 4 個角點把手（TL/TR/BL/BR）之點擊命中判定與座標計算（補齊 `screenY` 參數並修正歐式距離 `Math.hypot(sc.x - screenX, sc.y - screenY)`），並於滑鼠懸停角點把手時提供半徑放大、陰影高亮與 `grab` 抓取游標反饋，支援自由拖曳調整網格四邊形大小與透視形狀。
-- **橡皮擦與角點拖曳職責分離（Eraser Tool Priority over Corner Drag）**：保持橡皮擦工具職責獨立，橡皮擦工具啟用時優先判定與執行網格小區排除消除；切換回常規模式（非橡皮擦）時才啟用角點把手拖曳與大小調整。
-- **本機測試快取定期重置（Purge Local ODM Output Cache）**：清空 `src/odm/` 底下過期的本機測試正射與光譜圖檔（約 28 MB），釋放磁碟空間，同時保留本機 `database.sqlite` 維持開發資料與訪客 Session。
-- **自動清理遠端舊映像檔（Remote Docker Image Prune on Release）**：在每次線上發布新版容器並成功通過健康檢查探針後，於遠端主機自動執行 `docker image prune -f` 清理無標籤或未被引用的懸掛映像檔，維持 150GB 磁碟空間清潔與系統穩定。
-- **標準具名資料卷無縫熱切換持久化（Docker Named Volume Persistence Across Releases）**：線上發布時維持使用 Docker 具名資料卷（`app_data`），在容器重新建置與啟動時無縫保留 SQLite 資料庫（`/data/database.sqlite`）與航拍快取，避免不必要的停機或手動備份流程中斷部署流水線。
+## 允許
+- **真實空拍影像輸入規格**：以無人機拍攝的高解析度 RGB 影像（JPG、PNG 或 JPEG，GSD < 1 cm/px）為系統基準輸入，由使用者於資料準備階段確認解析度規範。
+- **NodeODM 空拍正射影像拼接**：整合 NodeODM 容器化引擎完成空拍照片特徵匹配、三維重建與 GeoTIFF 正射影像拼接。
+- **SSE 任務進度即時串流**：後端提供獨立 Server-Sent Events (SSE) 串流端點（`/task/{task_id}/progress-stream`），狀態更新時主動推送 NodeODM 拼接進度。
+- **EXIF 檔名智慧推估與情境卡片**：前端利用 exifr 解析上傳相片之檔名與 EXIF 資訊，由 AI 代理人語意推估試驗情境，並於主介面提供可折疊情境特徵卡片供確認與編輯。
+- **情境標籤與小區處理聯動**：專案情境特徵設定的農藥名稱、劑量清單與色彩標籤，自動同步至小區繪製工具作為預設快速套用標籤。
+- **白色定位牌自動偵測**：後端利用 OpenCV 形態學與輪廓特徵演算法，一鍵自動定位試驗田最外圍 4 個白色定位插牌角點，畫布提供可拖曳把手供即時微調。
+- **雙線性插值網格即時預覽**：在四角母框內依使用者設定之行列數透過雙線性插值演算法即時渲染小區網格，並支援走道間隔比例滑桿（Margin Gap）內縮排除裸土。
+- **多模式手動小區標註**：主正射圖疊加透明 HTML5 Canvas 互動層，支援滑鼠拖曳矩形框選與多邊形逐點繪製，閉合瞬間即時彈出農藥處理設定對話框。
+- **正規化相對比例座標持久化**：小區座標一律以 0.0 ~ 1.0 相對寬高比例 JSON 字串儲存，後端光譜計算時等比放大映射至正射圖原始解析度，確保響應式縮放不跑版。
+- **純滑鼠平移縮放與視角保護**：主畫布支援純滑鼠右鍵拖曳平移、滾輪以游標為中心平滑縮放與硬體加速 Transform，並加入邊界保護確保影像至少保留 20% 於可視視窗內。
+- **RGB 確定性植生指標計算**：以純 Python 演算法計算 RGB 可取得之植生指標（如 VARI、ExG）並排除非植生背景雜訊。
+- **處理組重複配置與去平均機制**：系統彈性支援多小區重複配置（如 3 重複），以相同「農藥＋劑量」的小區指標平均值（Treatment Mean）代表處理組整體表現，比較表完整保留個別重複小區數值。
+- **小區指標差異雙軌解讀**：同處理小區出現顯著指標差異時，以重複平均值平抑田間微地形與土壤自然異質性，同時保留個別小區數值供追溯排查異常，不自動刪除離群小區。
+- **極簡統計比較與著色呈現**：第一版成果介面提供依指標數值著色的畫布、各小區數值明細表以及各「農藥＋劑量」組與明確指定未施藥對照組（CK/UTC）的差異比較。
+- **Pydantic AI 協調層與人機協同**：採用 Pydantic AI 作為代理人協調層，AI 依使用者指定評估目的推薦指標並附帶物理理由，經由使用者明確確認後才動態調度工具計算。
+- **懸浮 Persona 代理人組件**：採用 AI Elements Vue 的 Persona 組件懸浮於視窗，狀態動畫動態連動 Agent 推論週期，展開時依視窗邊界自適應避障。
+- **Clean Architecture 四層架構邊界**：後端嚴格落實實體（Entities）、用例（Use Cases）、倉儲（Repositories）與控制器（Controllers）四層架構，落實依賴倒置原則。
+- **純領域實體與聚合根設計**：`src/entities/` 使用 Python 原生 `dataclass` 定義純領域物件；`Task` 作為聚合根，試驗小區 `Plot` 作為內嵌實體收錄於 `Task.plots`，底層 SQLite 扁平化為 JSON 字串存儲。
+- **抽象通訊埠與專責驅動配接器**：UseCase 強制依賴抽象 `TaskPort` 與 `OdmPort` 介面；外部通訊由 `src/requesters/odm.py` 之 `OdmRequester` 驅動配接器自主管理連線客戶端。
+- **原生執行緒調度與例外轉譯**：倉儲層使用 Python 原生 `asyncio.to_thread` 調度同步 Session；UseCase 僅拋出 Python 原生例外，由 Presenter 全域例外處理器統一轉譯為標準回應格式。
+- **單一任務控制器整合**：以 `src/controllers/task.py` 之單一路由集中協調航拍任務生命週期、拼接進度、影像資產與關聯對話互動。
+- **Vite Proxy 路由重寫機制**：前端 API 請求統一以 `/api/task/*` 調用，由 Vite Proxy 自動剝離 `/api` 前綴並精確導向至後端 FastAPI 控制器。
+- **GCP Compute Engine 單機容器化架構**：採用 GCP Compute Engine 台灣機房 `e2-highmem-4`（32GB RAM）主機，以 Docker Compose 統一編排管理 FastAPI、NodeODM 與 Caddy。
+- **Caddy 自動 HTTPS 與 DuckDNS 動態解析**：透過 DuckDNS 動態綁定 GCP 外部靜態 IP，由 Caddy 全自動向 Let's Encrypt 完成 TLS 憑證簽發與定期續期。
+- **極小化攻擊面與 IAP 零暴露存取**：公開防火牆僅開放 80/443 連接埠；SSH（Port 22）嚴格限制僅允許 GCP IAP 來源網段（`35.235.240.0/20`）；內部運算服務不向外暴露。
+- **本機宣告式部署與映像檔清理**：透過本機 `scripts/deploy_gcp.sh` 搭配 `.env.cloud` 一鍵部署，發布時透過具名資料卷（`app_data`）繼承資料庫與快取，發布完成後自動執行 `docker image prune -f`。
 
 ## 拒絕
-- **拒絕 DESIGN.md 擴充非規範獨立章節**：不於 DESIGN.md 中新增額外獨立的 Problem、Requirements 或 How to Run 章節，How to Run 集中於 README.md，Problem/Requirements 歸屬提案章節與需求清單。
-- **暫不納入文獻查閱功能**：目前的 AI 指標深入解釋不加入預選文獻、線上搜尋或文獻讀取流程。
-- **拒絕未確認即啟動分析**：AI 推薦指標後，不得在使用者明確確認前自動開始各小區指標計算與比較。
-- **拒絕空白小區自動成為對照組**：不得將尚未設定處理的小區自動判定為未施藥對照。
-- **拒絕非標準專屬 Agent 平台**：不採用 Google Antigravity SDK 等特定生態平台，確保全開源與環境高度可攜性。
-- **拒絕 AI 盲切小區邊界**：不使用 AI 模型自動辨識模糊小區邊界，小區範圍依賴人工指定或試驗幾何向量。
-- **拒絕純靜態向量綁定**：不強制依賴外部預製幾何向量檔，賦予使用者在前端畫布自由框選小區邊界之操作彈性。
-- **拒絕死板硬編碼流水線**：避免將分析步驟寫死為無彈性的固定程序腳本，保留 Agent 依據試驗情境動態調度工具之自主性。
-- **拒絕低壓強制中斷程式**：不因對照組蟲害或草害未達法定門檻而直接終止程式，保留內部研究探索分析之彈性。
-- **拒絕脆弱受害二值化閾值**：不使用易受天候光照干擾的單一光譜門檻硬切受害葉片百分比，改採連續光譜統計均值。
-- **拒絕割裂式純文字長篇報告**：不採用無畫面聯動的長篇純文字輸出，拒絕缺乏視覺交互之枯燥呈現。
-- **拒絕每次追問重複影像重算**：不於對話追問時重新讀取高解析度正射影像，消除冗餘 I/O 與計算開銷。
-- **拒絕封閉式指標硬性鎖定**：不強制隱藏公式切換選單，拒絕剝奪使用者手動驗證不同光譜演算法之彈性。
-- **拒絕 RAG 向量架構**：不使用向量資料庫（Vector DB）與 RAG 檢索流程。
-- **拒絕重型分割模型**：不採用 SAM 2.1、YOLO-seg 等深度學習實例分割模型。
-- **拒絕複雜統計引擎**：不引入 ANOVA 與 Tukey HSD 等複雜推論統計模型。
-- **拒絕實體層混雜 ORM 宣告（No ORM in Entity Layer）**：`src/entities/` 嚴格禁止使用 SQLModel 或 SQLAlchemy 表格宣告，維持純 dataclass 領域物件。
-- **拒絕非標準庫背景執行緒包裝（No Third-Party Thread Offloading）**：倉儲層非同步調度不使用 anyio 等外部套件，一律採用 Python 原生 `asyncio.to_thread`。
-- **拒絕未獲許可撰寫或保留測試（No Tests Without Permission）**：全面清空測試目錄，未經開發者明確指令前禁止撰寫或建立任何測試程式碼。
-- **拒絕殘留未使用的空分層目錄**：清理並杜絕在專案中保留無實際業務邏輯的架構模板空目錄。
-- **拒絕主程式進入點混合轉導（No Symbol Re-export in main.py）**：拒絕在 `src/main.py` 扮演通用的模組 re-export 轉導層，杜絕偽解耦。
-- **拒絕冗長學術黑話**：避免晦澀學術名詞與長篇大論。
-- **拒絕假造或預設示範資料集**：不依賴亦不內建虛構的廣西或民雄示範資料集，確保系統完全以真實上傳影像為運作基準。
-- **拒絕首頁混雜過載對話框**：首頁不於上傳前顯示多餘的自由對話視窗，避免干擾使用者進行相片上傳之首要任務。
-- **拒絕非規範之額外時程分工檔案**：不建立或維護課程規範外之 `06_execution_plan.md`，避免與實際實作狀況和標準提案規範產生歧異。
-- **拒絕非規範之 00 概述章節檔案**：不於 `docs/proposal/` 中獨立保留非課程規範之 `00_overview.md`，嚴格依循課程提案四大核心架構。
-- **拒絕殘留版本控制衝突標記**：嚴格杜絕在專案文檔與程式碼中遺留 `<<<<<<<`、`=======`、`>>>>>>>` 等未解 Git 衝突標記。
-- **拒絕前端輪詢計時器（No Frontend Polling Timers）**：全面淘汰前端 `setInterval` 每 2 秒輪詢 `get_odm_task_info` 的做法，消除無效網路請求。
-- **拒絕單一 POST 阻塞式長串流（No Bloated POST Streaming Pipeline）**：不將大檔案上傳與長時間拼圖進度綑綁於單一 POST 端點，維持上傳與進度監聽職責分離。
-- **拒絕無意義重複全量推送（No Redundant Unchanged Progress Pushes）**：進度未推進時不重複推播相同進度事件，避免浪費伺服器與客戶端 I/O 頻寬。
-- **拒絕硬性鎖定固定重複數**：不強制限制每個處理組必須恰好為 3 個小區，允許使用者依實際航拍範圍彈性配置重複數。
-- **拒絕自動剔除離群重複小區**：不因同處理小區指標差異過大而擅自刪除極端值，確保資料完整性與可稽核性。
-- **拒絕將軟體防呆與表單規則列入 Q3（No Software Validation in Deep Research）**：嚴格杜絕將空白欄位檢查、未檢核 GSD、程式資料一致性等軟體實作細節列為領域深度理解問題，確保 Q3 專注於農業遙測與田間試驗學科本質。
-- **拒絕 Q1 充斥抽象黑話與過度修飾**：第四章 Q1 杜絕脫離具體軟體互動的抽象架構黑話，第三面向一律落實為高中生可理解之具體「系統行為」。
-- **拒絕於提案前言宣稱未納入之自動盲切與報告生成**：杜絕在摘要與緒論中使用「自動切割小區」與「自動產出藥效報告」等誇大或牴觸第一版決策之宣稱。
-- **拒絕正文出現孤立參考文獻與幽靈引用**：杜絕在文獻清單中保留未被正文引用的冗餘文獻，亦杜絕正文提及核心學理卻未納入正式參考文獻之脫節現象。
-- **拒絕 Demo 截圖殘留未排版 JSON 與過載對話遮蔽（No Raw JSON & UI Clutter in Demo）**：Demo 截圖不得呈現舊版未排版之 JSON 原始碼、未命名字串或遮蔽演算法選單的對話框，確保展示乾淨俐落之正式成果畫面。
-- **拒絕 README Demo 圖片增加冗贅圖說標記**：不於 README.md 的 demo 圖片下方增加額外繁瑣圖說說明，維持極簡 `![DEMO 主畫面](docs/assets/demo.png)` 引用。
-- **拒絕完全依賴 NodeODM 作為專案儲存媒介（No NodeODM-Only Storage Dependency）**：不將專案清單與狀態完全委託給 NodeODM API，避免因 Docker 容器重啟、清理暫存或伺服器中斷而造成專案中繼資料與分析關聯遺失。
-
-- **拒絕 UseCase 直接耦合具體 Repository 實體（No Concrete Repo Coupling in UseCase）**：`src/usecases/` 嚴禁直接引用或依賴具體的 `TaskRepository` 實作類別或全域 `agent` 單例，強制一律透過建構子注入抽象 Port 與 Agent 實例。
-- **拒絕獨立小區資料表與實體分散（No Standalone Plot Table & Separate Entity）**：不為小區建立獨立的 `plots` 資料表與 `plot.py` 檔案，拒絕在領域實體中保留冗餘的 `task_id` 與獨立主鍵。
-
-- **拒絕跨任務對話遷移（No Cross-Task Message Migration）**：禁止將對話紀錄自一個任務遷移至另一個任務，維持任務與對話生命週期之嚴格單一歸屬。
-- **暫不實作小區處理組統計分析方法**：暫緩在 `TaskUseCase` 中實作小區指標分組平均（Treatment Mean）與對照組差異等統計分析方法，待後續具體使用情境釐清後再行實作。
-- **拒絕在 UseCase 內直接耦合外部 HTTP 通訊細節**：`TaskUseCase` 嚴禁直接發起原生 HTTP 請求，必須一律依賴抽象的 `OdmPort` 介面進行通訊與業務流程編排。
-- **拒絕 Controller 直接依賴外部通訊 Port（No Direct Outbound Port in Controller）**：控制器嚴禁直接注入或操作 `OdmPort`，外部通訊與第三方服務調度一律經由 UseCase 統一封裝。
-- **拒絕後端殘留無效的對話遷移端點與模型（No Obsolete Migrate Route & Schema）**：徹底刪除 `/chat/migrate` 路由與 `MigrateChatRequest` 模型，杜絕死代碼。
-- **拒絕 Controller 直接回傳裸字典或自組 404 回應（No Raw Dict or Ad-hoc 404 in Controller）**：JSON 端點嚴禁直接回傳 `{"result": True}` 字典字面值，資源未找到時禁止回傳自定義 `Response("...", status_code=404)`，統一依循 Presenter 架構調用 `success_response` 或拋出原生例外。
-- **拒絕 Port 耦合 Web 框架檔案型別（No FastAPI UploadFile in Port）**：嚴禁在 `src/usecases/ports/odm.py` 引入或使用 `fastapi.UploadFile`，確保領域契約之純粹性。
-- **拒絕未標註 NodeODM 來源之模糊網路異常（No Ambiguous Network Exceptions to Client）**：嚴禁將未註明 NodeODM 服務來源的通用例外或原始連線錯誤未經轉譯直接外洩給前端使用者。
-- **拒絕寫死不可自訂之網路連線設定（No Hardcoded Unconfigurable Network Config）**：拒絕在 Requester 內寫死單一連線配置或全域固定 client，保持依賴注入彈性。
-- **拒絕過度工程之非同步上下文管理器（No Overengineered Async Context Manager in Requester）**：Requester 內部直接調用持久化 `httpx.AsyncClient`，不強制封裝 `__aenter__` 與 `__aexit__` 等上下文管理器樣板代碼，維持 API 調用介面之極簡性。
-- **拒絕外部注入 client 造成介面繁瑣（No Redundant Client Injection Parameter）**：`OdmRequester` 建構子不暴露多餘的 `client: httpx.AsyncClient` 參數，避免調用端增加不必要的生命週期傳遞負擔。
-- **拒絕未宣告於 Port 介面之冗餘關閉方法（No Redundant Close Method in Requester）**：`OdmPort` 未宣告 `close()` 契約，`OdmRequester` 嚴禁保留多餘的連線關閉方法，確保實作類別與介面契約嚴格 100% 對齊。
-- **拒絕在未修復既有介面時提前擴充新功能（No Premature Feature Expansion Before Fix）**：在既有航拍上傳、進度監聽與對話互動尚未修復並驗證跑通前，不提前引入小區畫布或非必要之新功能端點。
-- **拒絕全域 Application State 共享資料庫連線（No Shared DB Session in App State）**：嚴禁在 `lifespan` 或 `app.state` 建立共用的資料庫 Session 或單例 UseCase，杜絕多請求併發時的 SQLite 執行緒競爭或狀態污染。
-- **拒絕首頁無專案對話寫入資料庫（No Unbound Home Dialogue in DB）**：拒絕在資料庫建立虛擬 home 任務紀錄或儲存未綁定任務之臨時對話，杜絕無效資料堆積。
-- **拒絕 Utility 模組直接發起 HTTP 請求（No Direct HTTP Calls in Utility）**：影像處理與數學公式等公用模組（Utility）嚴禁直接調用外部網路請求，外部通訊統一經由 Port 與 Requester 處理。
-- **拒絕過度拆分碎片化控制器（No Fragmented Multi-Controllers for Task Domain）**：拒絕將屬於同一 Task 聚合領域之航拍任務與對話歷程人為拆分為多個獨立的控制器檔案，避免跨控制器依賴碎片化。
-- **拒絕外部獨立彈出視窗（No External Pop-up Windows）**：不使用外部彈跳終端機視窗，服務日誌集中收錄於 VS Code 內部整合終端機面板（Integrated Terminal）。
-- **拒絕除錯結束殘留 Docker 容器（No Lingering Docker Containers on Stop）**：禁止在停止除錯後將 NodeODM 容器遺留於背景持續運行，確保本機資源與連接埠完全釋放。
-- **拒絕繁瑣外部啟動腳本維護負擔（No Redundant External Launch Scripts）**：優先採用開發環境原生設定，不強制引入額外且維護成本高的外部啟動腳本。
-- **拒絕過度複雜的 tasks.json 依賴鏈（No Complex Task Dependency Chains）**：不強制使用 tasks.json 串聯背景問題匹配器（Problem Matchers），改採 launch.json 獨立組態與 compounds 直覺調度。
-- **拒絕無 rewrite 造成之路由前綴硬耦合（No Unrewritten Hardcoded Route Coupling）**：不採用前端無 `/api` 或後端被迫迎合前端無前綴之配置，確保反向代理層具備前綴解耦能力。
-- **拒絕前端掩蓋後端詳細錯誤資訊（No Generic Error Masking in Frontend）**：在後端已提供結構化 `data.message` 時，拒絕前端一律使用固定靜態錯誤字串，杜絕掩蔽真實錯誤根因。
-- **拒絕無效冗餘的雙代理通道（No Redundant Multi-Proxy Routes）**：在 Vite 開發伺服器中拒絕同時保留未使用的多重代理路徑，消除維護歧義。
-- **拒絕全田行列剛性自動劃分（No Rigid Global Grid Partitioning）**：不強制依賴全田外邊界與全域行列數（Rows/Cols）等分切割，拒絕無法適應畸零小區、弧形垄向或分散配置之僵化網格。
-- **拒絕非吸附之開放式小區路徑（No Open Polygon Paths）**：小區多邊形必須明確閉合方可成區，嚴禁未閉合之開放折線作為試驗小區。
-- **拒絕螢幕像素絕對值硬編碼（No Screen-Pixel Hardcoded Coordinates）**：嚴禁直接儲存瀏覽器 DOM 渲染之像素座標，避免因裝置解析度、視窗縮放或容器尺寸改變而導致座標錯位。
-- **拒絕跳轉式分離標註頁面（No Fragmented Modal for Plot Segmentation）**：不使用跳轉式獨立頁面或全螢幕彈窗進行小區分割，維持主畫面影像、熱圖與標註之空間上下文連續性。
-- **拒絕微操作高頻自動儲存（No High-Frequency Micro Auto-Save for Canvas Edits）**：在多邊形繪製與節點拖曳過程中不進行高頻防抖自動儲存，杜絕送出未閉合或半成品之暫態資料至資料庫。
-- **拒絕鍵盤組合鍵平移負擔（No Mandatory Keyboard Modifier for Pan）**：平移畫布不強制依賴按住空白鍵（Space）或 Ctrl 鍵，全面改採滑鼠右鍵直接拖曳，降低單手標註之操作負擔。
-- **拒絕強制自動全螢幕與無效全螢幕功能（No Forced Fullscreen & Redundant Fullscreen Control）**：繪製模式嚴禁強制劫持瀏覽器原生全螢幕，工具列嚴禁保留不實用之全螢幕切換按鈕。
-- **拒絕單一低效的多邊形逐點閉合（No Polygon-Only Plot Drawing）**：嚴禁僅提供逐點點擊與雙擊吸附閉合多邊形作為唯一繪製方式，小區標註必須預設支援快速滑鼠拖曳矩形框選。
-- **拒絕分割式獨立筆刷套用模式（No Disconnected Brush Assignment Mode）**：嚴禁要求使用者在繪製完成後手動切換至獨立的「套用處理」模式重複點擊小區上色，農藥設定必須在畫完當下即時彈窗完成。
-- **拒絕取消彈窗時殘留未指定垃圾小區（No Orphaned Unassigned Plot on Dialog Cancel）**：在農藥設定彈窗中點擊取消或關閉時，嚴禁於畫布留下未指定處理之殘留小區，必須即時回復並徹底移除該次幾何草稿。
-- **拒絕每幀重排尺寸縮放（No DOM Layout Reflow via Width/Height Resize）**：縮放平移時禁止頻繁修改 `img` 的 DOM像素 `width` 與 `height`，拒絕引發瀏覽器整頁重排（Layout Reflow）與卡頓。
-- **拒絕 Tailwind CSS max-width 影像箝制（No Tailwind Default Image Max-Width Clamping）**：嚴禁讓正射航拍底圖受限於 Tailwind Preflight 的 `max-width: 100%` 預設限制，杜絕大於視窗寬度時影像停止縮放所造成的標註脫節錯位。
-- **拒絕無邊界無限平移迷航（No Unbounded Panning Lost in Space）**：禁止完全無限制將正射影像拖出視野之外，杜絕使用者迷航與找不到影像的操作困境。
-- **拒絕無預覽盲目覆蓋生成（No Blind Overwrite Generation）**：嚴禁在未提供畫布動態虛線預覽與四角錨點把手的情況下直接將演算法推估的小區寫死或覆蓋既有小區。
-- **拒絕重型深度學習分割模型（No Heavy Deep Learning Segmentor for Markers）**：不引入 YOLO、Mask R-CNN 或 SAM 等重型模型辨識定位牌，採用純粹輕量的 OpenCV 高亮度形態學二值化與輪廓特徵演算法。
-- **拒絕強制阻塞式連續填寫彈窗（No Blocking Sequential Treatment Modal）**：整批小區一鍵生成後，嚴禁強制跳出接二連三、無法關閉的循序表單彈窗打斷操作，維持由使用者在畫布上自由點選指派的彈性。
-- **拒絕零間隔剛性切分（No Strict Zero-Gap Rigid Partitioning）**：生成小區時拒絕強制無縫緊貼，必須提供走道內縮間距（Margin Gap）以避免田埂走道裸土污染植生指標。
-- **拒絕常駐遮擋式固定右下角對話框（No Permanent Obstructive Fixed Dialog）**：淘汰固定於右下角佔用 420x600 空間之僵硬對話框與簡易按鈕，改以輕量自由拖曳懸浮之 Persona 取代，避免遮蔽正射拼接底圖與小區邊界。
-- **拒絕拖曳點擊行為混淆（No Drag-Click Ambiguity）**：拖曳移動位移大於 5px 時嚴禁誤觸發點擊展開對話視窗，避免使用者拖放 Persona 調整位置時跳出干擾彈窗。
-- **拒絕超出版面無限拖曳迷航（No Out-of-Bounds Persona Drifting）**：拖曳懸浮 Persona 時強制實施 Viewport 視窗邊界限制（Clamping），嚴禁拖出螢幕可視範圍外造成組件遺失。
-- **拒絕無伺服器/分散式跨節點過度工程（No Serverless or Multi-Node Overengineering）**：不拆分為 Cloud Run 或跨節點 Kubernetes/Worker 架構，避免增加分散式檔案同步、大容量影像傳輸延遲與維運複雜度。
-- **拒絕過度降規導致 OOM 崩潰（No Premature Downscaling Causing OOM）**：不採用小於 32GB RAM 的主機規格，杜絕 NodeODM 正射影像特徵匹配與稠密點雲運算時因記憶體耗盡而中斷任務。
-- **拒絕未加密 HTTP 或自簽無效憑證（No Insecure HTTP or Self-Signed Certs）**：公開服務強制一律使用合格權威機構簽發之 HTTPS 加密通道，禁止在雲端開放未加密 HTTP 或採用讓瀏覽器警告之自簽憑證。
-- **拒絕公開直接暴露內部運算服務與 SSH（No Direct Public Exposure of Internal Ports or SSH）**：嚴禁將未具備存取授權機制的 NodeODM 3000 埠、FastAPI 8000 埠或 SSH 22 埠對 `0.0.0.0/0` 全網公開。
-- **拒絕繁瑣手動維運與憑證外洩至第三方（No Manual Console Operations & No Third-Party Credential Sprawl）**：不依賴手動於 GCP Console 點擊建立基礎設施或手動登入 VM 維護，亦不將雲端專案完整高權限憑證儲存於第三方 CI/CD 平台，金鑰與設定檔嚴格保留於本機受控環境。
-- **拒絕盲目全量刪除 UI 元件庫（No Blind Purge of UI Component Libraries）**：暫不清理 `frontend/src/components/ai-elements` 與 `ui/*` 下未直接引用的原子元件，保留設計系統擴充彈性，杜絕過度刪減導致後續介面擴展困難。
-- **拒絕無效空檔案納入版本控制（No Zero-Byte Dummy Files in Git）**：嚴禁在版本庫中保留 0 位元組之無效設定檔或意外產物（如 `.aws`）。
-- **拒絕死代碼殘留（No Dead Code Accumulation）**：嚴格杜絕已被新架構（`DroneHomeUpload` / `FloatingPersona`）取代之舊版組件（`GeminiHomeChat.vue`）持續留存於原始碼樹。
-- **拒絕測試快取成為幽靈目錄（No Phantom Test Cache Directories）**：在所有測試程式碼均已移除的情況下，禁止殘留僅含 `__pycache__` 的空 `tests/` 目錄。
-- **拒絕累積懸掛容器映像檔（No Lingering Dangling Docker Images）**：嚴禁在線上發布完成後放任未清理的舊版或未標籤映像檔長期累積佔用磁碟空間，杜絕引發磁碟溢滿風險。
-- **拒絕非標準手動登入覆蓋部署（No Ad-hoc Manual SSH In-place Deployment）**：嚴格杜絕略過標準本機一鍵發布腳本而直接手動連線至遠端 VM 修改檔案或手動更新，確保部署環境完全可追溯、版本化與一致性。
-- **拒絕座標軸向混淆導致點擊失效（No Axis Mixing in Distance Calculation）**：嚴禁在幾何命中與距離計算中將不同維度座標混淆（如 `sc.y - screenX`），杜絕因座標軸向混淆導致把手點擊與拖曳功能失效。
-- **拒絕無回饋的靜態游標（No Feedback Static Cursor on Interactive Handles）**：在網格把手具備拖曳能力時，嚴禁維持靜態 `cursor-default` 無回饋狀態，杜絕使用者無法直觀辨識可拖曳錨點之體驗。
+- **拒絕未獲許可撰寫或修改測試**：未取得使用者明確指令前，嚴禁主動建立、擴充或修改任何測試檔案與測試程式碼。
+- **拒絕全田行列剛性自動劃分**：不強制依賴全田外邊界與剛性行列等分切割，避免無法適應畸零小區、弧形垄向或分散配置。
+- **拒絕重型深度學習分割模型**：不引入 SAM 2.1、YOLO-seg 或 Mask R-CNN 等重型模型進行小區或定位牌辨識，堅持採用純粹輕量的 OpenCV 幾何與形態學演算法。
+- **拒絕未確認即啟動指標運算**：AI 推薦指標後，嚴禁在使用者明確確認前自動開始各小區指標計算與比較。
+- **拒絕空白小區自動成為對照組**：未設定處理的小區僅代表尚未指派，嚴禁自動判定為未施藥對照組（CK/UTC）。
+- **拒絕自動剔除離群重複小區**：不因同處理小區指標差異過大而擅自刪除極端值，確保田間試驗資料真實性與可稽核性。
+- **拒絕第一版引入複雜推論統計模型**：第一版結果畫面不引入 ANOVA、Tukey HSD 或法定藥效判定，專注於描述統計、數值對照表與著色畫布。
+- **拒絕實體層混雜 ORM 宣告**：`src/entities/` 嚴格禁止使用 SQLModel 或 SQLAlchemy 表格宣告，維持純 dataclass 領域物件。
+- **拒絕非標準庫背景執行緒包裝**：倉儲層非同步調度不使用 anyio 等外部套件，一律採用 Python 原生 `asyncio.to_thread`。
+- **拒絕 UseCase 耦合具體倉儲或外部通訊實體**：`src/usecases/` 嚴禁直接引用具體 `TaskRepository` 實作或原生發起 HTTP 請求，強制依賴抽象 Port 介面。
+- **拒絕 Controller 直接依賴外部通訊 Port**：控制器嚴禁直接注入或操作 `OdmPort`，外部通訊與第三方服務調度一律經由 UseCase 統一封裝。
+- **拒絕 Controller 直接回傳裸字典或自組 404**：控制器端點嚴禁直接回傳裸字典字面值或未經包裝之自定義錯誤，統一由 Presenter 架構包裝標準回應或拋出原生例外。
+- **拒絕前端輪詢計時器監聽進度**：全面淘汰前端 `setInterval` 輪詢後端進度做法，進度推送一律採用 Server-Sent Events (SSE)。
+- **拒絕小區標註強制全螢幕**：小區繪製與檢視嚴禁強制劫持瀏覽器原生全螢幕，所有操作直接在主工作區卡片畫布中進行。
+- **拒絕螢幕像素絕對值硬編碼**：小區座標嚴禁儲存 DOM 螢幕像素，必須儲存 0.0 ~ 1.0 正規化比例座標，杜絕視窗縮放跑版。
+- **拒絕高頻防抖自動寫入未定稿設定**：畫布多邊形繪製與情境特徵欄位輸入嚴禁進行高頻防抖自動寫入資料庫，必須透過明確確認按鈕持久化。
+- **拒絕首頁無專案對話寫入資料庫**：首頁未選定任務之問答嚴禁寫入 SQLite 資料庫，維持前端記憶體暫態。
+- **拒絕無伺服器與跨節點分散式過度工程**：不拆分為 Cloud Run 或跨節點 Kubernetes 架構，避免增加檔案同步開銷與維運複雜度。
+- **拒絕主機記憶體規格過度降規**：主機記憶體規格不低於 32GB RAM，杜絕 NodeODM 正射影像特徵匹配與稠密點雲運算時因 OOM 崩潰。
+- **拒絕公開直接暴露內部運算服務與 SSH**：嚴禁將 NodeODM（3000）、FastAPI（8000）或 SSH（22）直接向全網公開，管理連線一律經由 GCP IAP 安全通道。
+- **拒絕累積懸掛容器映像檔**：嚴禁線上發布完成後放任未清理的舊版映像檔長期累積，每次發布必須自動執行 prune 清理。
