@@ -138,3 +138,8 @@
 - [Radix Vue 官方文件 - 狀態無縫切換無障礙規範](https://www.radix-vue.com/)
 - **採用架構**：將專案元資料、拼接進度反饋與正射成果檢視收斂於單一動態卡片；卡片 Header 維持「專案名稱＋ID＋狀態與光譜徽章」跨步驟一致性外觀；卡片 Body 依 `progress` 狀態在「運算進度條與中斷按鈕」與「正射影像高解析度畫布」間無縫切換，徹底消除多卡片上下堆疊造成的視覺噪音與垂直空間浪費。
 
+### 步驟專屬條件渲染與狀態隔離架構 (Step-Isolated Conditional Rendering)
+- [Vue.js 官方文件 - 條件渲染 (Conditional Rendering v-if / v-show)](https://vuejs.org/guide/essentials/conditional.html)
+- [Vue.js 官方文件 - 響應式狀態重置與監聽 (Watchers & Reactivity)](https://vuejs.org/guide/essentials/watchers.html)
+- **採用架構**：依據步驟職責落實純淨單一職責分離；步驟 1 透過 `v-if="currentStep === 3"` 徹底隔離光譜演算法懸浮面板與 Header 光譜模式徽章，僅提供原始 RGB 空拍拼接成果與縮放平移 HUD；於 `handleStepChange` 步進切換機制中，切換回步驟 1 時自動觸發 `selectedFormula = 'rgb'` 響應式重置，杜絕跨步驟濾鏡殘留。
+

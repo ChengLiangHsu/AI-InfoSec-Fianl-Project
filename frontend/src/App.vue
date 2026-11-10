@@ -307,6 +307,12 @@ function canSafelyLeaveStep3(): boolean {
   return true
 }
 
+function resetStepFormula(targetStep: 1 | 2 | 3) {
+  if (targetStep === 1) {
+    selectedFormula.value = 'rgb'
+  }
+}
+
 function handleStepChange(targetStep: 1 | 2 | 3) {
   if (targetStep === currentStep.value) return
   if (!isStepUnlocked(targetStep)) {
@@ -317,6 +323,7 @@ function handleStepChange(targetStep: 1 | 2 | 3) {
     return
   }
   currentStep.value = targetStep
+  resetStepFormula(targetStep)
   nextTick(() => {
     if (imageRef.value && imageRef.value.complete && imageRef.value.naturalWidth > 0) {
       onFitToScreen()
@@ -609,7 +616,7 @@ watch(selectedProject, async (newProj) => {
                 {{ selectedProject.images ?? 0 }} 張相片
               </Badge>
               <Badge
-                v-if="selectedProject.progress === 100"
+                v-if="selectedProject.progress === 100 && currentStep === 3"
                 data-tour="formula-selector"
                 variant="outline"
                 class="font-mono text-xs"
@@ -748,8 +755,9 @@ watch(selectedProject, async (newProj) => {
                 </TooltipProvider>
               </div>
 
-              <!-- 懸浮公式快速切換按鈕群 (Floating Formula Switcher) -->
+              <!-- 懸浮公式快速切換按鈕群 (Floating Formula Switcher) (僅步驟 3 顯示) -->
               <div
+                v-if="currentStep === 3"
                 class="absolute top-3 right-3 z-20 flex flex-col gap-1.5 rounded-xl border border-border/80 bg-background/85 p-1.5 shadow-lg backdrop-blur-md">
                 <div class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
                   <Layers class="size-3.5" />

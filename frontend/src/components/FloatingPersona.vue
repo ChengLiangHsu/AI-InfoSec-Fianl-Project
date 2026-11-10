@@ -279,7 +279,6 @@ function getDockCandidates(): DockCandidate[] {
     }
     return [
       { selector: '[data-tour="step-tab-2"]', hint: '正射影像拼接已完成！點此前往步驟 2 設定情境' },
-      { selector: '[data-tour="formula-selector"]', hint: '可切換 RGB 或植生光譜指標預覽' },
     ]
   }
 
