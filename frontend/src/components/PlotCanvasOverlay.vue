@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import {
   type PlotItem,
   type NormalizedPoint,
@@ -10,6 +10,7 @@ import {
   shiftPoints,
   calculateCellNormalizedSpan,
   generateSubplotPolygon,
+  calculatePlotCentroid,
 } from '@/lib/usePlots'
 import type { CanvasViewport } from '@/lib/useCanvasViewport'
 
@@ -18,27 +19,37 @@ const props = withDefaults(
     plots: PlotItem[]
     activeMode: 'view' | 'draw'
     drawTool?: 'rect' | 'polygon' | 'eraser'
-    selectedPlotNumber: number | null
+    selectedPlotNumber?: number | null
+    selectedPlotNumbers?: number[]
     getPlotColor: (plot: PlotItem) => string
     viewport: CanvasViewport
     gridState?: GridGeneratorState
     previewPlots?: NormalizedPoint[][]
+    canEdit?: boolean
   }>(),
   {
     drawTool: 'rect',
     previewPlots: () => [],
+    canEdit: true,
   }
 )
 
 const emit = defineEmits<{
   (e: 'plot-drawn', points: NormalizedPoint[]): void
   (e: 'edit-plot', plot: PlotItem): void
+  (e: 'edit-plots', plots: PlotItem[]): void
   (e: 'update-plot-points', payload: { plotNumber: number; points: NormalizedPoint[] }): void
   (e: 'select-plot', plotNumber: number | null): void
+  (e: 'select-plots', plotNumbers: number[]): void
   (e: 'update-grid-corner', payload: { index: number; point: NormalizedPoint }): void
+  (e: 'update-grid-corners', corners: NormalizedPoint[]): void
+  (e: 'move-grid', payload: { delta: { dx: number; dy: number } }): void
   (e: 'delete-plot', plotNumber: number): void
+  (e: 'delete-plots', plotNumbers: number[]): void
   (e: 'duplicate-plot', plotNumber: number): void
+  (e: 'duplicate-plots', plotNumbers: number[]): void
   (e: 'move-plot', payload: { plotNumber: number; delta: { dx: number; dy: number } }): void
+  (e: 'move-plots', payload: { plotNumbers: number[]; delta: { dx: number; dy: number } }): void
   (e: 'toggle-exclude-grid-cell', cellIndex: number): void
 }>()
 
@@ -48,6 +59,34 @@ const containerRef = ref<HTMLDivElement | null>(null)
 // 網格角點把手拖曳與懸停狀態
 const draggingGridCornerIndex = ref<number | null>(null)
 const hoveredGridCornerIndex = ref<number | null>(null)
+
+// 網格整體拖曳與懸停狀態
+const isDraggingWholeGrid = ref(false)
+const isHoveringGridQuad = ref(false)
+const gridDragStartNorm = ref<NormalizedPoint | null>(null)
+const gridDragStartCorners = ref<NormalizedPoint[] | null>(null)
+
+// 多選小區狀態統一收斂
+const effectiveSelectedPlotNumbers = computed<number[]>(() => {
+  if (props.selectedPlotNumbers && props.selectedPlotNumbers.length > 0) {
+    return props.selectedPlotNumbers
+  }
+  if (props.selectedPlotNumber !== null && props.selectedPlotNumber !== undefined) {
+    return [props.selectedPlotNumber]
+  }
+  return []
+})
+
+function isPlotSelected(plotNumber: number): boolean {
+  return effectiveSelectedPlotNumbers.value.includes(plotNumber)
+}
+
+// 空白處框選（Rubber-band Selection）狀態
+const isRubberBandSelecting = ref(false)
+const rubberBandStartScreen = ref<{ x: number; y: number } | null>(null)
+const rubberBandStartNorm = ref<NormalizedPoint | null>(null)
+const rubberBandCurrentNorm = ref<NormalizedPoint | null>(null)
+const isRubberBandModifier = ref(false)
 
 // 矩形拖曳拉框狀態
 const isDraggingRect = ref(false)
@@ -60,6 +99,7 @@ const currentDrawingPoints = ref<NormalizedPoint[]>([])
 const currentMousePos = ref<NormalizedPoint | null>(null)
 const isNearStartPoint = ref(false)
 const draggingVertexIndex = ref<number | null>(null)
+const hoveredVertexIndex = ref<number | null>(null)
 
 // 橡皮擦狀態
 const isErasing = ref(false)
@@ -163,16 +203,13 @@ function findVertexNearPoint(screenX: number, screenY: number, plot: PlotItem): 
   return null
 }
 
-function calculateCentroid(pts: NormalizedPoint[]): { cx: number; cy: number } {
-  let sumX = 0
-  let sumY = 0
-  for (const p of pts) {
-    sumX += p.x
-    sumY += p.y
-  }
+function calculateCentroid(pts: NormalizedPoint[]): NormalizedPoint & { cx: number; cy: number } {
+  const c = calculatePlotCentroid(pts)
   return {
-    cx: sumX / pts.length,
-    cy: sumY / pts.length,
+    x: c.x,
+    y: c.y,
+    cx: c.x,
+    cy: c.y,
   }
 }
 
@@ -465,7 +502,7 @@ function drawExistingPlots(ctx: CanvasRenderingContext2D): void {
     const rawPts = parseCoords(plot.coords)
     if (rawPts.length < 3) continue
 
-    const isSelected = plot.plot_number === props.selectedPlotNumber
+    const isSelected = isPlotSelected(plot.plot_number)
     const isEraserHover = props.drawTool === 'eraser' && hoveredPlotNumber.value === plot.plot_number
 
     // 若正在拖曳移動（非 Alt 複製模式），渲染平移後位置
@@ -476,8 +513,14 @@ function drawExistingPlots(ctx: CanvasRenderingContext2D): void {
 
     drawSingleExistingPlot(ctx, plot, pts, isSelected, isEraserHover)
 
-    // 若處於繪製模式且為選取的小區，繪製頂點手柄
-    if (props.activeMode === 'draw' && isSelected && !isDraggingWholePlot.value && props.drawTool !== 'eraser') {
+    // 只有在「單選」且未拖曳時繪製頂點手柄（多選時隱藏手柄）
+    if (
+      props.activeMode === 'view' &&
+      isSelected &&
+      effectiveSelectedPlotNumbers.value.length === 1 &&
+      !isDraggingWholePlot.value &&
+      !props.gridState?.isActive
+    ) {
       drawPlotHandles(ctx, pts)
     }
 
@@ -486,6 +529,27 @@ function drawExistingPlots(ctx: CanvasRenderingContext2D): void {
       drawGhostDuplicatePreview(ctx, plot, wholePlotCurrentDelta.value)
     }
   }
+}
+
+function drawRubberBandPreview(ctx: CanvasRenderingContext2D): void {
+  if (!isRubberBandSelecting.value || !rubberBandStartNorm.value || !rubberBandCurrentNorm.value) return
+
+  const sp1 = props.viewport.normalizedToScreen(rubberBandStartNorm.value)
+  const sp2 = props.viewport.normalizedToScreen(rubberBandCurrentNorm.value)
+  const sx = Math.min(sp1.x, sp2.x)
+  const sy = Math.min(sp1.y, sp2.y)
+  const sw = Math.abs(sp2.x - sp1.x)
+  const sh = Math.abs(sp2.y - sp1.y)
+
+  ctx.save()
+  ctx.fillStyle = 'rgba(59, 130, 246, 0.15)'
+  ctx.fillRect(sx, sy, sw, sh)
+
+  ctx.strokeStyle = '#3b82f6'
+  ctx.lineWidth = 1.5
+  ctx.setLineDash([4, 4])
+  ctx.strokeRect(sx, sy, sw, sh)
+  ctx.restore()
 }
 
 function drawDraggingRectPreview(ctx: CanvasRenderingContext2D): void {
@@ -529,13 +593,18 @@ function drawDraggingRectPreview(ctx: CanvasRenderingContext2D): void {
 function drawPlotHandles(ctx: CanvasRenderingContext2D, pts: NormalizedPoint[]): void {
   for (let i = 0; i < pts.length; i++) {
     const sp = props.viewport.normalizedToScreen(pts[i])
+    const isHovered = hoveredVertexIndex.value === i
+    const isDragging = draggingVertexIndex.value === i
+
+    ctx.save()
     ctx.beginPath()
-    ctx.arc(sp.x, sp.y, 5, 0, Math.PI * 2)
-    ctx.fillStyle = '#ffffff'
+    ctx.arc(sp.x, sp.y, isHovered || isDragging ? 7 : 5, 0, Math.PI * 2)
+    ctx.fillStyle = isHovered || isDragging ? '#3b82f6' : '#ffffff'
     ctx.fill()
-    ctx.strokeStyle = '#2563eb'
-    ctx.lineWidth = 2
+    ctx.strokeStyle = isHovered || isDragging ? '#ffffff' : '#2563eb'
+    ctx.lineWidth = isHovered || isDragging ? 2.5 : 2
     ctx.stroke()
+    ctx.restore()
   }
 }
 
@@ -650,6 +719,7 @@ function drawCanvas(): void {
 
   drawExistingPlots(ctx)
   drawDraggingRectPreview(ctx)
+  drawRubberBandPreview(ctx)
   drawCurrentDrawingPolyline(ctx)
 
   if (props.gridState?.isActive) {
@@ -730,60 +800,152 @@ function handleGridHandleDown(screenX: number, screenY: number): boolean {
   return false
 }
 
-function handleViewModeDown(screenX: number, screenY: number): void {
-  const hitPlot = findPlotAtPoint(screenX, screenY)
-  if (hitPlot) {
-    emit('select-plot', hitPlot.plot_number)
-    emit('edit-plot', hitPlot)
-  } else {
-    emit('select-plot', null)
+function isPointInGridQuad(screenX: number, screenY: number): boolean {
+  if (!canvasRef.value || !props.gridState?.isActive || !props.gridState.corners || props.gridState.corners.length < 4) {
+    return false
   }
+  const ctx = canvasRef.value.getContext('2d')
+  if (!ctx) return false
+
+  const screenCorners = props.gridState.corners.map((c) => props.viewport.normalizedToScreen(c))
+  const path = new Path2D()
+  path.moveTo(screenCorners[0].x, screenCorners[0].y)
+  for (let i = 1; i < 4; i++) {
+    path.lineTo(screenCorners[i].x, screenCorners[i].y)
+  }
+  path.closePath()
+  return ctx.isPointInPath(path, screenX, screenY)
 }
 
-function handlePlotSelectionAndDragDown(
+function calculateRigidClampedCorners(
+  startCorners: NormalizedPoint[],
+  totalDx: number,
+  totalDy: number
+): NormalizedPoint[] {
+  let minX = 1
+  let maxX = 0
+  let minY = 1
+  let maxY = 0
+  for (const c of startCorners) {
+    if (c.x < minX) minX = c.x
+    if (c.x > maxX) maxX = c.x
+    if (c.y < minY) minY = c.y
+    if (c.y > maxY) maxY = c.y
+  }
+
+  const clampedDx = Math.max(-minX, Math.min(1 - maxX, totalDx))
+  const clampedDy = Math.max(-minY, Math.min(1 - maxY, totalDy))
+
+  return startCorners.map((c) => ({
+    x: Math.max(0, Math.min(1, Number((c.x + clampedDx).toFixed(5)))),
+    y: Math.max(0, Math.min(1, Number((c.y + clampedDy).toFixed(5)))),
+  }))
+}
+
+function handleGridQuadDown(screenX: number, screenY: number, norm: NormalizedPoint): boolean {
+  if (isPointInGridQuad(screenX, screenY) && props.gridState?.corners && props.gridState.corners.length === 4) {
+    isDraggingWholeGrid.value = true
+    gridDragStartNorm.value = { x: norm.x, y: norm.y }
+    gridDragStartCorners.value = props.gridState.corners.map((c) => ({ ...c }))
+    return true
+  }
+  return false
+}
+
+function handleGridDragMove(norm: NormalizedPoint): void {
+  if (!gridDragStartNorm.value || !gridDragStartCorners.value) return
+  const totalDx = norm.x - gridDragStartNorm.value.x
+  const totalDy = norm.y - gridDragStartNorm.value.y
+
+  const shiftedCorners = calculateRigidClampedCorners(gridDragStartCorners.value, totalDx, totalDy)
+  emit('update-grid-corners', shiftedCorners)
+}
+
+function finishGridDrag(): void {
+  isDraggingWholeGrid.value = false
+  gridDragStartNorm.value = null
+  gridDragStartCorners.value = null
+}
+
+function handleGridHoverMove(screenX: number, screenY: number): void {
+  const hitCorner = findGridCornerAtPoint(screenX, screenY)
+  if (hoveredGridCornerIndex.value !== hitCorner) {
+    hoveredGridCornerIndex.value = hitCorner
+  }
+  const isInsideQuad = hitCorner === null ? isPointInGridQuad(screenX, screenY) : false
+  if (isHoveringGridQuad.value !== isInsideQuad) {
+    isHoveringGridQuad.value = isInsideQuad
+  }
+  drawCanvas()
+}
+
+function handleViewModeDown(
   screenX: number,
   screenY: number,
   norm: NormalizedPoint,
   e: MouseEvent
-): boolean {
-  // 1. 先檢驗是否點擊於選中小區的頂點手柄
-  if (props.selectedPlotNumber !== null && currentDrawingPoints.value.length === 0 && !isDraggingRect.value) {
-    const selectedPlot = props.plots.find((p) => p.plot_number === props.selectedPlotNumber)
+): void {
+  // 1. 先檢驗是否點擊於選中小區的頂點手柄 (僅在允許編輯且僅單選時)
+  if (
+    props.canEdit &&
+    effectiveSelectedPlotNumbers.value.length === 1 &&
+    currentDrawingPoints.value.length === 0 &&
+    !isDraggingRect.value
+  ) {
+    const singleNumber = effectiveSelectedPlotNumbers.value[0]
+    const selectedPlot = props.plots.find((p) => p.plot_number === singleNumber)
     if (selectedPlot) {
       const vIdx = findVertexNearPoint(screenX, screenY, selectedPlot)
       if (vIdx !== null) {
         draggingVertexIndex.value = vIdx
-        return true
+        return
       }
     }
   }
 
   // 2. 檢驗是否點擊中小區多邊形本體
   const hitPlot = findPlotAtPoint(screenX, screenY)
+  const isModifier = e.shiftKey || e.ctrlKey || e.metaKey
+
   if (hitPlot) {
-    emit('select-plot', hitPlot.plot_number)
-    isDraggingWholePlot.value = true
-    wholePlotDragStartNorm.value = { x: norm.x, y: norm.y }
-    wholePlotCurrentDelta.value = { dx: 0, dy: 0 }
-    isAltDragging.value = e.altKey
-    return true
+    if (isModifier) {
+      // 組合鍵點選：加選/減選切換
+      const cur = effectiveSelectedPlotNumbers.value
+      const next = cur.includes(hitPlot.plot_number)
+        ? cur.filter((n) => n !== hitPlot.plot_number)
+        : [...cur, hitPlot.plot_number]
+      emit('select-plots', next)
+      emit('select-plot', next.length === 1 ? next[0] : null)
+    } else {
+      // 若點擊未選中小區，切換為單選該小區
+      if (!isPlotSelected(hitPlot.plot_number)) {
+        emit('select-plots', [hitPlot.plot_number])
+        emit('select-plot', hitPlot.plot_number)
+      }
+      if (props.canEdit) {
+        isDraggingWholePlot.value = true
+        wholePlotDragStartNorm.value = { x: norm.x, y: norm.y }
+        wholePlotCurrentDelta.value = { dx: 0, dy: 0 }
+        isAltDragging.value = e.altKey
+      }
+    }
+    return
   }
 
-  return false
+  // 3. 點擊空白處：啟動框選（Rubber-band Box Selection）
+  isRubberBandSelecting.value = true
+  rubberBandStartScreen.value = { x: screenX, y: screenY }
+  rubberBandStartNorm.value = { x: norm.x, y: norm.y }
+  rubberBandCurrentNorm.value = { x: norm.x, y: norm.y }
+  isRubberBandModifier.value = isModifier
 }
 
 function handleDrawModeDown(
   screenX: number,
   screenY: number,
-  norm: NormalizedPoint,
-  e: MouseEvent
+  norm: NormalizedPoint
 ): void {
-  const handled = handlePlotSelectionAndDragDown(screenX, screenY, norm, e)
-  if (handled) return
-
-  // 點擊空白處取消選取
-  emit('select-plot', null)
-
+  // 繪圖模式與選取交互徹底解耦：不檢驗或修改既有小區選取，專注於新小區幾何繪製
   if (props.drawTool === 'rect') {
     isDraggingRect.value = true
     rectStartScreen.value = { x: screenX, y: screenY }
@@ -806,24 +968,84 @@ function handleDrawModeDown(
 }
 
 function finishWholePlotDrag(): void {
-  if (isDraggingWholePlot.value && props.selectedPlotNumber !== null) {
+  if (isDraggingWholePlot.value && effectiveSelectedPlotNumbers.value.length > 0) {
     const delta = wholePlotCurrentDelta.value
     const dist = Math.hypot(delta.dx, delta.dy)
     if (dist >= 0.004) {
       if (isAltDragging.value) {
-        emit('duplicate-plot', props.selectedPlotNumber)
+        if (effectiveSelectedPlotNumbers.value.length === 1) {
+          emit('duplicate-plot', effectiveSelectedPlotNumbers.value[0])
+        } else {
+          emit('duplicate-plots', effectiveSelectedPlotNumbers.value)
+        }
       } else {
-        emit('move-plot', { plotNumber: props.selectedPlotNumber, delta })
+        if (effectiveSelectedPlotNumbers.value.length === 1) {
+          emit('move-plot', { plotNumber: effectiveSelectedPlotNumbers.value[0], delta })
+        } else {
+          emit('move-plots', { plotNumbers: effectiveSelectedPlotNumbers.value, delta })
+        }
       }
-    } else if (!isAltDragging.value) {
-      const plot = props.plots.find((p) => p.plot_number === props.selectedPlotNumber)
-      if (plot) emit('edit-plot', plot)
     }
+    // 距離小於 0.004 為單擊純選取，維持選取狀態，嚴禁觸發 emit('edit-plot')
   }
   isDraggingWholePlot.value = false
   wholePlotDragStartNorm.value = null
   wholePlotCurrentDelta.value = { dx: 0, dy: 0 }
   isAltDragging.value = false
+}
+
+function finishRubberBandSelection(screenX: number, screenY: number): void {
+  if (
+    !isRubberBandSelecting.value ||
+    !rubberBandStartScreen.value ||
+    !rubberBandStartNorm.value ||
+    !rubberBandCurrentNorm.value
+  ) {
+    isRubberBandSelecting.value = false
+    return
+  }
+
+  const dist = Math.hypot(
+    screenX - rubberBandStartScreen.value.x,
+    screenY - rubberBandStartScreen.value.y
+  )
+
+  if (dist >= MIN_RECT_DRAG_PX) {
+    const minX = Math.min(rubberBandStartNorm.value.x, rubberBandCurrentNorm.value.x)
+    const maxX = Math.max(rubberBandStartNorm.value.x, rubberBandCurrentNorm.value.x)
+    const minY = Math.min(rubberBandStartNorm.value.y, rubberBandCurrentNorm.value.y)
+    const maxY = Math.max(rubberBandStartNorm.value.y, rubberBandCurrentNorm.value.y)
+
+    const newlySelected: number[] = []
+    for (const plot of props.plots) {
+      const pts = parseCoords(plot.coords)
+      if (pts.length < 3) continue
+      const centroid = calculateCentroid(pts)
+      if (centroid.x >= minX && centroid.x <= maxX && centroid.y >= minY && centroid.y <= maxY) {
+        newlySelected.push(plot.plot_number)
+      }
+    }
+
+    let finalSelected: number[] = []
+    if (isRubberBandModifier.value) {
+      finalSelected = Array.from(new Set([...effectiveSelectedPlotNumbers.value, ...newlySelected]))
+    } else {
+      finalSelected = newlySelected
+    }
+
+    emit('select-plots', finalSelected)
+    emit('select-plot', finalSelected.length === 1 ? finalSelected[0] : null)
+  } else {
+    emit('select-plots', [])
+    emit('select-plot', null)
+  }
+
+  isRubberBandSelecting.value = false
+  rubberBandStartScreen.value = null
+  rubberBandStartNorm.value = null
+  rubberBandCurrentNorm.value = null
+  isRubberBandModifier.value = false
+  drawCanvas()
 }
 
 function finishRectDrag(screenX: number, screenY: number): void {
@@ -870,17 +1092,22 @@ function onMouseDown(e: MouseEvent): void {
   }
 
   if (props.gridState?.isActive) {
-    handleGridHandleDown(screenX, screenY)
+    if (handleGridHandleDown(screenX, screenY)) {
+      return
+    }
+    if (handleGridQuadDown(screenX, screenY, norm)) {
+      return
+    }
     return
   }
 
   if (props.activeMode === 'view') {
-    handleViewModeDown(screenX, screenY)
+    handleViewModeDown(screenX, screenY, norm, e)
     return
   }
 
   if (props.activeMode === 'draw') {
-    handleDrawModeDown(screenX, screenY, norm, e)
+    handleDrawModeDown(screenX, screenY, norm)
   }
 }
 
@@ -909,19 +1136,19 @@ function onMouseMove(e: MouseEvent): void {
         point: norm,
       })
       drawCanvas()
+    } else if (isDraggingWholeGrid.value && gridDragStartNorm.value && gridDragStartCorners.value) {
+      handleGridDragMove(norm)
+      drawCanvas()
     } else if (props.drawTool !== 'eraser') {
-      const hitCorner = findGridCornerAtPoint(screenX, screenY)
-      if (hoveredGridCornerIndex.value !== hitCorner) {
-        hoveredGridCornerIndex.value = hitCorner
-        drawCanvas()
-      }
+      handleGridHoverMove(screenX, screenY)
     }
     return
   }
 
   // 頂點微調拖曳中
-  if (draggingVertexIndex.value !== null && props.selectedPlotNumber !== null) {
-    const selectedPlot = props.plots.find((p) => p.plot_number === props.selectedPlotNumber)
+  if (draggingVertexIndex.value !== null && effectiveSelectedPlotNumbers.value.length === 1) {
+    const singleNumber = effectiveSelectedPlotNumbers.value[0]
+    const selectedPlot = props.plots.find((p) => p.plot_number === singleNumber)
     if (selectedPlot) {
       const pts = parseCoords(selectedPlot.coords)
       if (draggingVertexIndex.value >= 0 && draggingVertexIndex.value < pts.length) {
@@ -943,11 +1170,38 @@ function onMouseMove(e: MouseEvent): void {
     return
   }
 
+  // 空白處框選拖曳中
+  if (isRubberBandSelecting.value) {
+    rubberBandCurrentNorm.value = norm
+    drawCanvas()
+    return
+  }
+
   // 矩形拖曳拉框中
   if (isDraggingRect.value && rectStartNorm.value) {
     rectCurrentNorm.value = norm
     drawCanvas()
     return
+  }
+
+  // 檢視模式下懸停選中小區頂點把手檢測 (僅在單選時)
+  if (
+    props.activeMode === 'view' &&
+    effectiveSelectedPlotNumbers.value.length === 1 &&
+    !props.gridState?.isActive &&
+    !isDraggingWholePlot.value &&
+    draggingVertexIndex.value === null
+  ) {
+    const singleNumber = effectiveSelectedPlotNumbers.value[0]
+    const selectedPlot = props.plots.find((p) => p.plot_number === singleNumber)
+    const hitIdx = selectedPlot ? findVertexNearPoint(screenX, screenY, selectedPlot) : null
+    if (hoveredVertexIndex.value !== hitIdx) {
+      hoveredVertexIndex.value = hitIdx
+      drawCanvas()
+    }
+  } else if (hoveredVertexIndex.value !== null && draggingVertexIndex.value === null) {
+    hoveredVertexIndex.value = null
+    drawCanvas()
   }
 
   // 多邊形點繪起點吸附
@@ -973,6 +1227,18 @@ function onMouseUp(e: MouseEvent): void {
     return
   }
 
+  if (isDraggingWholeGrid.value) {
+    finishGridDrag()
+    drawCanvas()
+    return
+  }
+
+  if (draggingVertexIndex.value !== null) {
+    draggingVertexIndex.value = null
+    drawCanvas()
+    return
+  }
+
   if (e.button === 2 || props.viewport.isPanning.value) {
     props.viewport.endPan()
     return
@@ -983,6 +1249,11 @@ function onMouseUp(e: MouseEvent): void {
   if (isDraggingWholePlot.value) {
     finishWholePlotDrag()
     drawCanvas()
+    return
+  }
+
+  if (isRubberBandSelecting.value) {
+    finishRubberBandSelection(screenX, screenY)
     return
   }
 
@@ -997,6 +1268,16 @@ function onMouseUp(e: MouseEvent): void {
 
 function onMouseLeave(e: MouseEvent): void {
   hoveredGridCornerIndex.value = null
+  isHoveringGridQuad.value = false
+  hoveredVertexIndex.value = null
+  if (isRubberBandSelecting.value) {
+    isRubberBandSelecting.value = false
+    rubberBandStartScreen.value = null
+    rubberBandStartNorm.value = null
+    rubberBandCurrentNorm.value = null
+    isRubberBandModifier.value = false
+    drawCanvas()
+  }
   onMouseUp(e)
 }
 
@@ -1012,9 +1293,25 @@ function onWheel(e: WheelEvent): void {
   drawCanvas()
 }
 
-function onDblClick(): void {
+function onDblClick(e: MouseEvent): void {
   if (props.activeMode === 'draw' && props.drawTool === 'polygon' && currentDrawingPoints.value.length >= 3) {
     finishDrawing()
+    return
+  }
+
+  if (props.activeMode === 'view' && props.canEdit && !props.gridState?.isActive) {
+    const { screenX, screenY } = getCanvasRelativeCoords(e)
+    const hitPlot = findPlotAtPoint(screenX, screenY)
+    if (hitPlot) {
+      if (effectiveSelectedPlotNumbers.value.includes(hitPlot.plot_number) && effectiveSelectedPlotNumbers.value.length > 1) {
+        const selectedPlots = props.plots.filter((p) => effectiveSelectedPlotNumbers.value.includes(p.plot_number))
+        emit('edit-plots', selectedPlots)
+      } else {
+        emit('select-plots', [hitPlot.plot_number])
+        emit('select-plot', hitPlot.plot_number)
+        emit('edit-plot', hitPlot)
+      }
+    }
   }
 }
 
@@ -1023,17 +1320,26 @@ function onKeyDown(e: KeyboardEvent): void {
   if (targetTag === 'input' || targetTag === 'textarea' || targetTag === 'select') return
 
   if (e.key === 'Delete' || e.key === 'Backspace') {
-    if (props.selectedPlotNumber !== null && !isDraggingRect.value && currentDrawingPoints.value.length === 0) {
+    if (effectiveSelectedPlotNumbers.value.length > 0 && !isDraggingRect.value && currentDrawingPoints.value.length === 0) {
       e.preventDefault()
-      emit('delete-plot', props.selectedPlotNumber)
+      if (effectiveSelectedPlotNumbers.value.length === 1) {
+        emit('delete-plot', effectiveSelectedPlotNumbers.value[0])
+      } else {
+        emit('delete-plots', [...effectiveSelectedPlotNumbers.value])
+      }
     }
   } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
-    if (props.selectedPlotNumber !== null) {
+    if (effectiveSelectedPlotNumbers.value.length > 0) {
       e.preventDefault()
-      emit('duplicate-plot', props.selectedPlotNumber)
+      if (effectiveSelectedPlotNumbers.value.length === 1) {
+        emit('duplicate-plot', effectiveSelectedPlotNumbers.value[0])
+      } else {
+        emit('duplicate-plots', [...effectiveSelectedPlotNumbers.value])
+      }
     }
   } else if (e.key === 'Escape') {
     cancelDrawing()
+    emit('select-plots', [])
     emit('select-plot', null)
   }
 }
@@ -1100,6 +1406,7 @@ watch(
     props.activeMode,
     props.drawTool,
     props.selectedPlotNumber,
+    props.selectedPlotNumbers,
     props.gridState?.isActive,
     props.gridState?.corners,
     props.gridState?.rows,
@@ -1129,8 +1436,25 @@ watch(
 watch(
   () => props.activeMode,
   (newMode) => {
+    draggingVertexIndex.value = null
+    hoveredVertexIndex.value = null
     if (newMode !== 'draw') {
       cancelDrawing()
+    } else {
+      emit('select-plots', [])
+      emit('select-plot', null)
+    }
+  }
+)
+
+watch(
+  () => props.gridState?.isActive,
+  (active) => {
+    if (active) {
+      draggingVertexIndex.value = null
+      hoveredVertexIndex.value = null
+      emit('select-plots', [])
+      emit('select-plot', null)
     }
   }
 )
@@ -1141,11 +1465,12 @@ watch(
     ref="containerRef"
     class="absolute inset-0 pointer-events-auto select-none"
     :class="{
-      'cursor-grab': viewport.isPanning.value || (gridState?.isActive && hoveredGridCornerIndex !== null && draggingGridCornerIndex === null && drawTool !== 'eraser'),
-      'cursor-grabbing': draggingGridCornerIndex !== null,
-      'cursor-pointer': (activeMode === 'view' && !gridState?.isActive) || drawTool === 'eraser',
-      'cursor-crosshair': activeMode === 'draw' && drawTool !== 'eraser' && !gridState?.isActive && !viewport.isPanning.value,
-      'cursor-default': gridState?.isActive && drawTool !== 'eraser' && !viewport.isPanning.value && hoveredGridCornerIndex === null && draggingGridCornerIndex === null,
+      'cursor-grab': viewport.isPanning.value || (gridState?.isActive && hoveredGridCornerIndex !== null && draggingGridCornerIndex === null && drawTool !== 'eraser') || (activeMode === 'view' && hoveredVertexIndex !== null && draggingVertexIndex === null && !gridState?.isActive),
+      'cursor-grabbing': draggingGridCornerIndex !== null || draggingVertexIndex !== null || isDraggingWholeGrid,
+      'cursor-move': (gridState?.isActive && isHoveringGridQuad && hoveredGridCornerIndex === null && draggingGridCornerIndex === null && !isDraggingWholeGrid && drawTool !== 'eraser') || isDraggingWholePlot,
+      'cursor-pointer': (activeMode === 'view' && !gridState?.isActive && hoveredVertexIndex === null && draggingVertexIndex === null && !isRubberBandSelecting) || drawTool === 'eraser',
+      'cursor-crosshair': (activeMode === 'draw' && drawTool !== 'eraser' && !gridState?.isActive && !viewport.isPanning.value) || isRubberBandSelecting,
+      'cursor-default': gridState?.isActive && drawTool !== 'eraser' && !viewport.isPanning.value && hoveredGridCornerIndex === null && draggingGridCornerIndex === null && !isHoveringGridQuad && !isDraggingWholeGrid,
     }"
     @mousedown="onMouseDown"
     @mousemove="onMouseMove"

@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 
-from src.config import MAX_ACTIVE_TASKS, MAX_IMAGE_BYTES, MAX_IMAGES, MAX_UPLOAD_BYTES, VISITOR_MAX_AGE
+from src.config import MAX_ACTIVE_TASKS, MAX_IMAGE_BYTES, MAX_IMAGES, MAX_UPLOAD_BYTES
 from src.presenter.response_wrapper import success_response
 
 router = APIRouter(tags=["system"])
@@ -13,11 +13,9 @@ def health():
 
 
 @router.get("/api/session")
-def visitor_session(request: Request):
-    """前端啟動時先建立身分，再開始並行讀取任務。"""
+def visitor_session():
+    """前端啟動時取得上傳限制與系統配置。"""
     return success_response({
-        "visitor_id": request.state.owner_id,
-        "session_days": VISITOR_MAX_AGE // 86400,
         "limits": {
             "images": MAX_IMAGES, "image_bytes": MAX_IMAGE_BYTES,
             "upload_bytes": MAX_UPLOAD_BYTES, "active_tasks": MAX_ACTIVE_TASKS,

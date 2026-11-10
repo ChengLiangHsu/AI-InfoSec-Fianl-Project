@@ -7,7 +7,13 @@ from typing import Any, Sequence
 
 from src.entities.task import Plot, Task
 from src.entities.upload import UploadImage
-from src.config import MAX_ACTIVE_TASKS, ODM_DIR, ODM_MAX_CONCURRENCY
+from src.config import (
+    MAX_ACTIVE_TASKS,
+    ODM_DIR,
+    ODM_FEATURE_QUALITY,
+    ODM_MAX_CONCURRENCY,
+    ODM_PC_QUALITY,
+)
 from src.usecases.ports import TaskPort
 from src.usecases.ports.odm import OdmPort
 from src.utility.imagery import extract_orthophoto_from_zip
@@ -167,6 +173,17 @@ def _normalize_scenario_data(scenario_data: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+def _build_odm_processing_options() -> list[dict[str, Any]]:
+    """建立專用 2D 正射圖高效拼接參數，裁剪無效 3D 產物以極大化運算效能。"""
+    return [
+        {"name": "max-concurrency", "value": ODM_MAX_CONCURRENCY},
+        {"name": "skip-3dmodel", "value": True},
+        {"name": "skip-report", "value": True},
+        {"name": "pc-quality", "value": ODM_PC_QUALITY},
+        {"name": "feature-quality", "value": ODM_FEATURE_QUALITY},
+    ]
+
+
 class TaskUseCase:
     """任務用例（業務編排層）：協調航拍任務生命週期、小區配置與對話歷史業務流程。"""
 
@@ -186,8 +203,9 @@ class TaskUseCase:
             raise RuntimeError(f"目前已有 {MAX_ACTIVE_TASKS} 個待處理任務，請稍後再試")
 
         uuid_str = await self.odm_port.create_task(
-            files=files, name=name,
-            options=[{"name": "max-concurrency", "value": ODM_MAX_CONCURRENCY}],
+            files=files,
+            name=name,
+            options=_build_odm_processing_options(),
         )
         task = Task(id=uuid_str, name=name, images=len(files), progress=0)
         try:

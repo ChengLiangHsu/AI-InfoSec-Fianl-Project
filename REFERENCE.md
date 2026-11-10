@@ -39,10 +39,17 @@
 
 ### OpenDroneMap & NodeODM (正射拼圖引擎)
 - [OpenDroneMap (ODM) 官方文件](https://docs.opendronemap.org/)
+- [OpenDroneMap 命令行與調校參數 (ODM Arguments Reference)](https://docs.opendronemap.org/arguments/)
 - [NodeODM REST API 規範與容器架構](https://github.com/OpenDroneMap/NodeODM)
 - [OpenDroneMap 航拍攝影測量採集指南](https://docs.opendronemap.org/flying/)
 - [HTTPX 官方文件 (Async Client & Multipart Uploads)](https://www.python-httpx.org/async/)
-- **採用架構**：以 NodeODM 容器作為正射拼圖引擎，透過 `src/requesters/odm.py` 之 `OdmRequester` 封裝 HTTP 通訊與任務監控，將成果解壓為 GeoTIFF 與高解析度 PNG 底圖。
+- **採用架構**：以 NodeODM 容器作為正射拼圖引擎，透過 `src/requesters/odm.py` 之 `OdmRequester` 封裝 HTTP 通訊與任務監控，將成果解壓為 GeoTIFF 與高解析度 PNG 底圖。透過 `--skip-3dmodel` 與 `--skip-report` 裁剪非必要 3D 模型與報表生成，並以 `pc-quality: low` 與 `feature-quality: high` 達成兼具高精度幾何對齊與最低資源損耗之 2D 正射圖專用管線。
+
+### Pillow 影像壓縮與轉換優化 (Pillow Fast PNG Compression)
+- [Pillow (PIL Fork) 官方文件 - PNG 格式存檔參數](https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html#png)
+- [zlib 壓縮等級與效能基準分析](https://www.zlib.net/)
+- [W3C Portable Network Graphics (PNG) Specification (Second Edition)](https://www.w3.org/TR/png/)
+- **採用架構**：在 GeoTIFF 轉存為 PNG 與光譜熱圖產出流程中，將 Pillow `save` 參數明確設定為 `compress_level=1`，避免預設 level 6 在單執行緒處理超大像素點陣圖時發生長時間 CPU 佔用與使用者介面等待，在保有完全無損像素色彩的前提下實現 3~5 倍轉檔提速。
 
 ### OpenCV 影像處理
 - [OpenCV 官方文件](https://docs.opencv.org/4.x/)
@@ -173,12 +180,125 @@
 - [Nielsen Norman Group - Minimalism in UI Design (簡約介面設計準則)](https://www.nngroup.com/articles/simplicity-vs-choice/)
 - **採用架構**：徹底剔除試驗情境卡片之冗餘引導長文、副標題說明與鍵盤快捷鍵提示；各組別卡片獨立維護「藥劑/標的名稱」與「劑量/稀釋倍數」，不再綁定全域單一農藥欄位與重複字串，未設定專案預設給予「1 對照組 (CK) ＋ 1 空白處理組」極簡初始骨架，支援多藥劑混合評估與純粹直覺的手動配置。
 
-### 唯一對照組互斥狀態與防呆保護架構 (Mutually Exclusive Single Control Group & Defensive Architecture)
-- [Vue.js 官方文件 - 響應式基礎 (Reactivity Fundamentals)](https://vuejs.org/guide/essentials/reactivity-fundamentals.html)
-- [W3C WAI-ARIA Radio Group 互斥單選設計模式 (Radio Group Pattern)](https://www.w3.org/WAI/ARIA/apg/patterns/radio/)
+### 固定對照組與靜態狀態標籤防呆架構 (Fixed Control Group & Static Status Badge Architecture)
+- [Vue.js 官方文件 - 列表渲染 (List Rendering)](https://vuejs.org/guide/essentials/list.html)
+- [W3C WAI-ARIA 狀態標籤與徽章指引 (Badge & Status Indicators)](https://www.w3.org/WAI/ARIA/apg/)
 - [EPPO Standard PP 1/152(4)：植保產品藥效評估試驗設計與分析標準指南 (對照組基準要求)](https://pp1.eppo.int/standards/pp1-152-4)
 - [Nielsen Norman Group - Preventing User Errors (防呆設計原則)](https://www.nngroup.com/articles/user-interface-errors/)
-- **採用架構**：在 `ProjectScenarioCard.vue` 實作單選互斥模式（Radio-like Mutually Exclusive Pattern），將處理組切換為對照組時自動降級原對照組，確保全專案情境始終維持唯一 CK 基準；對照組卡片條件隱藏刪除按鈕（`v-if="!cat.is_control"`）杜絕誤刪；載入與後端儲存時加入資料歸一化校正，符合 EPPO 田間試驗唯一基準規範與防呆防禦架構。
+- **採用架構**：推翻原有之處理組點擊切換為對照組機制，首組恆為「對照組 (CK)」，所有組別徽章改為唯讀靜態徽章（Static Badge，無 click 事件、無 hover 偽類、無切換 tooltip），對照組卡片鎖定為固定灰白色（`#94a3b8`）且不渲染選色器，後續新增組別一律固定為「處理組」，杜絕角色誤觸發反轉並確立唯一的試驗基準。
+
+### 表單驗證與無縫焦點跳轉架構 (Form Validation & Seamless Focus Management)
+- [Vue.js 官方文件 - 表單輸入綁定 (Form Input Bindings)](https://vuejs.org/guide/essentials/forms.html)
+- [Vue.js 官方文件 - 計算屬性 (Computed Properties)](https://vuejs.org/guide/essentials/computed.html)
+- [MDN Web Docs - HTML 表單驗證與約束 API (Constraint Validation)](https://developer.mozilla.org/en-US/docs/Learn/Forms/Form_validation)
+- [W3C WAI-ARIA 鍵盤導航與焦點管理指引 (Keyboard Navigation & Focus Management)](https://www.w3.org/WAI/ARIA/apg/practices/keyboard-interface/)
+- [Nielsen Norman Group - Form Design Best Practices (表單設計與即時驗證準則)](https://www.nngroup.com/articles/web-form-design/)
+- **採用架構**：在 `ProjectScenarioCard.vue` 透過 `computed` 即時計算組別完整性（`isFormValid`），對處理組之藥劑與劑量、對照組之名稱進行嚴格非空校驗，雙向連動「新增組別」與「儲存」按鈕之禁用狀態；結合 Vue `nextTick` 與 DOM Focus API 實作新增組別自動聚焦與 Enter 鍵跳格導引，並以 Tailwind `border-destructive/50` 實現零排版位移之極簡警示樣式。
+
+### 工具列絕對定位與樣式隔離架構 (Absolute Positioning & Style Isolation Pattern)
+- [Tailwind CSS 官方文件 - Positioning (絕對定位與定位上下文)](https://tailwindcss.com/docs/position)
+- [Vue.js 官方文件 - 透傳 Attributes (Fallthrough Attributes)](https://vuejs.org/guide/components/attrs.html)
+- [MDN CSS Layout - Containing Block (絕對定位包含塊規範)](https://developer.mozilla.org/en-US/docs/Web/CSS/Containing_block)
+- [W3C CSS Transforms 規範 (Transform Translate Y 居中技巧)](https://www.w3.org/TR/css-transforms-1/)
+- **採用架構**：小區繪製工具列根節點移除內嵌之 `relative` 樣式，改由外部統一傳遞或內部純粹聲明 `absolute top-1/2 -translate-y-1/2 right-4 z-20`，杜絕 CSS 類別權重覆蓋造成工具列脫軌居中；網格生成抽屜子面板維持 `absolute right-full mr-3 top-1/2 -translate-y-1/2` 對稱對齊並加入 `max-h-[calc(100vh-6rem)] overflow-y-auto` 視窗邊界保護，確保各種螢幕尺寸下皆精準停靠於畫布右側垂直中央。
+
+### 小區選取與特徵對話框雙階分離交互架構 (Two-Stage Selection & Double-Click Modal Architecture)
+- [MDN Web Docs - Element dblclick event](https://developer.mozilla.org/en-US/docs/Web/API/Element/dblclick_event)
+- [MDN Web Docs - MouseEvent API](https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent)
+- [Vue.js 官方文件 - 事件處理 (Event Handling)](https://vuejs.org/guide/essentials/event-handling.html)
+- [W3C 網頁圖形與幾何命中測試規範 (Hit Testing & Path2D)](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/isPointInPath)
+- [Nielsen Norman Group - Direct Manipulation and Selection in GUI](https://www.nngroup.com/articles/direct-manipulation/)
+- **採用架構**：將小區交互分離為「選取」與「開啟特徵設定」兩階段。在「選取與檢視模式」下，透過 `mousedown`/`mouseup` 單擊命中判定（`isPointInPath`）僅觸發純幾何選取（高亮框與把手）或空白處取消選取；透過原生 DOM `@dblclick` 雙擊事件直接完成選取並開啟 `PlotTreatmentDialog` 特徵設定對話框。而在「繪圖模式」（矩形拉框、多邊形逐點、橡皮擦）下徹底阻斷與既有小區的選取和彈窗交互，避免繪製新幾何或擦除時發生誤觸發。
+
+### 小區處理設定單擊套用與垂直卡片架構 (Plot Treatment Single-Click Apply & Vertical Card Architecture)
+- [shadcn-vue Dialog 組件官方文件](https://www.shadcn-vue.com/docs/components/dialog.html)
+- [W3C WAI-ARIA Dialog (Modal) Pattern](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/)
+- [Nielsen Norman Group - Selection Controls & Direct Manipulation (選取替代輸入準則)](https://www.nngroup.com/articles/selection-controls/)
+- [Material Design 3 - Lists & Selection Controls](https://m3.material.io/components/lists/overview)
+- **採用架構**：小區處理設定彈窗徹底淘汰手動輸入框與頂部切換頁籤，將步驟 2 情境設定之組別作為唯一資料事實來源。介面採用垂直卡片清單（Vertical Card List），直觀展示各組代表色彩、組別名稱與劑量標籤，並標示當前指派狀態（Checkmark）。使用者單擊卡片即透過事件觸發直接套用並關閉彈窗，新繪製與網格生成之小區全面預設為「未施藥對照 (CK)」，杜絕繁瑣輸入與多餘點擊確認。
+
+### 浮動面板自由拖曳與圓形浮動收合架構 (Draggable Floating Panel & Circle Collapse Architecture)
+- [MDN Web Docs - Pointer Events API](https://developer.mozilla.org/en-US/docs/Web/API/Pointer_events)
+- [Vue.js 官方文件 - 響應式基礎 (Reactivity Fundamentals)](https://vuejs.org/guide/essentials/reactivity-fundamentals.html)
+- [Vue.js 官方文件 - 內建組件 Transition (Transitions)](https://vuejs.org/guide/built-ins/transition.html)
+- [W3C CSS Transforms 規範 (Translate 2D)](https://www.w3.org/TR/css-transforms-1/)
+- [Nielsen Norman Group - Window and Panel Management in Web Applications](https://www.nngroup.com/articles/modal-nonmodal-dialog/)
+- **採用架構**：在 `PlotToolbar.vue` 中將網格配置面板設計為非模態自由浮動視窗，透過 Pointer Events (`pointerdown`, `pointermove`, `pointerup`) 實作標題列平滑拖曳，結合 `Math.min`/`Math.max` 嚴格限制於瀏覽器視窗可視範圍（Viewport Clamping）；提供最小化切換狀態，收合時平滑縮小為紫色網格圓形按鈕（Floating Action Pill/Button），點擊可就地展開還原；網格模式重新開啟時自動重置回工具列左側初始停靠位置。
+
+### 情境卡片極簡整合與色彩選擇器偽裝架構 (Scenario Card Streamlining & Disguised Color Swatch Architecture)
+- [MDN Web Docs - input type="color" 規範與自訂樣式](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input/color)
+- [Vue.js 官方文件 - 表單輸入綁定 (Form Input Bindings)](https://vuejs.org/guide/essentials/forms.html)
+- [Tailwind CSS 官方文件 - Arbitrary Variants 與偽元素樣式](https://tailwindcss.com/docs/hover-focus-and-other-states#pseudo-elements)
+- [Tailwind CSS 官方文件 - Border Radius 與 Sizing](https://tailwindcss.com/docs/border-radius)
+- [Nielsen Norman Group - Form Design Guidelines (減少表單冗贅元素)](https://www.nngroup.com/articles/form-design-placeholders/)
+- **採用架構**：在 `ProjectScenarioCard.vue` 徹底移除卡片頂部無操作價值的靜態組別徽章標籤（「對照組 (CK)」與「處理組」），將輸入欄位直接上提與色塊並列，減少卡片高度與版面雜訊；針對 HTML5 原生 `<input type="color">` 於不同瀏覽器之內部陰影、邊框與黑邊差異，採用外層自訂色塊封裝（`size-4 rounded shadow-xs border border-border/50 relative overflow-hidden cursor-pointer`）並疊加透明原生選色器（`absolute inset-0 opacity-0`），達成處理組與對照組色塊外觀完全一致的無縫選色體驗。
+
+### 小區幾何縮放與頂點控制把手架構 (Plot Geometry Resizing & Vertex Handle Control Architecture)
+- [W3C Canvas 2D 渲染規範 (CanvasRenderingContext2D: arc, stroke, fill)](https://www.w3.org/TR/2dcontext/)
+- [MDN Web Docs - MouseEvent 與座標轉換](https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent)
+- [Nielsen Norman Group - Direct Manipulation and Handle Affordances](https://www.nngroup.com/articles/direct-manipulation/)
+- **採用架構**：在 `PlotCanvasOverlay.vue` 中將小區幾何縮放與頂點微調控制收斂於「選取與檢視模式」。選取小區時繪製高對比之圓形頂點把手（白色填充圓配藍色描邊），透過歐幾里得距離命中判定（`Math.hypot`）捕捉頂點拖曳動作（`draggingVertexIndex`），即時計算正規化相對座標（0.0 ~ 1.0）並發送更新事件；切換至「手動繪製模式」或網格時自動隱藏把手並清空選取，確保模式職責解耦且避免交互誤觸。
+
+### 雙線性網格整體平移與剛體邊界約束架構 (Bilinear Grid Rigid Translation & Boundary Clamping Architecture)
+- [W3C Canvas 2D 規範 - CanvasRenderingContext2D.isPointInPath()](https://www.w3.org/TR/2dcontext/#dom-context-2d-ispointinpath)
+- [MDN Web Docs - CanvasRenderingContext2D.isPointInPath() 幾何命中判定](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/isPointInPath)
+- [MDN Web Docs - CSS cursor 樣式與使用者反饋 (cursor: move / grabbing)](https://developer.mozilla.org/en-US/docs/Web/CSS/cursor)
+- [W. Randolph Franklin - PNPOLY: Point Inclusion in Polygon Test](https://wrfranklin.org/Research/Short_Notes/pnpoly.html)
+- [MDN Web Docs - Math.min / Math.max 數值區間夾持 (Clamping)](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/min)
+- **採用架構**：在 `PlotCanvasOverlay.vue` 與 `usePlots.ts` 實現雙線性網格整體平移與剛體邊界保護。在網格配置模式下（非消除單元格狀態），透過 `Path2D` 建立母框多邊形並以 `isPointInPath` 判定滑鼠是否位於四角母框內部；當非角點命中時啟用整體拖曳（`isDraggingWholeGrid`），將滑鼠懸停游標設為 `move`、拖曳中設為 `grabbing`。平移量透過全網格 4 角點之極值座標（minX, maxX, minY, maxY）進行剛體平移量約束（`-minX <= dx <= 1 - maxX` 與 `-minY <= dy <= 1 - maxY`），觸及邊界時停止該軸向移動，防止網格幾何變形扭曲或逸出影像，滑鼠移動時實時動態重算渲染雙線性網格。
+
+### 跨站請求防護與輕量安全中介層 (CSRF Protection & Sec-Fetch Metadata)
+- [W3C Fetch Metadata Request Headers](https://www.w3.org/TR/fetch-metadata/)
+- [MDN Web Docs - Sec-Fetch-Site 標頭規範](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-Fetch-Site)
+- [OWASP Cross-Site Request Forgery (CSRF) Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html)
+- [Starlette Middleware 官方文件](https://www.starlette.io/middleware/)
+- [FastAPI 依賴注入 (Dependencies)](https://fastapi.tiangolo.com/tutorial/dependencies/)
+- **採用架構**：以無狀態的 `SecurityMiddleware` 替代原先複雜的訪客狀態中介層，依據 `Sec-Fetch-Site` 與 `Origin` 標頭驗證請求來源，在零 Cookie、無 Session 狀態開銷下防範跨站惡意寫入；後端 `TaskRepository` 與用例注入徹底解耦 `owner_id`，達成全站專案全域共享。
+
+### Element Plus 風格暗黑行內編輯資料表格架構 (Element Plus Dark Theme Inline Editable Table Architecture)
+- [Element Plus Table 組件官方文件 (Table Component)](https://element-plus.org/en-US/component/table.html)
+- [Tailwind CSS 官方文件 - Tables (Border Collapse & Table Layout)](https://tailwindcss.com/docs/table-layout)
+- [W3C WAI-ARIA 表格設計模式 (Table Design Pattern)](https://www.w3.org/WAI/ARIA/apg/patterns/table/)
+- [Nielsen Norman Group - Table Design UX Patterns (資料表格與行內編輯最佳實踐)](https://www.nngroup.com/articles/table-design/)
+- **採用架構**：在 `ProjectScenarioCard.vue` 推翻原卡片網格佈局，採用 Element Plus 暗黑極簡資料表格規範。規劃標準四欄架構（色彩標記、藥劑名稱、施用劑量、操作），首列永久固定為「對照組 (CK)」，劑量欄顯示「— (不適用)」且操作欄無按鈕；處理組支援行內直接輸入與 Enter/Tab 鍵自動聚焦跳格；操作欄提供紅色實心/微淡紅底「刪除」按鈕（Destructive Action）；視覺上採用深色底搭配極簡水平細底線分隔（`border-b border-border/40`）與行懸停微光高亮（`hover:bg-muted/20`），杜絕垂直格線與斑馬紋雜訊，達成緊湊專業的田間試驗情境設定體驗。
+
+### 雙線性網格行列數上限擴展與 Canvas 渲染架構 (Bilinear Grid Capacity & Canvas Rendering Architecture)
+- [MDN Web Docs - <input type="number"> 元素與限制規範](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input/number)
+- [Vue.js 官方文件 - 表單輸入綁定 (Form Input Bindings)](https://vuejs.org/guide/essentials/forms.html)
+- [W3C HTML5 Specification - The number state (type=number)](https://www.w3.org/TR/html52/sec-forms.html#number-state-typenumber)
+- [W3C Canvas 2D Context - Path rendering performance](https://www.w3.org/TR/2dcontext/)
+- **採用架構**：在 `PlotToolbar.vue` 中將網格配置的「列數 (Rows)」與「行數 (Cols)」之 HTML5 `<input type="number">` 之 `max` 屬性與 `@input` 邊界限制（`Math.min`）同步由 20 提高至 50（允許區間 1 ~ 50）；在 50 × 50（最高 2,500 單元格）配置下，利用 HTML5 Canvas 2D 輕量逐路徑渲染與雙線性插值演算法完成純前端即時預覽與批次建立，免除繁瑣警告彈窗中斷，兼顧操作彈性與高吞吐交互效能。
+
+### 畫布小區多選、框選與批次特徵套用架構 (Canvas Multi-Selection & Batch Feature Application Architecture)
+- [W3C Pointer Events 規範](https://www.w3.org/TR/pointerevents/)
+- [MDN MouseEvent: shiftKey & ctrlKey 屬性](https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent)
+- [MDN Canvas API 幾何圖形與碰撞檢測 (2D Collision Detection)](https://developer.mozilla.org/en-US/docs/Games/Techniques/2D_collision_detection)
+- [計算幾何：多邊形質心演算法 (Centroid of Polygon)](https://en.wikipedia.org/wiki/Centroid#Of_a_polygon)
+- [Vue 3 官方文件 - 響應式基礎 (Reactivity Fundamentals)](https://vuejs.org/guide/essentials/reactivity-fundamentals.html)
+- **採用架構**：
+  1. **多選狀態收斂**：在 `usePlots.ts` 將原 `selectedPlotNumber: number | null` 擴展為支援複數小區的 `selectedPlotNumbers: number[]`，在單選與多選間保持無縫向後相容。
+  2. **空白處橡皮筋框選 (Rubber-band Box Selection)**：在檢視模式下，滑鼠左鍵於畫布空白處拖曳時動態繪製半透明虛線選取框；計算各小區之多邊形質心（Centroid），中心點落入框選矩形者即納入選取。
+  3. **組合鍵增量選取 (Modifier Key Toggle)**：支援按住 `Shift` 或 `Ctrl` 鍵點選個別小區，動態增減選取集合；單擊空白處則快速清空選取集合。
+  4. **視覺降噪與頂點把手抑制**：單選時保留頂點拖曳手柄供精細調整；多選時自動隱藏把手、僅維持亮色外框，並支援批次平移、批次複製與批次刪除。
+  5. **零冗餘批次特徵套用**：雙擊任一已選小區直接開啟 `PlotTreatmentDialog`，標題感知多選小區個數；若多小區組別一致則預設勾選，異組別不勾選；點選任意目標組別立即一次將所有選中小區之處理組別與劑量更新完成並自動關閉彈窗。
+
+### 全步驟左上角全域常駐 HUD 與極簡情境卡片架構 (Global Step HUD & Non-Collapsible Scenario Architecture)
+- [Tailwind CSS 官方文件 - Top / Right / Bottom / Left 定位規範](https://tailwindcss.com/docs/top-right-bottom-left)
+- [Tailwind CSS 官方文件 - Backdrop Filter / Blur (毛玻璃特效)](https://tailwindcss.com/docs/backdrop-blur)
+- [Tailwind CSS 官方文件 - Typography & Font Size (字級階層)](https://tailwindcss.com/docs/font-size)
+- [Radix Vue 官方文件 - Card 組件規範](https://www.radix-vue.com/)
+- [Vue.js 官方文件 - 計算屬性 (Computed Properties)](https://vuejs.org/guide/essentials/computed.html)
+- **採用架構**：
+  1. **全步驟全域常駐 HUD**：將原步驟 1/3/4 的懸浮專案資訊膠囊提升至專案工作區頂層父層（`top-4 left-4 z-20`），各步驟動態渲染一致之「步驟名稱徽章」（步驟 1：航拍正射、步驟 2：試驗情境、步驟 3：小區標註、步驟 4：光譜分析），徹底杜絕跨步驟切換時標題文字與專案資訊之位置跳動與字級割裂。
+  2. **情境特徵卡片永久展開與極簡操作列**：廢除 `Collapsible` 折疊組件與收合開關，移除「專案試驗情境特徵」重複標題列，頂部直接整合為組別操作列（左側「試驗組別」標籤與「已儲存特徵/未儲存變更」狀態徽章，右側「+ 新增組別」按鈕）；步驟 2 容器配置 `pt-20` 上方內距，確保卡片內容與左上角常駐 HUD 完美避障。
+
+
+
+
+
+
+
+
 
 
 

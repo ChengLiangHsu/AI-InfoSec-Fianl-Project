@@ -52,5 +52,5 @@ def generate_spectral_image(input_path: Path, output_path: Path, formula: str = 
     else:
         out_img = Image.fromarray(rgb_colored, mode="RGB")
 
-    out_img.save(output_path, "PNG")
+    out_img.save(output_path, "PNG", compress_level=1)
     return True

@@ -29,6 +29,8 @@ services:
       MAX_ACTIVE_TASKS: ${MAX_ACTIVE_TASKS:-3}
       MAX_CHAT_REQUESTS_PER_DAY: ${MAX_CHAT_REQUESTS_PER_DAY:-100}
       ODM_MAX_CONCURRENCY: ${ODM_MAX_CONCURRENCY:-3}
+      ODM_FEATURE_QUALITY: ${ODM_FEATURE_QUALITY:-high}
+      ODM_PC_QUALITY: ${ODM_PC_QUALITY:-low}
     volumes:
       - app_data:/data
     ports:

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue'
 import {
   Dialog,
   DialogContent,
@@ -9,10 +8,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
-import { Trash2, Check, X, ShieldAlert, Sparkles } from '@lucide/vue'
+import { Trash2, Check, X } from '@lucide/vue'
 
 export interface TreatmentData {
   isControl: boolean
@@ -25,15 +21,18 @@ export interface ExistingTreatment {
   treatment: string
   dose: string
   label: string
+  color?: string
 }
 
 const props = defineProps<{
   open: boolean
-  plotNumber: number | null
-  isNewPlot: boolean
+  plotNumber?: number | null
+  plotNumbers?: number[]
+  isNewPlot?: boolean
   initialTreatment?: string
   initialDose?: string
   initialIsControl?: boolean
+  isMixed?: boolean
   existingTreatments: ExistingTreatment[]
 }>()
 
@@ -41,73 +40,49 @@ const emit = defineEmits<{
   (e: 'update:open', val: boolean): void
   (e: 'confirm', data: TreatmentData): void
   (e: 'cancel'): void
-  (e: 'delete', plotNumber: number): void
+  (e: 'delete', payload: { plotNumber: number | null; plotNumbers: number[] }): void
 }>()
 
-const isControl = ref(false)
-const treatment = ref('')
-const dose = ref('')
-const treatmentInputRef = ref<HTMLInputElement | null>(null)
-
-watch(
-  () => props.open,
-  (isOpen) => {
-    if (isOpen) {
-      isControl.value = props.initialIsControl ?? false
-      treatment.value = props.initialTreatment ?? ''
-      dose.value = props.initialDose ?? ''
-
-      nextTick(() => {
-        if (!isControl.value && treatmentInputRef.value) {
-          treatmentInputRef.value.focus()
-          treatmentInputRef.value.select()
-        }
-      })
-    }
-  },
-  { immediate: true }
-)
-
-function setTreatmentType(control: boolean) {
-  isControl.value = control
-  if (control) {
-    treatment.value = ''
-    dose.value = ''
-  } else {
-    nextTick(() => {
-      treatmentInputRef.value?.focus()
-    })
+function isSelected(preset: ExistingTreatment): boolean {
+  if (props.isMixed) return false
+  if (props.initialIsControl && preset.isControl) return true
+  if (!props.initialIsControl && !preset.isControl) {
+    const initialTrt = (props.initialTreatment || '').trim()
+    const initialDs = (props.initialDose || '').trim()
+    const presetTrt = (preset.treatment || '').trim()
+    const presetDs = (preset.dose || '').trim()
+    return initialTrt === presetTrt && initialDs === presetDs
   }
+  return false
 }
 
-function selectPreset(preset: ExistingTreatment) {
-  isControl.value = preset.isControl
-  treatment.value = preset.treatment
-  dose.value = preset.dose
-}
-
-function handleConfirm() {
+function handleSelectPreset(preset: ExistingTreatment): void {
   emit('confirm', {
-    isControl: isControl.value,
-    treatment: isControl.value ? '' : treatment.value.trim(),
-    dose: isControl.value ? '' : dose.value.trim(),
+    isControl: preset.isControl,
+    treatment: preset.isControl ? '' : preset.treatment.trim(),
+    dose: preset.isControl ? '' : preset.dose.trim(),
   })
   emit('update:open', false)
 }
 
-function handleCancel() {
+function handleCancel(): void {
   emit('cancel')
   emit('update:open', false)
 }
 
-function handleDelete() {
-  if (props.plotNumber !== null) {
-    emit('delete', props.plotNumber)
-    emit('update:open', false)
-  }
+function handleDelete(): void {
+  const targetNumbers = props.plotNumbers && props.plotNumbers.length > 0
+    ? props.plotNumbers
+    : (props.plotNumber !== null && props.plotNumber !== undefined ? [props.plotNumber] : [])
+
+  emit('delete', {
+    plotNumber: props.plotNumber ?? null,
+    plotNumbers: targetNumbers,
+  })
+  emit('update:open', false)
 }
 
-function onOpenChange(val: boolean) {
+function onOpenChange(val: boolean): void {
   if (!val) {
     handleCancel()
   } else {
@@ -118,105 +93,61 @@ function onOpenChange(val: boolean) {
 
 <template>
   <Dialog :open="open" @update:open="onOpenChange">
-    <DialogContent class="sm:max-w-[440px] select-none">
+    <DialogContent class="sm:max-w-[420px] select-none">
       <DialogHeader>
         <DialogTitle class="flex items-center gap-2 text-base">
           <span
+            v-if="plotNumbers && plotNumbers.length > 1"
+            class="flex px-2 h-6 items-center justify-center rounded-md bg-primary/10 text-xs font-bold text-primary font-mono"
+          >
+            共 {{ plotNumbers.length }} 個小區
+          </span>
+          <span
+            v-else
             class="flex size-6 items-center justify-center rounded-md bg-primary/10 text-xs font-bold text-primary font-mono"
           >
             #{{ plotNumber ?? '?' }}
           </span>
-          <span>{{ isNewPlot ? '新繪小區處理設定' : '編輯小區處理設定' }}</span>
+          <span>{{ (plotNumbers && plotNumbers.length > 1) ? '批次小區處理組別設定' : '小區處理組別設定' }}</span>
         </DialogTitle>
         <DialogDescription class="text-xs text-muted-foreground">
-          {{ isNewPlot ? '請為剛剛劃定的小區指派試驗農藥與劑量，或設定為對照組。' : '修改或刪除此小區之農藥處理資訊。' }}
+          {{ (plotNumbers && plotNumbers.length > 1)
+            ? '點選下方任一組別即可批次套用至所有已選小區。'
+            : '點選下方任一組別即可快速為此小區套用設定。'
+          }}
         </DialogDescription>
       </DialogHeader>
 
-      <div class="flex flex-col gap-4 py-2">
-        <!-- 處理組類型選擇切換器 -->
-        <div class="grid grid-cols-2 gap-2 p-1 bg-muted/50 rounded-lg border">
-          <Button
-            type="button"
-            size="sm"
-            :variant="!isControl ? 'default' : 'ghost'"
-            class="h-8 text-xs font-medium cursor-pointer shadow-none transition-all"
-            @click="setTreatmentType(false)"
-          >
-            <Sparkles class="size-3.5 mr-1.5" />
-            農藥處理組
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            :variant="isControl ? 'default' : 'ghost'"
-            class="h-8 text-xs font-medium cursor-pointer shadow-none transition-all"
-            @click="setTreatmentType(true)"
-          >
-            <ShieldAlert class="size-3.5 mr-1.5" />
-            未施藥對照 (CK)
-          </Button>
-        </div>
-
-        <!-- 農藥名稱與劑量輸入欄位（非對照組時顯示） -->
-        <div v-if="!isControl" class="flex flex-col gap-3">
-          <div class="flex flex-col gap-1.5">
-            <Label for="treatment-name" class="text-xs font-medium">農藥名稱 / 處理組</Label>
-            <input
-              id="treatment-name"
-              ref="treatmentInputRef"
-              v-model="treatment"
-              type="text"
-              placeholder="例如: 益達胺、拜芬第、除草劑 A"
-              class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              @keydown.enter.prevent="handleConfirm"
-            />
-          </div>
-
-          <div class="flex flex-col gap-1.5">
-            <Label for="treatment-dose" class="text-xs font-medium">施用劑量 / 稀釋倍數</Label>
-            <input
-              id="treatment-dose"
-              v-model="dose"
-              type="text"
-              placeholder="例如: 1000倍、500 ppm、2 L/ha"
-              class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              @keydown.enter.prevent="handleConfirm"
-            />
-          </div>
-        </div>
-
-        <div
-          v-else
-          class="flex items-center gap-2 rounded-md bg-slate-100 dark:bg-slate-900/60 p-3 text-xs text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800"
+      <div class="flex flex-col gap-2 py-2 max-h-[360px] overflow-y-auto pr-1">
+        <button
+          v-for="(preset, idx) in existingTreatments"
+          :key="idx"
+          type="button"
+          class="flex items-center justify-between w-full px-3.5 py-2.5 rounded-lg border text-xs text-left transition-all cursor-pointer select-none group"
+          :class="[
+            isSelected(preset)
+              ? 'border-primary bg-primary/10 font-semibold shadow-xs ring-1 ring-primary/20'
+              : 'border-border bg-card/60 hover:bg-accent/80 hover:border-accent-foreground/20 text-foreground'
+          ]"
+          @click="handleSelectPreset(preset)"
         >
-          <ShieldAlert class="size-4 shrink-0 text-slate-500" />
-          <span>此小區設定為未施藥空白對照組 (CK / Untreated Control)，將呈現對照專屬灰色標記。</span>
-        </div>
-
-        <!-- 既有處理組快速套用按鈕 -->
-        <div v-if="existingTreatments.length > 0" class="flex flex-col gap-1.5 pt-1 border-t">
-          <span class="text-[11px] font-medium text-muted-foreground">快速帶入專案既有組別:</span>
-          <div class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
-            <Badge
-              v-for="(preset, idx) in existingTreatments"
-              :key="idx"
-              variant="outline"
-              class="cursor-pointer hover:bg-primary/15 text-[11px] font-normal transition-colors py-0.5 px-2 flex items-center gap-1.5"
-              @click="selectPreset(preset)"
-            >
-              <span
-                v-if="preset.color"
-                class="size-2 rounded-full shrink-0"
-                :style="{ backgroundColor: preset.color }"
-              />
-              {{ preset.label }}
-            </Badge>
+          <div class="flex items-center gap-2.5 min-w-0">
+            <span
+              class="size-3 rounded-full shrink-0 border border-black/10 dark:border-white/20 shadow-xs transition-transform group-hover:scale-110"
+              :style="{ backgroundColor: preset.color || (preset.isControl ? '#94a3b8' : '#3b82f6') }"
+            />
+            <span class="truncate">{{ preset.label }}</span>
           </div>
-        </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <span v-if="preset.dose && !preset.isControl" class="text-[11px] text-muted-foreground font-mono">
+              {{ preset.dose }}
+            </span>
+            <Check v-if="isSelected(preset)" class="size-4 text-primary shrink-0" />
+          </div>
+        </button>
       </div>
 
-      <DialogFooter class="flex sm:justify-between items-center gap-2 pt-2">
+      <DialogFooter class="flex sm:justify-between items-center gap-2 pt-2 border-t">
         <div>
           <Button
             v-if="!isNewPlot"
@@ -227,7 +158,7 @@ function onOpenChange(val: boolean) {
             @click="handleDelete"
           >
             <Trash2 class="size-3.5 mr-1" />
-            刪除此小區
+            {{ (plotNumbers && plotNumbers.length > 1) ? `刪除選取的 ${plotNumbers.length} 個小區` : '刪除此小區' }}
           </Button>
         </div>
 
@@ -240,16 +171,7 @@ function onOpenChange(val: boolean) {
             @click="handleCancel"
           >
             <X class="size-3.5 mr-1" />
-            {{ isNewPlot ? '放棄繪製' : '取消' }}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            class="h-8 text-xs cursor-pointer"
-            @click="handleConfirm"
-          >
-            <Check class="size-3.5 mr-1" />
-            確定套用 (Enter)
+            關閉
           </Button>
         </div>
       </DialogFooter>

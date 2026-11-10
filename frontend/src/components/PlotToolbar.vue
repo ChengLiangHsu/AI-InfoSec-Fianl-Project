@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import {
-  Eye,
+  MousePointer,
   Pencil,
   Square,
   Pentagon,
@@ -17,6 +17,7 @@ import {
   Copy,
   ClipboardCopy,
   ChevronRight,
+  Minus,
 } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -41,11 +42,22 @@ const props = defineProps<{
   activeMode: 'view' | 'draw'
   drawTool: 'rect' | 'polygon' | 'eraser'
   selectedPlotNumber: number | null
+  selectedPlotNumbers?: number[]
   isDirty: boolean
   isSaving: boolean
   isDrawing: boolean
   gridState?: GridGeneratorState
 }>()
+
+const hasSelection = computed(() => {
+  if (props.selectedPlotNumbers && props.selectedPlotNumbers.length > 0) return true
+  return props.selectedPlotNumber !== null
+})
+
+const selectionCount = computed(() => {
+  if (props.selectedPlotNumbers && props.selectedPlotNumbers.length > 0) return props.selectedPlotNumbers.length
+  return props.selectedPlotNumber !== null ? 1 : 0
+})
 
 const emit = defineEmits<{
   (e: 'update:activeMode', mode: 'view' | 'draw'): void
@@ -127,16 +139,108 @@ function toggleGridMode() {
     emit('start-grid')
   }
 }
+
+// 網格配置面板自由拖曳與最小化狀態
+const isMinimized = ref(false)
+const dragOffset = ref({ x: 0, y: 0 })
+const panelRef = ref<HTMLElement | null>(null)
+
+let startPointer = { x: 0, y: 0 }
+let initialOffset = { x: 0, y: 0 }
+let hasDragged = false
+
+watch(
+  () => props.gridState?.isActive,
+  (active) => {
+    if (active) {
+      dragOffset.value = { x: 0, y: 0 }
+      isMinimized.value = false
+    }
+  }
+)
+
+function startPanelDrag(e: PointerEvent) {
+  if (e.button !== 0) return
+  e.stopPropagation()
+
+  startPointer = { x: e.clientX, y: e.clientY }
+  initialOffset = { ...dragOffset.value }
+  hasDragged = false
+
+  window.addEventListener('pointermove', onPanelPointerMove)
+  window.addEventListener('pointerup', onPanelPointerUp)
+}
+
+function onPanelPointerMove(e: PointerEvent) {
+  const dx = e.clientX - startPointer.x
+  const dy = e.clientY - startPointer.y
+  if (!hasDragged && Math.hypot(dx, dy) > 4) {
+    hasDragged = true
+  }
+  if (!hasDragged) return
+
+  applyClampedOffset(initialOffset.x + dx, initialOffset.y + dy)
+}
+
+function applyClampedOffset(targetX: number, targetY: number) {
+  if (!panelRef.value) {
+    dragOffset.value = { x: targetX, y: targetY }
+    return
+  }
+
+  const pad = 12
+  const rect = panelRef.value.getBoundingClientRect()
+  const baseLeft = rect.left - dragOffset.value.x
+  const baseTop = rect.top - dragOffset.value.y
+
+  const minX = pad - baseLeft
+  const maxX = window.innerWidth - pad - rect.width - baseLeft
+  const minY = pad - baseTop
+  const maxY = window.innerHeight - pad - rect.height - baseTop
+
+  dragOffset.value = {
+    x: Math.round(Math.max(minX, Math.min(maxX, targetX))),
+    y: Math.round(Math.max(minY, Math.min(maxY, targetY))),
+  }
+}
+
+function onPanelPointerUp() {
+  window.removeEventListener('pointermove', onPanelPointerMove)
+  window.removeEventListener('pointerup', onPanelPointerUp)
+
+  if (!hasDragged && isMinimized.value) {
+    expandPanel()
+  }
+}
+
+function expandPanel() {
+  isMinimized.value = false
+  nextTick(() => {
+    applyClampedOffset(dragOffset.value.x, dragOffset.value.y)
+  })
+}
+
+function minimizePanel() {
+  isMinimized.value = true
+  nextTick(() => {
+    applyClampedOffset(dragOffset.value.x, dragOffset.value.y)
+  })
+}
+
+onBeforeUnmount(() => {
+  window.removeEventListener('pointermove', onPanelPointerMove)
+  window.removeEventListener('pointerup', onPanelPointerUp)
+})
 </script>
 
 <template>
-  <div class="relative select-none">
+  <div class="select-none pointer-events-none">
     <!-- 右側垂直直列主工具列 (小畫家樣式) -->
     <div
-      class="flex flex-col items-center gap-1.5 rounded-2xl border border-white/15 bg-zinc-950/85 p-1.5 shadow-2xl backdrop-blur-md"
+      class="flex flex-col items-center gap-1.5 rounded-2xl border border-white/15 bg-zinc-950/85 p-1.5 shadow-2xl backdrop-blur-md pointer-events-auto"
     >
       <TooltipProvider :delay-duration="120">
-        <!-- 檢視模式按鈕 -->
+        <!-- 選取與檢視模式按鈕 -->
         <Tooltip>
           <TooltipTrigger as-child>
             <Button
@@ -146,11 +250,11 @@ function toggleGridMode() {
               :class="activeMode === 'view' && !gridState?.isActive ? 'bg-white/20 text-white font-bold shadow-xs' : 'text-zinc-400 hover:text-white hover:bg-white/10'"
               @click="setMode('view')"
             >
-              <Eye class="size-4" />
+              <MousePointer class="size-4" />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="left" class="text-xs">
-            檢視瀏覽模式 (按住滑鼠右鍵拖曳平移、滾輪縮放)
+            選取與檢視模式 (單擊選取小區、快點 2 下編輯特徵)
           </TooltipContent>
         </Tooltip>
 
@@ -340,8 +444,8 @@ function toggleGridMode() {
           </Tooltip>
         </template>
 
-        <!-- 選取單一小區時的快捷操作 (複製 / 刪除) -->
-        <template v-if="selectedPlotNumber !== null && !isDrawing">
+        <!-- 選取小區時的快捷操作 (複製 / 刪除) -->
+        <template v-if="hasSelection && !isDrawing">
           <Tooltip>
             <TooltipTrigger as-child>
               <Button
@@ -353,7 +457,9 @@ function toggleGridMode() {
                 <Copy class="size-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="left" class="text-xs">複製選取小區 #{{ selectedPlotNumber }} (Ctrl+C)</TooltipContent>
+            <TooltipContent side="left" class="text-xs">
+              {{ selectionCount > 1 ? `複製選取的 ${selectionCount} 個小區 (Ctrl+C)` : `複製選取小區 #${selectedPlotNumber} (Ctrl+C)` }}
+            </TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -367,7 +473,9 @@ function toggleGridMode() {
                 <Trash2 class="size-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="left" class="text-xs">刪除選取小區 #{{ selectedPlotNumber }} (Delete)</TooltipContent>
+            <TooltipContent side="left" class="text-xs">
+              {{ selectionCount > 1 ? `刪除選取的 ${selectionCount} 個小區 (Delete)` : `刪除選取小區 #${selectedPlotNumber} (Delete)` }}
+            </TooltipContent>
           </Tooltip>
         </template>
 
@@ -419,25 +527,70 @@ function toggleGridMode() {
       </TooltipProvider>
     </div>
 
-    <!-- 情況 A：自動網格生成屬性面板 (向左平滑展開之抽屜面板) -->
-    <div
-      v-if="gridState?.isActive"
-      class="absolute right-full mr-3 top-0 w-80 rounded-2xl border border-purple-500/40 bg-zinc-950/95 p-4 text-zinc-100 shadow-2xl backdrop-blur-md space-y-3 z-30"
-    >
-      <div class="flex items-center justify-between border-b border-white/10 pb-2">
-        <div class="flex items-center gap-1.5 text-xs font-semibold text-purple-300">
-          <Grid class="size-4" />
-          <span>雙線性網格剖分配置</span>
-        </div>
-        <Button
-          size="icon"
-          variant="ghost"
-          class="size-6 rounded-md text-zinc-400 hover:text-white cursor-pointer"
-          @click="emit('close-grid')"
-        >
-          <X class="size-3.5" />
-        </Button>
+    <!-- 情況 A：自動網格生成屬性面板 (支援自由拖曳與圓形浮動收合) -->
+    <template v-if="gridState?.isActive">
+      <!-- 最小化狀態：紫色網格浮動圓形按鈕 -->
+      <div
+        v-if="isMinimized"
+        ref="panelRef"
+        class="absolute right-full mr-3 top-1/2 -translate-y-1/2 z-30 pointer-events-auto flex items-center justify-center cursor-grab active:cursor-grabbing select-none"
+        :style="{ transform: `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0)` }"
+        @pointerdown="startPanelDrag"
+      >
+        <TooltipProvider :delay-duration="150">
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <button
+                type="button"
+                class="size-11 rounded-full border border-purple-500/50 bg-zinc-950/90 text-purple-300 shadow-2xl backdrop-blur-md flex items-center justify-center hover:scale-105 hover:bg-purple-900/40 hover:text-white transition-all ring-2 ring-purple-500/30 cursor-pointer"
+              >
+                <Grid class="size-5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="left" class="text-xs">
+              雙線性網格配置 ({{ gridState.rows }}×{{ gridState.cols }}) - 點擊展開 / 按住拖曳
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
+
+      <!-- 展開狀態：完整網格剖分配置面板 -->
+      <div
+        v-else
+        ref="panelRef"
+        class="absolute right-full mr-3 top-1/2 -translate-y-1/2 w-80 max-h-[calc(100vh-6rem)] overflow-y-auto rounded-2xl border border-purple-500/40 bg-zinc-950/95 p-4 text-zinc-100 shadow-2xl backdrop-blur-md space-y-3 z-30 pointer-events-auto"
+        :style="{ transform: `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0)` }"
+      >
+        <div
+          class="flex items-center justify-between border-b border-white/10 pb-2 cursor-grab active:cursor-grabbing select-none"
+          title="按住拖曳移動面板位置"
+          @pointerdown="startPanelDrag"
+        >
+          <div class="flex items-center gap-1.5 text-xs font-semibold text-purple-300">
+            <Grid class="size-4" />
+            <span>雙線性網格剖分配置</span>
+          </div>
+          <div class="flex items-center gap-1">
+            <Button
+              size="icon"
+              variant="ghost"
+              class="size-6 rounded-md text-zinc-400 hover:text-white cursor-pointer"
+              title="最小化為懸浮按鈕"
+              @click.stop="minimizePanel"
+            >
+              <Minus class="size-3.5" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              class="size-6 rounded-md text-zinc-400 hover:text-white cursor-pointer"
+              title="關閉網格配置"
+              @click="emit('close-grid')"
+            >
+              <X class="size-3.5" />
+            </Button>
+          </div>
+        </div>
 
       <!-- 列數與行數配置 -->
       <div class="grid grid-cols-2 gap-2 text-xs">
@@ -446,10 +599,10 @@ function toggleGridMode() {
           <input
             type="number"
             min="1"
-            max="20"
+            max="50"
             :value="gridState.rows"
             class="w-full h-7 px-2 text-center font-mono font-bold text-xs rounded-lg border border-white/15 bg-white/5 text-white focus:ring-1 focus:ring-purple-400 focus:outline-hidden"
-            @input="emit('update:grid-rows', Math.max(1, Math.min(20, Number(($event.target as HTMLInputElement).value) || 1)))"
+            @input="emit('update:grid-rows', Math.max(1, Math.min(50, Number(($event.target as HTMLInputElement).value) || 1)))"
           />
         </div>
 
@@ -458,10 +611,10 @@ function toggleGridMode() {
           <input
             type="number"
             min="1"
-            max="20"
+            max="50"
             :value="gridState.cols"
             class="w-full h-7 px-2 text-center font-mono font-bold text-xs rounded-lg border border-white/15 bg-white/5 text-white focus:ring-1 focus:ring-purple-400 focus:outline-hidden"
-            @input="emit('update:grid-cols', Math.max(1, Math.min(20, Number(($event.target as HTMLInputElement).value) || 1)))"
+            @input="emit('update:grid-cols', Math.max(1, Math.min(50, Number(($event.target as HTMLInputElement).value) || 1)))"
           />
         </div>
       </div>
@@ -580,5 +733,6 @@ function toggleGridMode() {
         </Button>
       </div>
     </div>
+    </template>
   </div>
 </template>

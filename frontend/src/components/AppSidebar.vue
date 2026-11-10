@@ -53,6 +53,15 @@ watch(selectedProject, (newProj) => {
 async function handleGoHome() {
   selectedProject.value = null
   await clearChat('home')
+  try {
+    const res = await fetch('/api/task/odm-task-list')
+    const data = await res.json()
+    if (res.ok && data.data) {
+      projects.value = data.data
+    }
+  } catch (err) {
+    console.error('無法更新專案清單', err)
+  }
 }
 
 const searchQuery = ref("")

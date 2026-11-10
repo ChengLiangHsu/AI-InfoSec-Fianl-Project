@@ -3,9 +3,9 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from dotenv import load_dotenv
 import fastapi
 import logfire
+from dotenv import load_dotenv
 
 from src.controllers import task_router
 from src.controllers.system import router as system_router
@@ -13,7 +13,7 @@ from src.database import init_db
 from src.presenter import register_error_handlers
 from src.presenter.body_limit import BodyLimitMiddleware
 from src.presenter.frontend import mount_frontend
-from src.presenter.visitor import VisitorMiddleware
+from src.presenter.security import SecurityMiddleware
 
 load_dotenv()
 logfire.configure(send_to_logfire="if-token-present")
@@ -34,7 +34,7 @@ def create_app() -> fastapi.FastAPI:
     app = fastapi.FastAPI(lifespan=lifespan)
     logfire.instrument_fastapi(app)
     register_error_handlers(app)
-    app.add_middleware(VisitorMiddleware)
+    app.add_middleware(SecurityMiddleware)
     app.add_middleware(BodyLimitMiddleware)
     app.include_router(system_router)
     app.include_router(task_router, prefix="/api/task")

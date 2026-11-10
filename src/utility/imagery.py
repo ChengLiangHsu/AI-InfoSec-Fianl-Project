@@ -11,10 +11,10 @@ logger = logging.getLogger("imagery")
 
 
 def _convert_tif_to_png(target_file: io.BufferedReader, output_path: Path) -> None:
-    """將 GeoTIFF 影像串流轉存為 PNG 格式並寫入目標路徑。"""
+    """將 GeoTIFF 影像串流轉存為 PNG 格式並寫入目標路徑（採用快速壓縮 compress_level=1）。"""
     Image.MAX_IMAGE_PIXELS = None
     with Image.open(target_file) as im:
-        im.save(output_path, "PNG")
+        im.save(output_path, "PNG", compress_level=1)
 
 
 def extract_orthophoto_from_zip(zip_bytes: bytes, output_path: Path) -> bool:

@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 
 export interface NormalizedPoint {
   x: number
@@ -77,7 +77,7 @@ const PRESET_COLORS = [
   '#14b8a6', // teal
 ]
 
-const CONTROL_COLOR = '#64748b' // slate
+const CONTROL_COLOR = '#94a3b8' // slate (與情境設定統一為靜態灰白)
 const UNASSIGNED_COLOR = '#94a3b8' // gray
 
 export function parseCoords(coordsStr: string): NormalizedPoint[] {
@@ -101,6 +101,43 @@ export function serializePoints(points: NormalizedPoint[]): string {
   return JSON.stringify(rounded)
 }
 
+export function calculatePlotCentroid(points: NormalizedPoint[]): NormalizedPoint {
+  if (points.length === 0) return { x: 0, y: 0 }
+  if (points.length === 1) return { x: points[0].x, y: points[0].y }
+  if (points.length === 2) {
+    return {
+      x: (points[0].x + points[1].x) / 2,
+      y: (points[0].y + points[1].y) / 2,
+    }
+  }
+
+  let signedArea = 0
+  let cx = 0
+  let cy = 0
+  const n = points.length
+
+  for (let i = 0; i < n; i++) {
+    const p0 = points[i]
+    const p1 = points[(i + 1) % n]
+    const cross = p0.x * p1.y - p1.x * p0.y
+    signedArea += cross
+    cx += (p0.x + p1.x) * cross
+    cy += (p0.y + p1.y) * cross
+  }
+
+  signedArea *= 0.5
+  if (Math.abs(signedArea) < 1e-7) {
+    const sumX = points.reduce((acc, p) => acc + p.x, 0)
+    const sumY = points.reduce((acc, p) => acc + p.y, 0)
+    return { x: sumX / n, y: sumY / n }
+  }
+
+  return {
+    x: Math.max(0, Math.min(1, Number((cx / (6 * signedArea)).toFixed(5)))),
+    y: Math.max(0, Math.min(1, Number((cy / (6 * signedArea)).toFixed(5)))),
+  }
+}
+
 export function shiftPoints(
   points: NormalizedPoint[],
   dx: number,
@@ -109,6 +146,33 @@ export function shiftPoints(
   return points.map((p) => ({
     x: Math.max(0, Math.min(1, Number((p.x + dx).toFixed(5)))),
     y: Math.max(0, Math.min(1, Number((p.y + dy).toFixed(5)))),
+  }))
+}
+
+export function clampGridCorners(
+  corners: NormalizedPoint[],
+  dx: number,
+  dy: number
+): NormalizedPoint[] {
+  if (!corners || corners.length < 4) return corners
+
+  let minX = 1
+  let maxX = 0
+  let minY = 1
+  let maxY = 0
+  for (const c of corners) {
+    if (c.x < minX) minX = c.x
+    if (c.x > maxX) maxX = c.x
+    if (c.y < minY) minY = c.y
+    if (c.y > maxY) maxY = c.y
+  }
+
+  const clampedDx = Math.max(-minX, Math.min(1 - maxX, dx))
+  const clampedDy = Math.max(-minY, Math.min(1 - maxY, dy))
+
+  return corners.map((c) => ({
+    x: Math.max(0, Math.min(1, Number((c.x + clampedDx).toFixed(5)))),
+    y: Math.max(0, Math.min(1, Number((c.y + clampedDy).toFixed(5)))),
   }))
 }
 
@@ -187,7 +251,17 @@ export function generateSubplotPolygon(
 export function usePlots() {
   const plots = ref<PlotItem[]>([])
   const activeMode = ref<'view' | 'draw'>('view')
-  const selectedPlotNumber = ref<number | null>(null)
+  const selectedPlotNumbers = ref<number[]>([])
+  const selectedPlotNumber = computed<number | null>({
+    get: () => (selectedPlotNumbers.value.length === 1 ? selectedPlotNumbers.value[0] : null),
+    set: (val: number | null) => {
+      if (val === null) {
+        selectedPlotNumbers.value = []
+      } else {
+        selectedPlotNumbers.value = [val]
+      }
+    },
+  })
   const isDirty = ref(false)
   const isSaving = ref(false)
   const errorMessage = ref<string | null>(null)
@@ -214,6 +288,22 @@ export function usePlots() {
   })
 
   const currentScenario = ref<ScenarioDefinition | null>(null)
+
+  // 當切換為手動繪製模式或啟用一鍵網格時，自動清除選取狀態以防干擾
+  watch(activeMode, (newMode) => {
+    if (newMode === 'draw') {
+      selectedPlotNumbers.value = []
+    }
+  })
+
+  watch(
+    () => gridState.value.isActive,
+    (active) => {
+      if (active) {
+        selectedPlotNumbers.value = []
+      }
+    }
+  )
 
   function setScenario(sc: ScenarioDefinition | null) {
     currentScenario.value = sc
@@ -270,7 +360,7 @@ export function usePlots() {
         if (cat.is_control) {
           if (!seen.has('CK')) {
             seen.add('CK')
-            list.push({ isControl: true, treatment: '', dose: '', label: cat.name || '未施藥對照 (CK)', color: cat.color })
+            list.push({ isControl: true, treatment: '', dose: '', label: cat.name || '未施藥對照 (CK)', color: cat.color || CONTROL_COLOR })
           }
         } else {
           const trt = cat.treatment || targetName || ''
@@ -291,12 +381,18 @@ export function usePlots() {
       }
     }
 
+    // 確保對照組永遠存在於清單首位
+    if (!seen.has('CK')) {
+      seen.add('CK')
+      list.unshift({ isControl: true, treatment: '', dose: '', label: '未施藥對照 (CK)', color: CONTROL_COLOR })
+    }
+
     // 2. 補充畫布上已有但在情境中未列出的額外處理組
     for (const p of plots.value) {
       if (p.is_control) {
         if (!seen.has('CK')) {
           seen.add('CK')
-          list.push({ isControl: true, treatment: '', dose: '', label: '未施藥對照 (CK)' })
+          list.unshift({ isControl: true, treatment: '', dose: '', label: '未施藥對照 (CK)', color: CONTROL_COLOR })
         }
       } else if (p.treatment) {
         const key = `${p.treatment}::${p.dose}`
@@ -307,6 +403,7 @@ export function usePlots() {
             treatment: p.treatment,
             dose: p.dose,
             label: `${p.treatment}${p.dose ? ' (' + p.dose + ')' : ''}`,
+            color: getPlotColor(p),
           })
         }
       }
@@ -410,6 +507,23 @@ export function usePlots() {
     return newPlot
   }
 
+  function selectPlots(numbers: number[]): void {
+    selectedPlotNumbers.value = Array.from(new Set(numbers))
+  }
+
+  function togglePlotSelection(plotNumber: number): void {
+    const idx = selectedPlotNumbers.value.indexOf(plotNumber)
+    if (idx === -1) {
+      selectedPlotNumbers.value.push(plotNumber)
+    } else {
+      selectedPlotNumbers.value.splice(idx, 1)
+    }
+  }
+
+  function clearPlotSelection(): void {
+    selectedPlotNumbers.value = []
+  }
+
   function updatePlotTreatment(
     plotNumber: number,
     treatment: string,
@@ -421,6 +535,24 @@ export function usePlots() {
     target.is_control = isControl
     target.treatment = isControl ? '' : treatment.trim()
     target.dose = isControl ? '' : dose.trim()
+    isDirty.value = true
+  }
+
+  function updatePlotTreatments(
+    plotNumbers: number[],
+    treatment: string,
+    dose: string,
+    isControl: boolean
+  ): void {
+    if (!plotNumbers || plotNumbers.length === 0) return
+    const numSet = new Set(plotNumbers)
+    for (const p of plots.value) {
+      if (numSet.has(p.plot_number)) {
+        p.is_control = isControl
+        p.treatment = isControl ? '' : treatment.trim()
+        p.dose = isControl ? '' : dose.trim()
+      }
+    }
     isDirty.value = true
   }
 
@@ -437,16 +569,22 @@ export function usePlots() {
     const idx = plots.value.findIndex((p) => p.plot_number === plotNumber)
     if (idx !== -1) {
       plots.value.splice(idx, 1)
-      if (selectedPlotNumber.value === plotNumber) {
-        selectedPlotNumber.value = null
-      }
+      selectedPlotNumbers.value = selectedPlotNumbers.value.filter((n) => n !== plotNumber)
       isDirty.value = true
     }
   }
 
+  function deletePlots(plotNumbers: number[]): void {
+    if (!plotNumbers || plotNumbers.length === 0) return
+    const numSet = new Set(plotNumbers)
+    plots.value = plots.value.filter((p) => !numSet.has(p.plot_number))
+    selectedPlotNumbers.value = selectedPlotNumbers.value.filter((n) => !numSet.has(n))
+    isDirty.value = true
+  }
+
   function clearAllPlots(): void {
     plots.value = []
-    selectedPlotNumber.value = null
+    selectedPlotNumbers.value = []
     isDirty.value = true
   }
 
@@ -468,6 +606,20 @@ export function usePlots() {
         y: Math.max(0, Math.min(1, Number(pt.y.toFixed(5)))),
       }
     }
+  }
+
+  function updateGridCorners(corners: NormalizedPoint[]): void {
+    if (Array.isArray(corners) && corners.length === 4) {
+      gridState.value.corners = corners.map((c) => ({
+        x: Math.max(0, Math.min(1, Number(c.x.toFixed(5)))),
+        y: Math.max(0, Math.min(1, Number(c.y.toFixed(5)))),
+      }))
+    }
+  }
+
+  function moveGrid(delta: { dx: number; dy: number }): void {
+    if (!gridState.value.corners || gridState.value.corners.length < 4) return
+    gridState.value.corners = clampGridCorners(gridState.value.corners, delta.dx, delta.dy)
   }
 
   async function detectMarkers(taskId: string, roi?: [number, number, number, number]): Promise<boolean> {
@@ -585,6 +737,48 @@ export function usePlots() {
     isDirty.value = true
   }
 
+  function movePlots(plotNumbers: number[], delta: { dx: number; dy: number }): void {
+    if (!plotNumbers || plotNumbers.length === 0) return
+    const numSet = new Set(plotNumbers)
+    for (const p of plots.value) {
+      if (numSet.has(p.plot_number)) {
+        const pts = parseCoords(p.coords)
+        if (pts.length >= 3) {
+          p.coords = serializePoints(shiftPoints(pts, delta.dx, delta.dy))
+        }
+      }
+    }
+    isDirty.value = true
+  }
+
+  function duplicatePlots(plotNumbers: number[], offset = { dx: 0.02, dy: 0.02 }): PlotItem[] {
+    if (!plotNumbers || plotNumbers.length === 0) return []
+    const numSet = new Set(plotNumbers)
+    let maxNum = plots.value.reduce((acc, cur) => Math.max(acc, cur.plot_number), 0)
+    const newPlots: PlotItem[] = []
+
+    for (const p of plots.value) {
+      if (numSet.has(p.plot_number)) {
+        const pts = parseCoords(p.coords)
+        if (pts.length < 3) continue
+        const shifted = shiftPoints(pts, offset.dx, offset.dy)
+        const cloned: PlotItem = {
+          plot_number: ++maxNum,
+          coords: serializePoints(shifted),
+          is_control: p.is_control,
+          treatment: p.treatment,
+          dose: p.dose,
+          metrics: {},
+        }
+        newPlots.push(cloned)
+      }
+    }
+    plots.value.push(...newPlots)
+    selectedPlotNumbers.value = newPlots.map((p) => p.plot_number)
+    isDirty.value = true
+    return newPlots
+  }
+
   function copyPlotsToClipboard(): boolean {
     if (plots.value.length === 0) return false
     try {
@@ -680,7 +874,7 @@ export function usePlots() {
       plots.value.push({
         plot_number: startNum++,
         coords: serializePoints(poly),
-        is_control: false,
+        is_control: true,
         treatment: '',
         dose: '',
         metrics: {},
@@ -696,6 +890,7 @@ export function usePlots() {
     plots,
     activeMode,
     selectedPlotNumber,
+    selectedPlotNumbers,
     isDirty,
     isSaving,
     errorMessage,
@@ -707,12 +902,19 @@ export function usePlots() {
     savePlots,
     addPlotWithTreatment,
     updatePlotTreatment,
+    updatePlotTreatments,
     updatePlotPoints,
     deletePlot,
+    deletePlots,
     clearAllPlots,
+    selectPlots,
+    togglePlotSelection,
+    clearPlotSelection,
     startGridMode,
     closeGridMode,
     updateGridCorner,
+    updateGridCorners,
+    moveGrid,
     detectMarkers,
     computeGridPlots,
     confirmBatchGenerate,
@@ -722,8 +924,10 @@ export function usePlots() {
     toggleExcludeGridCell,
     clearExcludedGridCells,
     duplicatePlot,
+    duplicatePlots,
     duplicateAllPlots,
     movePlot,
+    movePlots,
     copyPlotsToClipboard,
     pastePlotsFromClipboard,
     importPlotsFromExternal,

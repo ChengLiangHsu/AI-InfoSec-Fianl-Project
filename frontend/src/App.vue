@@ -93,6 +93,7 @@ const {
   plots,
   activeMode,
   selectedPlotNumber,
+  selectedPlotNumbers,
   isDirty,
   isSaving,
   errorMessage,
@@ -103,21 +104,30 @@ const {
   savePlots,
   addPlotWithTreatment,
   updatePlotTreatment,
+  updatePlotTreatments,
   updatePlotPoints,
   deletePlot,
+  deletePlots,
   clearAllPlots,
+  selectPlots,
+  togglePlotSelection,
+  clearPlotSelection,
   startGridMode,
   closeGridMode,
   updateGridCorner,
+  updateGridCorners,
+  moveGrid,
   detectMarkers,
   computeGridPlots,
   confirmBatchGenerate,
   toggleExcludeGridCell,
   clearExcludedGridCells,
   duplicatePlot,
+  duplicatePlots,
   pastePlotWithDelta,
   duplicateAllPlots,
   movePlot,
+  movePlots,
   copyPlotsToClipboard,
   pastePlotsFromClipboard,
   importPlotsFromExternal,
@@ -178,18 +188,22 @@ const treatmentDialogState = ref<{
   open: boolean
   isNewPlot: boolean
   plotNumber: number | null
+  plotNumbers: number[]
   points: NormalizedPoint[] | null
   initialTreatment: string
   initialDose: string
   initialIsControl: boolean
+  isMixed: boolean
 }>({
   open: false,
   isNewPlot: true,
   plotNumber: null,
+  plotNumbers: [],
   points: null,
   initialTreatment: '',
   initialDose: '',
   initialIsControl: false,
+  isMixed: false,
 })
 
 function onFitToScreen() {
@@ -236,19 +250,47 @@ function onImageLoaded() {
 }
 
 function onPlotDrawn(points: NormalizedPoint[]) {
-  addPlotWithTreatment(points, '', '', false)
+  addPlotWithTreatment(points, '', '', true)
   nextTick(() => plotCanvasOverlayRef.value?.redraw())
 }
 
 function onEditPlot(plot: PlotItem) {
+  if (currentStep.value !== 3) return
   treatmentDialogState.value = {
     open: true,
     isNewPlot: false,
     plotNumber: plot.plot_number,
+    plotNumbers: [plot.plot_number],
     points: null,
     initialTreatment: plot.treatment,
     initialDose: plot.dose,
     initialIsControl: plot.is_control,
+    isMixed: false,
+  }
+}
+
+function onEditPlots(selectedPlots: PlotItem[]) {
+  if (currentStep.value !== 3 || selectedPlots.length === 0) return
+  if (selectedPlots.length === 1) {
+    onEditPlot(selectedPlots[0])
+    return
+  }
+
+  const first = selectedPlots[0]
+  const isSame = selectedPlots.every(
+    (p) => p.is_control === first.is_control && p.treatment === first.treatment && p.dose === first.dose
+  )
+
+  treatmentDialogState.value = {
+    open: true,
+    isNewPlot: false,
+    plotNumber: null,
+    plotNumbers: selectedPlots.map((p) => p.plot_number),
+    points: null,
+    initialTreatment: isSame ? first.treatment : '',
+    initialDose: isSame ? first.dose : '',
+    initialIsControl: isSame ? first.is_control : false,
+    isMixed: !isSame,
   }
 }
 
@@ -260,27 +302,45 @@ function onDialogConfirm(data: TreatmentData) {
       data.dose,
       data.isControl
     )
-  } else if (!treatmentDialogState.value.isNewPlot && treatmentDialogState.value.plotNumber !== null) {
-    updatePlotTreatment(
-      treatmentDialogState.value.plotNumber,
-      data.treatment,
-      data.dose,
-      data.isControl
-    )
+  } else if (!treatmentDialogState.value.isNewPlot) {
+    if (treatmentDialogState.value.plotNumbers && treatmentDialogState.value.plotNumbers.length > 0) {
+      updatePlotTreatments(
+        treatmentDialogState.value.plotNumbers,
+        data.treatment,
+        data.dose,
+        data.isControl
+      )
+    } else if (treatmentDialogState.value.plotNumber !== null) {
+      updatePlotTreatment(
+        treatmentDialogState.value.plotNumber,
+        data.treatment,
+        data.dose,
+        data.isControl
+      )
+    }
   }
   treatmentDialogState.value.open = false
   treatmentDialogState.value.points = null
+  treatmentDialogState.value.plotNumbers = []
+  nextTick(() => plotCanvasOverlayRef.value?.redraw())
 }
 
 function onDialogCancel() {
   treatmentDialogState.value.open = false
   treatmentDialogState.value.points = null
+  treatmentDialogState.value.plotNumbers = []
 }
 
-function onDialogDelete(plotNumber: number) {
-  deletePlot(plotNumber)
+function onDialogDelete(payload: { plotNumber: number | null; plotNumbers: number[] }) {
+  if (payload.plotNumbers && payload.plotNumbers.length > 0) {
+    deletePlots(payload.plotNumbers)
+  } else if (payload.plotNumber !== null) {
+    deletePlot(payload.plotNumber)
+  }
   treatmentDialogState.value.open = false
   treatmentDialogState.value.points = null
+  treatmentDialogState.value.plotNumbers = []
+  nextTick(() => plotCanvasOverlayRef.value?.redraw())
 }
 
 function onUpdatePlotPoints(payload: { plotNumber: number; points: NormalizedPoint[] }) {
@@ -289,6 +349,45 @@ function onUpdatePlotPoints(payload: { plotNumber: number; points: NormalizedPoi
 
 function onSelectPlot(plotNumber: number | null) {
   selectedPlotNumber.value = plotNumber
+}
+
+function onSelectPlots(plotNumbers: number[]) {
+  selectedPlotNumbers.value = plotNumbers
+}
+
+function handleDeleteSelectedPlots() {
+  if (selectedPlotNumbers.value.length > 0) {
+    deletePlots(selectedPlotNumbers.value)
+    nextTick(() => plotCanvasOverlayRef.value?.redraw())
+  } else if (selectedPlotNumber.value !== null) {
+    deletePlot(selectedPlotNumber.value)
+    nextTick(() => plotCanvasOverlayRef.value?.redraw())
+  }
+}
+
+function handleDuplicateSelectedPlots() {
+  if (selectedPlotNumbers.value.length > 1) {
+    duplicatePlots(selectedPlotNumbers.value)
+    nextTick(() => plotCanvasOverlayRef.value?.redraw())
+  } else if (selectedPlotNumber.value !== null) {
+    duplicatePlot(selectedPlotNumber.value)
+    nextTick(() => plotCanvasOverlayRef.value?.redraw())
+  }
+}
+
+function handleMovePlots(payload: { plotNumbers: number[]; delta: { dx: number; dy: number } }) {
+  movePlots(payload.plotNumbers, payload.delta)
+  nextTick(() => plotCanvasOverlayRef.value?.redraw())
+}
+
+function handleDeletePlots(plotNumbers: number[]) {
+  deletePlots(plotNumbers)
+  nextTick(() => plotCanvasOverlayRef.value?.redraw())
+}
+
+function handleDuplicatePlots(plotNumbers: number[]) {
+  duplicatePlots(plotNumbers)
+  nextTick(() => plotCanvasOverlayRef.value?.redraw())
 }
 
 async function handleSavePlots() {
@@ -300,6 +399,21 @@ async function handleSavePlots() {
 }
 
 const currentStep = ref<1 | 2 | 3 | 4>(1)
+
+const currentStepTitle = computed(() => {
+  switch (currentStep.value) {
+    case 1:
+      return '步驟 1：航拍正射'
+    case 2:
+      return '步驟 2：試驗情境'
+    case 3:
+      return '步驟 3：小區標註'
+    case 4:
+      return '步驟 4：光譜分析'
+    default:
+      return ''
+  }
+})
 
 function isStepUnlocked(stepId: 1 | 2 | 3 | 4): boolean {
   if (stepId === 1 || stepId === 2) return true
@@ -357,6 +471,15 @@ async function handleGoHome() {
   selectedProject.value = null
   currentStep.value = 1
   await clearChat('home')
+  try {
+    const response = await fetch("/api/task/odm-task-list")
+    const data = await response.json()
+    if (response.ok && data.data) {
+      projects.value = data.data
+    }
+  } catch (err) {
+    console.error("無法同步最新專案清單", err)
+  }
 }
 
 
@@ -608,8 +731,40 @@ watch(selectedProject, async (newProj) => {
       </header>
       <!-- 當選定專案時的四步驟工作流 -->
       <div v-if="selectedProject" class="relative flex flex-1 flex-col h-[calc(100vh-theme(spacing.14))] overflow-hidden">
-        <!-- 步驟 2：專案試驗情境特徵動態卡片 (可捲動表單) -->
-        <div v-if="currentStep === 2" class="flex-1 min-h-0 overflow-y-auto p-6 pb-20 bg-muted/10 space-y-6">
+        <!-- 左上角懸浮專案資訊與步驟膠囊 HUD (全步驟全域常駐) -->
+        <div
+          class="absolute top-4 left-4 z-20 flex flex-wrap items-center gap-3 rounded-2xl border border-white/15 bg-zinc-950/85 px-4 py-2 text-white shadow-2xl backdrop-blur-md"
+        >
+          <div class="flex flex-col">
+            <span class="text-sm font-bold text-zinc-100 tracking-tight leading-tight">{{ selectedProject.name }}</span>
+            <span class="font-mono text-[10px] text-zinc-400">ID: {{ selectedProject.id.slice(0, 13) }}...</span>
+          </div>
+          <div class="h-4 w-px bg-white/15" />
+          <Badge variant="outline" class="font-medium text-xs text-purple-300 border-purple-400/40 bg-purple-950/40">
+            {{ currentStepTitle }}
+          </Badge>
+          <div class="flex items-center gap-1.5">
+            <Badge :variant="selectedProject.progress === 100 ? 'default' : 'secondary'" class="text-xs">
+              <CheckCircle2 v-if="selectedProject.progress === 100" class="size-3.5 mr-1" />
+              <Spinner v-else class="size-3.5 mr-1 animate-spin" />
+              {{ selectedProject.progress === 100 ? '已完成' : `處理中 (${selectedProject.progress ?? 0}%)` }}
+            </Badge>
+            <Badge variant="outline" class="text-xs text-zinc-300 border-white/20">
+              <Images class="size-3.5 mr-1 text-zinc-400" />
+              {{ selectedProject.images ?? 0 }} 張相片
+            </Badge>
+            <Badge
+              v-if="selectedProject.progress === 100 && currentStep === 4"
+              variant="outline"
+              class="font-mono text-xs text-purple-300 border-purple-400/40 bg-purple-950/30"
+            >
+              {{ selectedFormula === 'rgb' ? '原始 (RGB)' : selectedFormula }}
+            </Badge>
+          </div>
+        </div>
+
+        <!-- 步驟 2：專案試驗情境特徵動態卡片 (可捲動表單，預留頂部避障內距) -->
+        <div v-if="currentStep === 2" class="flex-1 min-h-0 overflow-y-auto px-6 pt-20 pb-24 bg-muted/10 space-y-6">
           <div class="mx-auto max-w-5xl space-y-6">
             <ProjectScenarioCard
               :project-id="selectedProject.id"
@@ -628,35 +783,6 @@ watch(selectedProject, async (newProj) => {
           v-else-if="currentStep === 1 || currentStep === 3 || currentStep === 4"
           class="relative flex-1 min-h-0 w-full h-full bg-black overflow-hidden select-none"
         >
-          <!-- 左上角懸浮專案資訊膠囊 HUD (Floating Project Info HUD) -->
-          <div
-            class="absolute top-4 left-4 z-20 flex flex-wrap items-center gap-3 rounded-2xl border border-white/15 bg-zinc-950/85 px-4 py-2 text-white shadow-2xl backdrop-blur-md"
-          >
-            <div class="flex flex-col">
-              <span class="text-sm font-bold text-zinc-100 tracking-tight leading-tight">{{ selectedProject.name }}</span>
-              <span class="font-mono text-[10px] text-zinc-400">ID: {{ selectedProject.id.slice(0, 13) }}...</span>
-            </div>
-            <div class="h-4 w-px bg-white/15" />
-            <div class="flex items-center gap-1.5">
-              <Badge :variant="selectedProject.progress === 100 ? 'default' : 'secondary'" class="text-xs">
-                <CheckCircle2 v-if="selectedProject.progress === 100" class="size-3.5 mr-1" />
-                <Spinner v-else class="size-3.5 mr-1 animate-spin" />
-                {{ selectedProject.progress === 100 ? '已完成' : `處理中 (${selectedProject.progress ?? 0}%)` }}
-              </Badge>
-              <Badge variant="outline" class="text-xs text-zinc-300 border-white/20">
-                <Images class="size-3.5 mr-1 text-zinc-400" />
-                {{ selectedProject.images ?? 0 }} 張相片
-              </Badge>
-              <Badge
-                v-if="selectedProject.progress === 100 && currentStep === 4"
-                variant="outline"
-                class="font-mono text-xs text-purple-300 border-purple-400/40 bg-purple-950/30"
-              >
-                {{ selectedFormula === 'rgb' ? '原始 (RGB)' : selectedFormula }}
-              </Badge>
-            </div>
-          </div>
-
           <!-- 步驟 1 拼接運算中（進度未達 100%）：畫面中央毛玻璃進度對話卡 -->
           <div
             v-if="selectedProject.progress !== 100"
@@ -757,16 +883,17 @@ watch(selectedProject, async (newProj) => {
             v-model:draw-tool="drawTool"
             :plots="plots"
             :selected-plot-number="selectedPlotNumber"
+            :selected-plot-numbers="selectedPlotNumbers"
             :is-dirty="isDirty"
             :is-saving="isSaving"
             :is-drawing="isDrawing"
             :grid-state="gridState"
-            class="absolute top-4 right-4 z-20"
+            class="absolute top-1/2 -translate-y-1/2 right-4 z-20"
             @save="handleSavePlots"
             @undo-point="plotCanvasOverlayRef?.undoLastPoint()"
             @cancel-drawing="plotCanvasOverlayRef?.cancelDrawing()"
-            @delete-selected="selectedPlotNumber !== null && deletePlot(selectedPlotNumber)"
-            @duplicate-selected="selectedPlotNumber !== null && handleDuplicatePlot(selectedPlotNumber)"
+            @delete-selected="handleDeleteSelectedPlots"
+            @duplicate-selected="handleDuplicateSelectedPlots"
             @duplicate-all="handleDuplicateAll"
             @copy-to-clipboard="handleCopyToClipboard"
             @paste-from-clipboard="handlePasteFromClipboard"
@@ -887,19 +1014,28 @@ watch(selectedProject, async (newProj) => {
               :plots="currentStep === 3 || currentStep === 4 ? plots : []"
               :active-mode="currentStep === 3 ? activeMode : 'view'"
               :draw-tool="currentStep === 3 ? drawTool : 'select'"
+              :can-edit="currentStep === 3"
               :selected-plot-number="currentStep === 3 || currentStep === 4 ? selectedPlotNumber : null"
+              :selected-plot-numbers="currentStep === 3 || currentStep === 4 ? selectedPlotNumbers : []"
               :get-plot-color="getPlotColor"
               :viewport="viewport"
               :grid-state="currentStep === 3 ? gridState : { isActive: false, corners: [], rows: 3, cols: 3, marginRatio: 0.1, scaleX: 0.8, scaleY: 0.8, paddingRatio: 0, offsetX: 0, offsetY: 0, excludedIndices: [] }"
               :preview-plots="currentStep === 3 ? previewGridPlots : []"
               @plot-drawn="onPlotDrawn"
               @edit-plot="onEditPlot"
+              @edit-plots="onEditPlots"
               @update-plot-points="onUpdatePlotPoints"
               @select-plot="onSelectPlot"
+              @select-plots="onSelectPlots"
               @update-grid-corner="updateGridCorner($event.index, $event.point)"
+              @update-grid-corners="updateGridCorners"
+              @move-grid="moveGrid($event.delta)"
               @delete-plot="deletePlot"
+              @delete-plots="handleDeletePlots"
               @duplicate-plot="handleDuplicatePlot"
+              @duplicate-plots="handleDuplicatePlots"
               @move-plot="movePlot($event.plotNumber, $event.delta)"
+              @move-plots="handleMovePlots"
               @toggle-exclude-grid-cell="toggleExcludeGridCell"
             />
           </div>
@@ -908,10 +1044,12 @@ watch(selectedProject, async (newProj) => {
             v-if="currentStep === 3"
             v-model:open="treatmentDialogState.open"
             :plot-number="treatmentDialogState.plotNumber"
+            :plot-numbers="treatmentDialogState.plotNumbers"
             :is-new-plot="treatmentDialogState.isNewPlot"
             :initial-treatment="treatmentDialogState.initialTreatment"
             :initial-dose="treatmentDialogState.initialDose"
             :initial-is-control="treatmentDialogState.initialIsControl"
+            :is-mixed="treatmentDialogState.isMixed"
             :existing-treatments="existingTreatments"
             @confirm="onDialogConfirm"
             @cancel="onDialogCancel"
