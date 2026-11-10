@@ -1,11 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
-  CardTitle,
 } from '@/components/ui/card'
 import {
   Collapsible,
@@ -19,19 +17,18 @@ import { Badge } from '@/components/ui/badge'
 import { Spinner } from '@/components/ui/spinner'
 import {
   FlaskConical,
-  Sparkles,
   CheckCircle2,
   Plus,
   Trash2,
   ChevronDown,
   ChevronUp,
   Save,
-  ShieldAlert,
 } from '@lucide/vue'
 
 export interface ScenarioCategoryItem {
-  name: string
+  treatment?: string
   dose?: string
+  name: string
   color: string
   is_control?: boolean
 }
@@ -39,8 +36,8 @@ export interface ScenarioCategoryItem {
 export interface ScenarioData {
   type: string
   title: string
-  target: string
-  target_label: string
+  target?: string
+  target_label?: string
   categories: ScenarioCategoryItem[]
 }
 
@@ -83,107 +80,23 @@ const isSaving = ref(false)
 const isSaved = ref(false)
 const isDirty = ref(false)
 
-const scenarioType = ref('pesticide')
-const targetName = ref('')
 const categories = ref<ScenarioCategoryItem[]>([])
 
-const targetLabel = computed(() => {
-  if (scenarioType.value === 'pesticide') return '農藥名稱'
-  if (scenarioType.value === 'fertilizer') return '肥料品項'
-  if (scenarioType.value === 'variety') return '試驗作物品種'
-  return '試驗處理標的名稱'
-})
-
-const scenarioTitle = computed(() => {
-  if (scenarioType.value === 'pesticide') return '農藥藥效試驗'
-  if (scenarioType.value === 'fertilizer') return '肥料肥力試驗'
-  if (scenarioType.value === 'variety') return '品種篩選試驗'
-  return '自訂試驗情境'
-})
-
-// 初始化農藥情境預設分類
-function initDefaultPesticide(target = '快得寧') {
-  scenarioType.value = 'pesticide'
-  targetName.value = target
+// 初始化預設組別骨架：1 個對照組 (CK) ＋ 1 個空白處理組
+function initDefaultCategories() {
   categories.value = [
-    { name: '未施藥對照 (CK)', dose: '', color: PALETTE[0], is_control: true },
-    { name: '500x', dose: '500x', color: PALETTE[1], is_control: false },
-    { name: '1000x', dose: '1000x', color: PALETTE[2], is_control: false },
-    { name: '2000x', dose: '2000x', color: PALETTE[3], is_control: false },
+    { name: '未施藥對照 (CK)', treatment: '', dose: '', color: PALETTE[0], is_control: true },
+    { name: '', treatment: '', dose: '', color: PALETTE[1], is_control: false },
   ]
-  isDirty.value = true
+  isDirty.value = false
 }
 
-// 初始化肥料情境預設分類
-function initDefaultFertilizer(target = '特肥一號') {
-  scenarioType.value = 'fertilizer'
-  targetName.value = target
-  categories.value = [
-    { name: '不施肥對照 (CK)', dose: '', color: PALETTE[0], is_control: true },
-    { name: '減量組 (50%)', dose: '50%', color: PALETTE[4], is_control: false },
-    { name: '標準量 (100%)', dose: '100%', color: PALETTE[1], is_control: false },
-    { name: '倍量組 (200%)', dose: '200%', color: PALETTE[2], is_control: false },
-  ]
-  isDirty.value = true
-}
-
-// 自訂情境預設分類
-function initDefaultCustom() {
-  scenarioType.value = 'custom'
-  targetName.value = '處理品項'
-  categories.value = [
-    { name: '對照組 (CK)', dose: '', color: PALETTE[0], is_control: true },
-    { name: '處理組 A', dose: '組別 A', color: PALETTE[1], is_control: false },
-    { name: '處理組 B', dose: '組別 B', color: PALETTE[2], is_control: false },
-  ]
-  isDirty.value = true
-}
-
-// 根據專案名稱與檔案清單進行 AI 語意推估
-const aiInferenceSuggestion = computed<{ type: string; target: string; reason: string } | null>(() => {
-  const combined = `${props.projectName || ''} ${(props.fileNames || []).join(' ')}`.toLowerCase()
-  if (
-    combined.includes('農藥') ||
-    combined.includes('藥') ||
-    combined.includes('快得寧') ||
-    combined.includes('500x') ||
-    combined.includes('1000x') ||
-    combined.includes('pesticide')
-  ) {
-    let guessedName = '快得寧'
-    if (combined.includes('快得寧')) guessedName = '快得寧'
-    else if (combined.includes('得寧')) guessedName = '得寧'
-    return {
-      type: 'pesticide',
-      target: guessedName,
-      reason: '偵測到檔名或專案包含農藥/稀釋倍數關鍵字',
-    }
-  }
-  if (combined.includes('肥') || combined.includes('fertilizer')) {
-    return {
-      type: 'fertilizer',
-      target: '特肥一號',
-      reason: '偵測到檔名或專案包含肥料試驗關鍵字',
-    }
-  }
-  return null
-})
-
-// 套用 AI 推估
-function applyAiSuggestion() {
-  if (!aiInferenceSuggestion.value) return
-  if (aiInferenceSuggestion.value.type === 'pesticide') {
-    initDefaultPesticide(aiInferenceSuggestion.value.target)
-  } else if (aiInferenceSuggestion.value.type === 'fertilizer') {
-    initDefaultFertilizer(aiInferenceSuggestion.value.target)
-  }
-}
-
-// 新增分類項目
+// 新增組別
 function addCategory() {
   const nextColorIdx = (categories.value.length % (PALETTE.length - 1)) + 1
   categories.value.push({
-    name: `劑量組 ${categories.value.length}`,
+    name: '',
+    treatment: '',
     dose: '',
     color: PALETTE[nextColorIdx],
     is_control: false,
@@ -191,61 +104,134 @@ function addCategory() {
   isDirty.value = true
 }
 
-// 刪除分類項目
+// 移除組別
 function removeCategory(index: number) {
   categories.value.splice(index, 1)
   isDirty.value = true
 }
 
-// 載入已存在的 Scenario 資料
+// 切換對照組（互斥單選模式：若點選處理組，將其設為對照組並將既有對照組降級為處理組；對照組不可反轉取消）
+function toggleControl(cat: ScenarioCategoryItem) {
+  if (cat.is_control) {
+    // 已經是對照組，禁止取消，永遠維持 1 個對照組
+    return
+  }
+  // 將其他對照組降級為處理組
+  for (const c of categories.value) {
+    if (c.is_control) {
+      c.is_control = false
+      c.name = [c.treatment, c.dose].filter(Boolean).join(' ') || ''
+    }
+  }
+  // 當前組別提升為對照組
+  cat.is_control = true
+  cat.name = cat.name.trim() || '未施藥對照 (CK)'
+  cat.treatment = ''
+  cat.dose = ''
+  isDirty.value = true
+}
+
+// 當編輯藥劑名稱或劑量時同步組名
+function onTreatmentChange(cat: ScenarioCategoryItem) {
+  const trt = (cat.treatment || '').trim()
+  const d = (cat.dose || '').trim()
+  cat.name = [trt, d].filter(Boolean).join(' ')
+  isDirty.value = true
+}
+
+// 載入已存在之情境設定（自動校正確保全域僅有唯一對照組）
 function loadFromScenario(data: ScenarioData) {
-  if (!data) return
-  scenarioType.value = data.type || 'pesticide'
-  targetName.value = data.target || ''
-  categories.value = (data.categories || []).map((c) => ({
-    name: c.name,
-    dose: c.dose || c.name,
-    color: c.color || PALETTE[1],
-    is_control: c.is_control ?? false,
-  }))
+  if (!data || !Array.isArray(data.categories) || data.categories.length === 0) {
+    initDefaultCategories()
+    return
+  }
+  const defaultTarget = (data.target || '').trim()
+  let hasControl = false
+
+  categories.value = data.categories.map((c, idx) => {
+    let isControl = Boolean(c.is_control)
+    if (isControl) {
+      if (hasControl) {
+        // 多餘的對照組自動降級為處理組
+        isControl = false
+      } else {
+        hasControl = true
+      }
+    }
+    let trt = c.treatment || ''
+    let d = c.dose || ''
+    let n = c.name || ''
+
+    if (!isControl && !trt && defaultTarget) {
+      trt = defaultTarget
+    }
+    if (!isControl && !d && n && n !== trt) {
+      d = n
+    }
+    if (!n) {
+      n = isControl ? '未施藥對照 (CK)' : [trt, d].filter(Boolean).join(' ') || `處理組 ${idx}`
+    }
+
+    return {
+      name: n,
+      treatment: trt,
+      dose: d,
+      color: c.color || PALETTE[idx % PALETTE.length],
+      is_control: isControl,
+    }
+  })
+
+  // 若完全沒有對照組，自動將第 1 個設為對照組
+  if (!hasControl && categories.value.length > 0) {
+    categories.value[0].is_control = true
+    categories.value[0].name = categories.value[0].name || '未施藥對照 (CK)'
+  }
+
   isDirty.value = false
   isSaved.value = true
 }
 
-// 監聽傳入的 initialScenario
 watch(
   () => props.initialScenario,
   (newScenario) => {
     if (newScenario && typeof newScenario === 'object' && Object.keys(newScenario).length > 0) {
       loadFromScenario(newScenario as ScenarioData)
-      // 若已完成 100% 且已有設定，預設收合以節省空間
       if (props.projectProgress === 100) {
         isOpen.value = false
       }
     } else {
-      // 專案尚未設定情境，預設提供標準農藥試驗模板供手動配置
-      initDefaultPesticide()
+      initDefaultCategories()
       isOpen.value = true
     }
   },
   { immediate: true }
 )
 
-// 儲存情境特徵至後端資料庫
+// 儲存情境特徵
 async function handleSave() {
   if (!props.projectId || props.projectId === 'home') return
 
   const payload: ScenarioData = {
-    type: scenarioType.value,
-    title: scenarioTitle.value,
-    target: targetName.value.trim(),
-    target_label: targetLabel.value,
-    categories: categories.value.map((c) => ({
-      name: c.name.trim(),
-      dose: (c.dose || c.name).trim(),
-      color: c.color,
-      is_control: c.is_control ?? false,
-    })),
+    type: 'custom',
+    title: '試驗情境設定',
+    target: '',
+    target_label: '藥劑/標的',
+    categories: categories.value.map((c) => {
+      const isControl = c.is_control ?? false
+      const trt = (c.treatment || '').trim()
+      const d = (c.dose || '').trim()
+      let n = (c.name || '').trim()
+      if (!n) {
+        n = isControl ? '未施藥對照 (CK)' : [trt, d].filter(Boolean).join(' ') || '處理組'
+      }
+      return {
+        name: n,
+        treatment: trt,
+        dose: d,
+        color: c.color,
+        is_control: isControl,
+      }
+    }),
   }
 
   isSaving.value = true
@@ -274,33 +260,30 @@ async function handleSave() {
 </script>
 
 <template>
-  <Card class="border shadow-sm transition-all duration-200">
+  <Card class="border shadow-xs transition-all duration-200">
     <Collapsible v-model:open="isOpen">
-      <CardHeader class="py-3 px-5">
+      <CardHeader class="py-2.5 px-4">
         <div class="flex items-center justify-between gap-3">
           <div class="flex flex-wrap items-center gap-2">
-            <div class="flex items-center gap-1.5 font-semibold text-base text-foreground">
+            <div class="flex items-center gap-1.5 font-semibold text-sm text-foreground">
               <FlaskConical class="size-4 text-primary" />
               <span>專案試驗情境特徵</span>
             </div>
 
             <!-- 折疊時的摘要預覽徽章 -->
             <template v-if="!isOpen">
-              <Badge v-if="targetName" variant="secondary" class="font-normal text-xs">
-                {{ targetLabel }}: <strong class="ml-1 text-foreground">{{ targetName }}</strong>
-              </Badge>
               <div class="flex items-center gap-1">
                 <Badge
-                  v-for="(cat, idx) in categories.slice(0, 4)"
+                  v-for="(cat, idx) in categories.slice(0, 5)"
                   :key="idx"
                   variant="outline"
                   class="text-[11px] font-normal py-0 px-1.5 flex items-center gap-1"
                 >
                   <span class="size-1.5 rounded-full shrink-0" :style="{ backgroundColor: cat.color }" />
-                  {{ cat.name }}
+                  {{ cat.name || [cat.treatment, cat.dose].filter(Boolean).join(' ') || (cat.is_control ? '對照組 (CK)' : '處理組') }}
                 </Badge>
-                <span v-if="categories.length > 4" class="text-[10px] text-muted-foreground">
-                  +{{ categories.length - 4 }}
+                <span v-if="categories.length > 5" class="text-[10px] text-muted-foreground">
+                  +{{ categories.length - 5 }}
                 </span>
               </div>
             </template>
@@ -318,7 +301,7 @@ async function handleSave() {
           <div class="flex items-center gap-2">
             <!-- 展開 / 收合開關 -->
             <CollapsibleTrigger as-child>
-              <Button size="sm" variant="ghost" class="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground">
+              <Button size="sm" variant="ghost" class="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground cursor-pointer">
                 <span>{{ isOpen ? '收合' : '展開編輯' }}</span>
                 <ChevronUp v-if="isOpen" class="size-3.5" />
                 <ChevronDown v-else class="size-3.5" />
@@ -326,150 +309,100 @@ async function handleSave() {
             </CollapsibleTrigger>
           </div>
         </div>
-
-        <CardDescription v-if="isOpen" class="text-xs pt-1">
-          設定本試驗之處理標的與分組劑量。儲存後將作為此專案的資料特徵，並自動帶入下方小區標註作為預設標籤與顏色。
-        </CardDescription>
       </CardHeader>
 
       <CollapsibleContent>
-        <CardContent class="pt-0 pb-4 px-5 space-y-4">
-          <!-- 1. 情境範本切換 -->
-          <div class="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
-            <div class="flex items-center gap-2">
-              <Label class="text-xs text-muted-foreground font-medium">試驗情境：</Label>
-              <div class="flex gap-1.5">
-                <Button
-                  size="sm"
-                  type="button"
-                  :variant="scenarioType === 'pesticide' ? 'default' : 'outline'"
-                  class="h-7 text-xs px-2.5"
-                  @click="initDefaultPesticide()"
-                >
-                  農藥藥效試驗
-                </Button>
-                <Button
-                  size="sm"
-                  type="button"
-                  :variant="scenarioType === 'fertilizer' ? 'default' : 'outline'"
-                  class="h-7 text-xs px-2.5"
-                  @click="initDefaultFertilizer()"
-                >
-                  肥料肥力試驗
-                </Button>
-                <Button
-                  size="sm"
-                  type="button"
-                  :variant="scenarioType === 'custom' ? 'default' : 'outline'"
-                  class="h-7 text-xs px-2.5"
-                  @click="initDefaultCustom()"
-                >
-                  自訂試驗
-                </Button>
-              </div>
-            </div>
-
-            <!-- 標的名稱輸入 -->
-            <div class="flex items-center gap-2">
-              <Label for="target-input" class="text-xs text-muted-foreground font-medium whitespace-nowrap">
-                {{ targetLabel }}：
-              </Label>
-              <Input
-                id="target-input"
-                v-model="targetName"
-                placeholder="例如: 快得寧"
-                class="h-7 w-40 text-xs"
-                @input="isDirty = true"
-                @keydown.enter.prevent="handleSave"
-              />
-            </div>
+        <CardContent class="pt-0 pb-3 px-4 space-y-3">
+          <!-- 組別列頭部與新增按鈕 -->
+          <div class="flex items-center justify-between border-t pt-2.5">
+            <Label class="text-xs font-semibold text-foreground">
+              試驗組別
+            </Label>
+            <Button
+              size="sm"
+              variant="outline"
+              type="button"
+              class="h-6 text-xs px-2 gap-1 cursor-pointer"
+              @click="addCategory"
+            >
+              <Plus class="size-3" />
+              新增組別
+            </Button>
           </div>
 
-          <!-- 2. 動態劑量/處理組清單 -->
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <Label class="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                <span>試驗組別與分類色彩標籤</span>
-                <span class="text-[11px] font-normal text-muted-foreground">（不同分類標記不同顏色）</span>
-              </Label>
-              <Button
-                size="sm"
-                variant="outline"
-                type="button"
-                class="h-6 text-xs px-2 gap-1"
-                @click="addCategory"
-              >
-                <Plus class="size-3" />
-                新增組別
-              </Button>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
-              <div
-                v-for="(cat, idx) in categories"
-                :key="idx"
-                class="flex flex-col gap-1.5 p-2 rounded-lg border bg-card/60 relative group hover:border-primary/40 transition-colors"
-              >
-                <!-- 頂部顏色與刪除按鈕 -->
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-1.5">
-                    <input
-                      v-model="cat.color"
-                      type="color"
-                      aria-label="選擇組別代表顏色"
-                      class="size-4 rounded cursor-pointer border-0 p-0 bg-transparent"
-                      @input="isDirty = true"
-                    />
-                    <Badge
-                      :variant="cat.is_control ? 'secondary' : 'outline'"
-                      class="text-[10px] py-0 px-1 font-mono cursor-pointer"
-                      :style="!cat.is_control ? { borderColor: cat.color + '80', color: cat.color } : {}"
-                      @click="cat.is_control = !cat.is_control; isDirty = true"
-                    >
-                      {{ cat.is_control ? '對照組 (CK)' : '處理組' }}
-                    </Badge>
-                  </div>
-
-                  <button
-                    v-if="categories.length > 1"
-                    type="button"
-                    aria-label="移除此組別"
-                    class="text-muted-foreground hover:text-destructive opacity-70 group-hover:opacity-100 transition-opacity p-0.5 rounded cursor-pointer"
-                    @click="removeCategory(idx)"
+          <!-- 動態組別卡片列表 -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+            <div
+              v-for="(cat, idx) in categories"
+              :key="idx"
+              class="flex flex-col gap-1.5 p-2 rounded-lg border bg-card/60 relative group hover:border-primary/40 transition-colors"
+            >
+              <!-- 頂部顏色與刪除按鈕 -->
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-1.5">
+                  <input
+                    v-model="cat.color"
+                    type="color"
+                    aria-label="選擇組別代表顏色"
+                    class="size-4 rounded cursor-pointer border-0 p-0 bg-transparent"
+                    @input="isDirty = true"
+                  />
+                  <Badge
+                    :variant="cat.is_control ? 'secondary' : 'outline'"
+                    :class="[
+                      'text-[10px] py-0 px-1 font-mono select-none',
+                      cat.is_control ? 'cursor-default' : 'cursor-pointer hover:bg-accent/40'
+                    ]"
+                    :style="!cat.is_control ? { borderColor: cat.color + '80', color: cat.color } : {}"
+                    :title="cat.is_control ? '目前為唯一對照組 (CK)' : '點擊設為對照組 (CK)'"
+                    @click="toggleControl(cat)"
                   >
-                    <Trash2 class="size-3.5" />
-                  </button>
+                    {{ cat.is_control ? '對照組 (CK)' : '處理組' }}
+                  </Badge>
                 </div>
 
-                <!-- 名稱與劑量輸入 -->
-                <div class="space-y-1">
-                  <Input
-                    v-model="cat.name"
-                    placeholder="組別名稱 (如: 500x)"
-                    class="h-6 text-xs px-1.5 font-medium"
-                    @input="isDirty = true"
-                    @keydown.enter.prevent="handleSave"
-                  />
-                  <Input
-                    v-if="!cat.is_control"
-                    v-model="cat.dose"
-                    placeholder="備註劑量 (選填)"
-                    class="h-5 text-[11px] px-1.5 text-muted-foreground"
-                    @input="isDirty = true"
-                    @keydown.enter.prevent="handleSave"
-                  />
-                </div>
+                <button
+                  v-if="!cat.is_control && categories.length > 1"
+                  type="button"
+                  aria-label="移除此組別"
+                  class="text-muted-foreground hover:text-destructive opacity-70 group-hover:opacity-100 transition-opacity p-0.5 rounded cursor-pointer"
+                  @click="removeCategory(idx)"
+                >
+                  <Trash2 class="size-3.5" />
+                </button>
+              </div>
+
+              <!-- 對照組輸入單欄，處理組輸入藥劑＋劑量兩欄 -->
+              <div v-if="cat.is_control" class="space-y-1">
+                <Input
+                  v-model="cat.name"
+                  placeholder="未施藥對照 (CK)"
+                  class="h-6 text-xs px-1.5 font-medium"
+                  @input="isDirty = true"
+                  @keydown.enter.prevent="handleSave"
+                />
+              </div>
+              <div v-else class="space-y-1">
+                <Input
+                  v-model="cat.treatment"
+                  placeholder="藥劑名稱 (如 快得寧)"
+                  class="h-6 text-xs px-1.5 font-medium"
+                  @input="onTreatmentChange(cat)"
+                  @keydown.enter.prevent="handleSave"
+                />
+                <Input
+                  v-model="cat.dose"
+                  placeholder="劑量/倍數 (如 500x)"
+                  class="h-6 text-xs px-1.5"
+                  @input="onTreatmentChange(cat)"
+                  @keydown.enter.prevent="handleSave"
+                />
               </div>
             </div>
           </div>
 
-          <!-- 3. 操作按鈕列 -->
-          <div class="flex items-center justify-between pt-1 border-t">
-            <div class="text-[11px] text-muted-foreground flex items-center gap-1">
-              <ShieldAlert class="size-3.5 text-muted-foreground/70" />
-              <span>按 Enter 或點擊右側按鈕儲存專案特徵</span>
-            </div>
-
+          <!-- 操作按鈕列 -->
+          <div class="flex items-center justify-end pt-1 border-t">
             <Button
               data-tour="save-scenario"
               size="sm"

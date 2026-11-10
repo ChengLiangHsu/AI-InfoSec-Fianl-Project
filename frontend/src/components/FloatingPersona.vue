@@ -21,7 +21,7 @@ const props = withDefaults(
     projectProgress?: number
     hasPlots?: boolean
     isHome?: boolean
-    currentStep?: 1 | 2 | 3
+    currentStep?: 1 | 2 | 3 | 4
   }>(),
   {
     isHome: false,
@@ -299,6 +299,13 @@ function getDockCandidates(): DockCandidate[] {
     }
     return [
       { selector: '[data-tour="save-plots"]', hint: '小區繪製或編輯完成後，請記得儲存' },
+      { selector: '[data-tour="step-tab-4"]', hint: '小區標註完成後，點此前往步驟 4 進行光譜分析' },
+    ]
+  }
+
+  // 步驟 4：各小區光譜分析
+  if (props.currentStep === 4) {
+    return [
       { selector: '[data-tour="formula-selector"]', hint: '試驗小區已就緒，可切換植生指標檢視' },
     ]
   }

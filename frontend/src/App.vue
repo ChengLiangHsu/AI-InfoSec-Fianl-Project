@@ -73,14 +73,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import FloatingPersona from './components/FloatingPersona.vue'
 import DroneHomeUpload from './components/DroneHomeUpload.vue'
 import ProjectScenarioCard, { type ScenarioData } from './components/ProjectScenarioCard.vue'
 import PlotToolbar from './components/PlotToolbar.vue'
 import PlotCanvasOverlay from './components/PlotCanvasOverlay.vue'
 import PlotTreatmentDialog, { type TreatmentData } from './components/PlotTreatmentDialog.vue'
-import TaskStepper from './components/TaskStepper.vue'
+import StepNavigationHUD from './components/StepNavigationHUD.vue'
 import { usePlots, type NormalizedPoint, type PlotItem } from './lib/usePlots'
 import { useChatAgent } from './lib/useChatAgent'
 import { useOdmProgress } from './lib/useOdmProgress'
@@ -193,7 +193,7 @@ const treatmentDialogState = ref<{
 })
 
 function onFitToScreen() {
-  const container = viewportRef.value || orthoContainerRef.value
+  const container = viewportRef.value
   const img = imageRef.value
   if (!container || !img) return
   viewport.fitToViewport(
@@ -201,11 +201,17 @@ function onFitToScreen() {
     container.clientHeight,
     img.naturalWidth || 1,
     img.naturalHeight || 1,
-    16
+    24
   )
   nextTick(() => {
     plotCanvasOverlayRef.value?.syncCanvasSize()
   })
+}
+
+function handleWindowResize() {
+  if (viewportRef.value && imageRef.value && imageRef.value.complete && imageRef.value.naturalWidth > 0) {
+    onFitToScreen()
+  }
 }
 
 function onZoomIn() {
@@ -293,11 +299,13 @@ async function handleSavePlots() {
   }
 }
 
-const currentStep = ref<1 | 2 | 3>(1)
+const currentStep = ref<1 | 2 | 3 | 4>(1)
 
-function isStepUnlocked(stepId: 1 | 2 | 3): boolean {
+function isStepUnlocked(stepId: 1 | 2 | 3 | 4): boolean {
   if (stepId === 1 || stepId === 2) return true
-  return (selectedProject.value?.progress ?? 0) === 100
+  if (stepId === 3) return (selectedProject.value?.progress ?? 0) === 100
+  if (stepId === 4) return (selectedProject.value?.progress ?? 0) === 100 && plots.value.length > 0
+  return false
 }
 
 function canSafelyLeaveStep3(): boolean {
@@ -307,16 +315,21 @@ function canSafelyLeaveStep3(): boolean {
   return true
 }
 
-function resetStepFormula(targetStep: 1 | 2 | 3) {
-  if (targetStep === 1) {
+function resetStepFormula(targetStep: 1 | 2 | 3 | 4) {
+  // 僅步驟 4 啟用光譜指標，離開步驟 4 切換至其他步驟時自動重置為原始 RGB
+  if (targetStep !== 4) {
     selectedFormula.value = 'rgb'
   }
 }
 
-function handleStepChange(targetStep: 1 | 2 | 3) {
+function handleStepChange(targetStep: 1 | 2 | 3 | 4) {
   if (targetStep === currentStep.value) return
   if (!isStepUnlocked(targetStep)) {
-    alert(`需待正射影像拼接完成（目前進度 ${selectedProject.value?.progress ?? 0}%）方可進入小區標註步驟`)
+    if ((selectedProject.value?.progress ?? 0) < 100) {
+      alert(`需待正射影像拼接完成（目前進度 ${selectedProject.value?.progress ?? 0}%）方可進入該步驟`)
+    } else if (targetStep === 4 && plots.value.length === 0) {
+      alert('需先於步驟 3 完成小區網格標註與儲存方可進入各小區光譜分析')
+    }
     return
   }
   if (currentStep.value === 3 && !canSafelyLeaveStep3()) {
@@ -496,6 +509,7 @@ async function handleDeleteProject(id: string) {
 }
 
 onMounted(async () => {
+  window.addEventListener('resize', handleWindowResize)
   try {
     const formulasRes = await fetch("/api/task/odm-task-formulas")
     const formulasData = await formulasRes.json()
@@ -529,6 +543,10 @@ onMounted(async () => {
       },
     })
   }
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleWindowResize)
 })
 
 watch(selectedProject, async (newProj) => {
@@ -588,79 +606,153 @@ watch(selectedProject, async (newProj) => {
           刪除專案
         </Button>
       </header>
-      <div v-if="selectedProject" class="mx-auto flex w-full max-w-4xl flex-col gap-6 p-6">
-        <!-- 專案工作流三步驟導覽指示條 -->
-        <TaskStepper
-          :current-step="currentStep"
-          :project-progress="selectedProject.progress"
-          @change-step="handleStepChange"
-        />
+      <!-- 當選定專案時的四步驟工作流 -->
+      <div v-if="selectedProject" class="relative flex flex-1 flex-col h-[calc(100vh-theme(spacing.14))] overflow-hidden">
+        <!-- 步驟 2：專案試驗情境特徵動態卡片 (可捲動表單) -->
+        <div v-if="currentStep === 2" class="flex-1 min-h-0 overflow-y-auto p-6 pb-20 bg-muted/10 space-y-6">
+          <div class="mx-auto max-w-5xl space-y-6">
+            <ProjectScenarioCard
+              :project-id="selectedProject.id"
+              :project-name="selectedProject.name"
+              :initial-scenario="selectedProject.scenario"
+              :file-names="currentUploadedFileNames"
+              :project-progress="selectedProject.progress"
+              @update:scenario="onScenarioUpdated"
+              @saved="onScenarioSaved"
+            />
+          </div>
+        </div>
 
-        <!-- 步驟 1 與步驟 3：專案主卡片（動態切換：拼接中進度條 / 拼接完成正射圖檢視與小區標註） -->
-        <Card v-if="currentStep === 1 || currentStep === 3">
-          <CardHeader class="flex flex-row items-center justify-between pb-3">
-            <div class="space-y-1">
-              <CardTitle class="text-xl font-bold">{{ selectedProject.name }}</CardTitle>
-              <CardDescription class="font-mono text-xs text-muted-foreground">
-                ID: {{ selectedProject.id }}
-              </CardDescription>
+        <!-- 步驟 1、步驟 3 與步驟 4：Google 地圖式滿版暗場工作區 (Zero-Scroll 滿版黑底視圖) -->
+        <div
+          v-else-if="currentStep === 1 || currentStep === 3 || currentStep === 4"
+          class="relative flex-1 min-h-0 w-full h-full bg-black overflow-hidden select-none"
+        >
+          <!-- 左上角懸浮專案資訊膠囊 HUD (Floating Project Info HUD) -->
+          <div
+            class="absolute top-4 left-4 z-20 flex flex-wrap items-center gap-3 rounded-2xl border border-white/15 bg-zinc-950/85 px-4 py-2 text-white shadow-2xl backdrop-blur-md"
+          >
+            <div class="flex flex-col">
+              <span class="text-sm font-bold text-zinc-100 tracking-tight leading-tight">{{ selectedProject.name }}</span>
+              <span class="font-mono text-[10px] text-zinc-400">ID: {{ selectedProject.id.slice(0, 13) }}...</span>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <Badge :variant="selectedProject.progress === 100 ? 'default' : 'secondary'">
+            <div class="h-4 w-px bg-white/15" />
+            <div class="flex items-center gap-1.5">
+              <Badge :variant="selectedProject.progress === 100 ? 'default' : 'secondary'" class="text-xs">
                 <CheckCircle2 v-if="selectedProject.progress === 100" class="size-3.5 mr-1" />
                 <Spinner v-else class="size-3.5 mr-1 animate-spin" />
                 {{ selectedProject.progress === 100 ? '已完成' : `處理中 (${selectedProject.progress ?? 0}%)` }}
               </Badge>
-              <Badge variant="outline" class="text-xs">
-                <Images class="size-3.5 mr-1 text-muted-foreground" />
+              <Badge variant="outline" class="text-xs text-zinc-300 border-white/20">
+                <Images class="size-3.5 mr-1 text-zinc-400" />
                 {{ selectedProject.images ?? 0 }} 張相片
               </Badge>
               <Badge
-                v-if="selectedProject.progress === 100 && currentStep === 3"
-                data-tour="formula-selector"
+                v-if="selectedProject.progress === 100 && currentStep === 4"
                 variant="outline"
-                class="font-mono text-xs"
+                class="font-mono text-xs text-purple-300 border-purple-400/40 bg-purple-950/30"
               >
-                目前顯示：{{ selectedFormula === 'rgb' ? '原始正射影像 (RGB)' : selectedFormula }}
+                {{ selectedFormula === 'rgb' ? '原始 (RGB)' : selectedFormula }}
               </Badge>
             </div>
-          </CardHeader>
+          </div>
 
-          <!-- 拼接運算中（進度未達 100%）：顯示進度條、提示與中斷按鈕 -->
-          <CardContent v-if="selectedProject.progress !== 100" class="space-y-4 pt-2">
-            <div class="space-y-3 rounded-lg border border-dashed bg-muted/20 p-6 text-center">
-              <div class="mx-auto flex max-w-lg flex-col gap-4">
-                <div class="flex items-center justify-between text-sm">
-                  <span class="flex items-center gap-1.5 font-medium text-foreground">
-                    <Spinner class="size-4 animate-spin text-primary" />
-                    正射影像拼接運算中...
-                  </span>
-                  <span class="font-mono font-semibold text-primary">{{ selectedProject.progress ?? 0 }}%</span>
-                </div>
-                <Progress :model-value="selectedProject.progress ?? 0" class="h-2" />
-                <div class="flex items-center justify-between gap-4 pt-1">
-                  <p class="text-xs text-muted-foreground text-left">
-                    正在進行航拍特徵匹配與高解析度正射拼圖，完成後將在此直接顯示成果。您可先點擊下方按鈕前往「步驟 2：設定試驗情境」。
-                  </p>
-                  <Button
-                    data-tour="cancel-stitching"
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    class="h-8 gap-1.5 px-3 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30 shrink-0 cursor-pointer"
-                    @click="handleCancelStitching(selectedProject.id)"
-                  >
-                    <XCircle class="size-3.5" />
-                    <span>中斷拼接</span>
-                  </Button>
-                </div>
+          <!-- 步驟 1 拼接運算中（進度未達 100%）：畫面中央毛玻璃進度對話卡 -->
+          <div
+            v-if="selectedProject.progress !== 100"
+            class="absolute inset-0 z-30 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+          >
+            <div class="w-full max-w-md rounded-2xl border border-white/15 bg-zinc-950/90 p-6 text-zinc-100 shadow-2xl backdrop-blur-md space-y-4">
+              <div class="flex items-center justify-between text-sm">
+                <span class="flex items-center gap-2 font-medium text-zinc-200">
+                  <Spinner class="size-4 animate-spin text-purple-400" />
+                  正射影像拼接運算中...
+                </span>
+                <span class="font-mono font-bold text-purple-400">{{ selectedProject.progress ?? 0 }}%</span>
+              </div>
+              <Progress :model-value="selectedProject.progress ?? 0" class="h-2 bg-white/10" />
+              <p class="text-xs text-zinc-400 leading-relaxed">
+                正在進行航拍特徵匹配與高解析度正射拼圖，完成後將在此直接顯示成果。您可先點擊下方切換按鈕前往「步驟 2：設定試驗情境」。
+              </p>
+              <div class="flex items-center justify-end gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  class="h-8 gap-1.5 px-3 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30 cursor-pointer"
+                  @click="handleCancelStitching(selectedProject.id)"
+                >
+                  <XCircle class="size-3.5" />
+                  <span>中斷拼接</span>
+                </Button>
               </div>
             </div>
-          </CardContent>
+          </div>
 
-          <!-- 小區多邊形分割與處理組工具列 (僅步驟 3 顯示) -->
+          <!-- 左下角懸浮縮放 HUD 控制器 (Floating Zoom HUD) -->
+          <div
+            v-if="selectedProject.progress === 100"
+            class="absolute bottom-4 left-4 z-20 flex items-center gap-1 rounded-xl border border-white/15 bg-zinc-950/85 p-1 text-zinc-200 shadow-2xl backdrop-blur-md"
+          >
+            <TooltipProvider :delay-duration="150">
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    class="size-7 p-0 cursor-pointer text-zinc-400 hover:text-white hover:bg-white/10"
+                    @click="onZoomOut"
+                  >
+                    <ZoomOut class="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" class="text-xs">縮小視角</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            <span class="w-12 text-center font-mono text-xs font-semibold text-zinc-100 select-none">
+              {{ viewport.zoomPercentage }}%
+            </span>
+
+            <TooltipProvider :delay-duration="150">
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    class="size-7 p-0 cursor-pointer text-zinc-400 hover:text-white hover:bg-white/10"
+                    @click="onZoomIn"
+                  >
+                    <ZoomIn class="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" class="text-xs">放大視角</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            <div class="my-1 h-3.5 w-px bg-white/20" />
+
+            <TooltipProvider :delay-duration="150">
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    class="h-7 gap-1 px-2 text-xs font-medium cursor-pointer text-zinc-300 hover:text-white hover:bg-white/10"
+                    @click="onFitToScreen"
+                  >
+                    <Scan class="size-3.5" />
+                    <span class="hidden sm:inline">最適大小</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" class="text-xs">重設為最適畫面尺寸 (Fit)</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+
+          <!-- 右側垂直小畫家工具列 (僅步驟 3 顯示) -->
           <PlotToolbar
-            v-if="currentStep === 3"
+            v-if="selectedProject.progress === 100 && currentStep === 3"
             v-model:active-mode="activeMode"
             v-model:draw-tool="drawTool"
             :plots="plots"
@@ -669,6 +761,7 @@ watch(selectedProject, async (newProj) => {
             :is-saving="isSaving"
             :is-drawing="isDrawing"
             :grid-state="gridState"
+            class="absolute top-4 right-4 z-20"
             @save="handleSavePlots"
             @undo-point="plotCanvasOverlayRef?.undoLastPoint()"
             @cancel-drawing="plotCanvasOverlayRef?.cancelDrawing()"
@@ -690,188 +783,126 @@ watch(selectedProject, async (newProj) => {
             @update:grid-scale-y="gridState.scaleY = $event"
           />
 
-          <CardContent v-if="selectedProject.progress === 100" class="p-4">
-            <div
-              ref="orthoContainerRef"
-              class="relative flex flex-col w-full overflow-hidden select-none min-h-[460px] h-[68vh] rounded-lg border bg-muted/20 p-1"
-            >
-              <!-- 右下角懸浮縮放 HUD 控制器 (Floating Zoom HUD) -->
-              <div
-                class="absolute bottom-4 right-4 z-30 flex items-center gap-1 rounded-xl border border-border/80 bg-background/85 p-1 shadow-lg backdrop-blur-md"
-              >
-                <TooltipProvider :delay-duration="150">
-                  <Tooltip>
-                    <TooltipTrigger as-child>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        class="size-7 p-0 cursor-pointer text-muted-foreground hover:text-foreground"
-                        @click="onZoomOut"
-                      >
-                        <ZoomOut class="size-3.5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" class="text-xs">縮小視角</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-
-                <span class="w-12 text-center font-mono text-xs font-semibold text-foreground select-none">
-                  {{ viewport.zoomPercentage }}%
-                </span>
-
-                <TooltipProvider :delay-duration="150">
-                  <Tooltip>
-                    <TooltipTrigger as-child>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        class="size-7 p-0 cursor-pointer text-muted-foreground hover:text-foreground"
-                        @click="onZoomIn"
-                      >
-                        <ZoomIn class="size-3.5" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" class="text-xs">放大視角</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-
-                <div class="my-1 h-3.5 w-px bg-border/60" />
-
-                <TooltipProvider :delay-duration="150">
-                  <Tooltip>
-                    <TooltipTrigger as-child>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        class="h-7 gap-1 px-2 text-xs font-medium cursor-pointer text-muted-foreground hover:text-foreground"
-                        @click="onFitToScreen"
-                      >
-                        <Scan class="size-3.5" />
-                        <span class="hidden sm:inline">最適大小</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" class="text-xs">重設為最適畫面尺寸 (Fit)</TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-
-              <!-- 懸浮公式快速切換按鈕群 (Floating Formula Switcher) (僅步驟 3 顯示) -->
-              <div
-                v-if="currentStep === 3"
-                class="absolute top-3 right-3 z-20 flex flex-col gap-1.5 rounded-xl border border-border/80 bg-background/85 p-1.5 shadow-lg backdrop-blur-md">
-                <div class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                  <Layers class="size-3.5" />
-                  <span>光譜演算法</span>
-                </div>
-                <div class="flex flex-col gap-1 max-h-[320px] overflow-y-auto pr-0.5">
-                  <TooltipProvider :delay-duration="150">
-                    <Tooltip>
-                      <TooltipTrigger as-child>
-                        <Button
-                          size="sm"
-                          :variant="selectedFormula === 'rgb' ? 'default' : 'outline'"
-                          class="h-8 justify-start gap-2 px-3 text-xs font-medium shadow-xs transition-all"
-                          @click="selectedFormula = 'rgb'"
-                        >
-                          <span
-                            class="size-2 rounded-full"
-                            :class="selectedFormula === 'rgb' ? 'bg-primary-foreground' : 'bg-emerald-500'"
-                          />
-                          <span>RGB 原始</span>
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="left" class="max-w-xs space-y-1 p-2 text-xs">
-                        <p class="font-bold text-foreground">原始正射影像 (RGB)</p>
-                        <p class="text-muted-foreground leading-relaxed">未經光譜指數計算之原始拼接正射影像。</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-
-                  <div class="my-0.5 h-px bg-border/60" />
-
-                  <TooltipProvider
-                    v-for="f in formulas"
-                    :key="f.id"
-                    :delay-duration="150"
-                  >
-                    <Tooltip>
-                      <TooltipTrigger as-child>
-                        <Button
-                          size="sm"
-                          :variant="selectedFormula === f.id ? 'default' : 'outline'"
-                          class="h-8 justify-between gap-3 px-3 text-xs font-medium shadow-xs transition-all"
-                          @click="selectedFormula = f.id"
-                        >
-                          <span class="font-semibold">{{ f.id }}</span>
-                          <span
-                            v-if="selectedFormula === f.id"
-                            class="size-1.5 rounded-full bg-primary-foreground animate-pulse"
-                          />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="left" class="max-w-xs space-y-1 p-2 text-xs">
-                        <p class="font-bold text-foreground">{{ f.id }}</p>
-                        <p v-if="f.help" class="text-muted-foreground leading-relaxed">{{ f.help }}</p>
-                        <p v-if="f.expr" class="font-mono text-[10px] text-muted-foreground/80 bg-muted/60 px-1.5 py-0.5 rounded">
-                          公式: {{ f.expr }}
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-              </div>
-
-              <!-- 影像載入中遮罩 -->
-              <div v-if="isImageLoading"
-                class="absolute inset-0 z-25 flex flex-col items-center justify-center bg-background/60 backdrop-blur-xs">
-                <Spinner class="size-8 animate-spin text-primary" />
-                <span class="mt-2 text-xs font-medium text-muted-foreground">影像載入中...</span>
-              </div>
-
-              <!-- 正射影像與小區多邊形視角容器 -->
-              <div
-                ref="viewportRef"
-                class="relative flex-1 w-full h-full overflow-hidden select-none"
-              >
-                <img
-                  ref="imageRef"
-                  class="absolute top-0 left-0 max-w-none max-h-none pointer-events-none select-none transition-opacity duration-150"
-                  :class="{ 'opacity-40': isImageLoading }"
-                  :style="{
-                    width: `${viewport.baseWidth.value}px`,
-                    height: `${viewport.baseHeight.value}px`,
-                    transform: `translate3d(${viewport.panX.value}px, ${viewport.panY.value}px, 0) scale(${viewport.scale.value})`,
-                    transformOrigin: '0 0',
-                    imageRendering: 'auto',
-                  }"
-                  :src="currentImageUrl"
-                  :alt="selectedProject.name"
-                  @load="onImageLoaded"
-                  @error="isImageLoading = false"
-                >
-                <PlotCanvasOverlay
-                  ref="plotCanvasOverlayRef"
-                  :plots="currentStep === 3 ? plots : []"
-                  :active-mode="currentStep === 3 ? activeMode : 'view'"
-                  :draw-tool="drawTool"
-                  :selected-plot-number="currentStep === 3 ? selectedPlotNumber : null"
-                  :get-plot-color="getPlotColor"
-                  :viewport="viewport"
-                  :grid-state="currentStep === 3 ? gridState : { isActive: false, corners: [], rows: 3, cols: 3, marginRatio: 0.1, scaleX: 0.8, scaleY: 0.8, paddingRatio: 0, offsetX: 0, offsetY: 0, excludedIndices: [] }"
-                  :preview-plots="currentStep === 3 ? previewGridPlots : []"
-                  @plot-drawn="onPlotDrawn"
-                  @edit-plot="onEditPlot"
-                  @update-plot-points="onUpdatePlotPoints"
-                  @select-plot="onSelectPlot"
-                  @update-grid-corner="updateGridCorner($event.index, $event.point)"
-                  @delete-plot="deletePlot"
-                  @duplicate-plot="handleDuplicatePlot"
-                  @move-plot="movePlot($event.plotNumber, $event.delta)"
-                  @toggle-exclude-grid-cell="toggleExcludeGridCell"
-                />
-              </div>
+          <!-- 右側懸浮公式快速切換按鈕群 (僅步驟 4 顯示) -->
+          <div
+            v-if="selectedProject.progress === 100 && currentStep === 4"
+            class="absolute top-4 right-4 z-20 flex flex-col gap-1.5 rounded-2xl border border-white/15 bg-zinc-950/85 p-2 text-white shadow-2xl backdrop-blur-md"
+          >
+            <div class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
+              <Layers class="size-3.5" />
+              <span>光譜演算法</span>
             </div>
-          </CardContent>
+            <div class="flex flex-col gap-1 max-h-[320px] overflow-y-auto pr-0.5">
+              <TooltipProvider :delay-duration="150">
+                <Tooltip>
+                  <TooltipTrigger as-child>
+                    <Button
+                      size="sm"
+                      :variant="selectedFormula === 'rgb' ? 'default' : 'outline'"
+                      class="h-8 justify-start gap-2 px-3 text-xs font-medium border-white/15 cursor-pointer"
+                      @click="selectedFormula = 'rgb'"
+                    >
+                      <span
+                        class="size-2 rounded-full"
+                        :class="selectedFormula === 'rgb' ? 'bg-primary-foreground' : 'bg-emerald-500'"
+                      />
+                      <span>RGB 原始</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" class="max-w-xs space-y-1 p-2 text-xs">
+                    <p class="font-bold text-foreground">原始正射影像 (RGB)</p>
+                    <p class="text-muted-foreground leading-relaxed">未經光譜指數計算之原始拼接正射影像。</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              <div class="my-0.5 h-px bg-white/15" />
+
+              <TooltipProvider
+                v-for="f in formulas"
+                :key="f.id"
+                :delay-duration="150"
+              >
+                <Tooltip>
+                  <TooltipTrigger as-child>
+                    <Button
+                      size="sm"
+                      :variant="selectedFormula === f.id ? 'default' : 'outline'"
+                      class="h-8 justify-between gap-3 px-3 text-xs font-medium border-white/15 cursor-pointer"
+                      @click="selectedFormula = f.id"
+                    >
+                      <span class="font-semibold">{{ f.id }}</span>
+                      <span
+                        v-if="selectedFormula === f.id"
+                        class="size-1.5 rounded-full bg-primary-foreground animate-pulse"
+                      />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" class="max-w-xs space-y-1 p-2 text-xs">
+                    <p class="font-bold text-foreground">{{ f.id }}</p>
+                    <p v-if="f.help" class="text-muted-foreground leading-relaxed">{{ f.help }}</p>
+                    <p v-if="f.expr" class="font-mono text-[10px] text-muted-foreground/80 bg-muted/60 px-1.5 py-0.5 rounded">
+                      公式: {{ f.expr }}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </div>
+
+          <!-- 影像載入中遮罩 -->
+          <div
+            v-if="isImageLoading && selectedProject.progress === 100"
+            class="absolute inset-0 z-25 flex flex-col items-center justify-center bg-black/60 backdrop-blur-xs"
+          >
+            <Spinner class="size-8 animate-spin text-purple-400" />
+            <span class="mt-2 text-xs font-medium text-zinc-300">正射影像載入中...</span>
+          </div>
+
+          <!-- 正射影像與小區多邊形滿版黑底視角容器 -->
+          <div
+            ref="viewportRef"
+            class="relative w-full h-full overflow-hidden select-none bg-black"
+          >
+            <img
+              v-if="selectedProject.progress === 100"
+              ref="imageRef"
+              class="absolute top-0 left-0 max-w-none max-h-none pointer-events-none select-none transition-opacity duration-150"
+              :class="{ 'opacity-40': isImageLoading }"
+              :style="{
+                width: `${viewport.baseWidth.value}px`,
+                height: `${viewport.baseHeight.value}px`,
+                transform: `translate3d(${viewport.panX.value}px, ${viewport.panY.value}px, 0) scale(${viewport.scale.value})`,
+                transformOrigin: '0 0',
+                imageRendering: 'auto',
+              }"
+              :src="currentImageUrl"
+              :alt="selectedProject.name"
+              @load="onImageLoaded"
+              @error="isImageLoading = false"
+            />
+            <PlotCanvasOverlay
+              v-if="selectedProject.progress === 100"
+              ref="plotCanvasOverlayRef"
+              :plots="currentStep === 3 || currentStep === 4 ? plots : []"
+              :active-mode="currentStep === 3 ? activeMode : 'view'"
+              :draw-tool="currentStep === 3 ? drawTool : 'select'"
+              :selected-plot-number="currentStep === 3 || currentStep === 4 ? selectedPlotNumber : null"
+              :get-plot-color="getPlotColor"
+              :viewport="viewport"
+              :grid-state="currentStep === 3 ? gridState : { isActive: false, corners: [], rows: 3, cols: 3, marginRatio: 0.1, scaleX: 0.8, scaleY: 0.8, paddingRatio: 0, offsetX: 0, offsetY: 0, excludedIndices: [] }"
+              :preview-plots="currentStep === 3 ? previewGridPlots : []"
+              @plot-drawn="onPlotDrawn"
+              @edit-plot="onEditPlot"
+              @update-plot-points="onUpdatePlotPoints"
+              @select-plot="onSelectPlot"
+              @update-grid-corner="updateGridCorner($event.index, $event.point)"
+              @delete-plot="deletePlot"
+              @duplicate-plot="handleDuplicatePlot"
+              @move-plot="movePlot($event.plotNumber, $event.delta)"
+              @toggle-exclude-grid-cell="toggleExcludeGridCell"
+            />
+          </div>
 
           <PlotTreatmentDialog
             v-if="currentStep === 3"
@@ -894,19 +925,17 @@ watch(selectedProject, async (newProj) => {
             :current-project-id="selectedProject?.id"
             @confirm="handleConfirmCopyFromProject"
           />
-        </Card>
+        </div>
 
-        <!-- 步驟 2：專案試驗情境特徵動態卡片 (僅步驟 2 顯示) -->
-        <ProjectScenarioCard
-          v-if="currentStep === 2"
-          :project-id="selectedProject.id"
-          :project-name="selectedProject.name"
-          :initial-scenario="selectedProject.scenario"
-          :file-names="currentUploadedFileNames"
-          :project-progress="selectedProject.progress"
-          @update:scenario="onScenarioUpdated"
-          @saved="onScenarioSaved"
-        />
+        <!-- 全步驟共用置底懸浮步驟切換膠囊 (Floating Step Navigation HUD) -->
+        <div class="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 pointer-events-auto">
+          <StepNavigationHUD
+            :current-step="currentStep"
+            :project-progress="selectedProject.progress"
+            :has-plots="plots.length > 0"
+            @change-step="handleStepChange"
+          />
+        </div>
       </div>
       <div v-if="!selectedProject" class="h-[calc(100vh-3.5rem)] w-full overflow-hidden">
         <DroneHomeUpload @project-created="onProjectCreated" />

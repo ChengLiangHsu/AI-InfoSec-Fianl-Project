@@ -29,6 +29,7 @@ export interface ExistingTreatment {
 }
 
 export interface ScenarioCategoryItem {
+  treatment?: string
   name: string
   dose?: string
   color: string
@@ -230,12 +231,14 @@ export function usePlots() {
         if (cat.is_control) {
           map.set('CK', cat.color || CONTROL_COLOR)
         } else {
-          const doseName = cat.dose || cat.name
-          if (targetName) {
-            map.set(`${targetName}_${doseName}`, cat.color)
-            map.set(`${targetName}_${cat.name}`, cat.color)
+          const trt = cat.treatment || targetName || ''
+          const doseName = cat.dose || cat.name || ''
+          if (trt) {
+            map.set(`${trt}_${doseName}`, cat.color)
+            map.set(`${trt}_${cat.name}`, cat.color)
           }
-          map.set(cat.name, cat.color)
+          if (doseName) map.set(doseName, cat.color)
+          if (cat.name) map.set(cat.name, cat.color)
         }
       }
     }
@@ -267,18 +270,20 @@ export function usePlots() {
         if (cat.is_control) {
           if (!seen.has('CK')) {
             seen.add('CK')
-            list.push({ isControl: true, treatment: '', dose: '', label: '未施藥對照 (CK)', color: cat.color })
+            list.push({ isControl: true, treatment: '', dose: '', label: cat.name || '未施藥對照 (CK)', color: cat.color })
           }
         } else {
-          const doseName = cat.dose || cat.name
-          const key = `${targetName}::${doseName}`
+          const trt = cat.treatment || targetName || ''
+          const doseName = cat.dose || ''
+          const label = [trt, doseName].filter(Boolean).join(' ') || cat.name || '處理組'
+          const key = `${trt}::${doseName}`
           if (!seen.has(key)) {
             seen.add(key)
             list.push({
               isControl: false,
-              treatment: targetName,
+              treatment: trt,
               dose: doseName,
-              label: `${targetName ? targetName + ' ' : ''}${cat.name}`,
+              label,
               color: cat.color,
             })
           }
@@ -310,10 +315,15 @@ export function usePlots() {
   })
 
   function getPlotColor(plot: PlotItem): string {
-    if (plot.is_control) return CONTROL_COLOR
+    if (plot.is_control) return treatmentColorMap.value.get('CK') || CONTROL_COLOR
     if (!plot.treatment) return UNASSIGNED_COLOR
     const key = `${plot.treatment}_${plot.dose}`
-    return treatmentColorMap.value.get(key) || PRESET_COLORS[0]
+    return (
+      treatmentColorMap.value.get(key) ||
+      treatmentColorMap.value.get(plot.dose) ||
+      treatmentColorMap.value.get(plot.treatment) ||
+      PRESET_COLORS[0]
+    )
   }
 
   async function loadPlots(taskId: string): Promise<void> {

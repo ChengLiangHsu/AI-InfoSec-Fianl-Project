@@ -137,6 +137,36 @@ def _validate_messages_content(new_messages: str | bytes) -> None:
         raise ValueError("對話內容不得為空")
 
 
+def _normalize_scenario_data(scenario_data: dict[str, Any]) -> dict[str, Any]:
+    """正規化情境特徵資料，確保對照組 (CK) 數量嚴格恰為 1。"""
+    normalized = dict(scenario_data)
+    raw_categories = normalized.get("categories")
+    if not isinstance(raw_categories, list) or len(raw_categories) == 0:
+        return normalized
+
+    sanitized: list[dict[str, Any]] = []
+    found_control = False
+    for cat in raw_categories:
+        if not isinstance(cat, dict):
+            continue
+        item = dict(cat)
+        is_control = bool(item.get("is_control", False))
+        if is_control:
+            if found_control:
+                item["is_control"] = False
+            else:
+                found_control = True
+        sanitized.append(item)
+
+    if not found_control and sanitized:
+        sanitized[0]["is_control"] = True
+        if not sanitized[0].get("name"):
+            sanitized[0]["name"] = "未施藥對照 (CK)"
+
+    normalized["categories"] = sanitized
+    return normalized
+
+
 class TaskUseCase:
     """任務用例（業務編排層）：協調航拍任務生命週期、小區配置與對話歷史業務流程。"""
 
@@ -302,8 +332,9 @@ class TaskUseCase:
         if not isinstance(scenario_data, dict):
             raise ValueError("情境資料格式不正確，必須為字典結構")
         await self.task_port.get_task(task_id)
-        await self.task_port.update_scenario(task_id, scenario_data)
-        return scenario_data
+        normalized_scenario = _normalize_scenario_data(scenario_data)
+        await self.task_port.update_scenario(task_id, normalized_scenario)
+        return normalized_scenario
 
     async def get_messages(self, task_id: str) -> list[Any]:
         """查詢指定任務之對話歷史列表（確保任務存在）。"""

@@ -141,5 +141,44 @@
 ### 步驟專屬條件渲染與狀態隔離架構 (Step-Isolated Conditional Rendering)
 - [Vue.js 官方文件 - 條件渲染 (Conditional Rendering v-if / v-show)](https://vuejs.org/guide/essentials/conditional.html)
 - [Vue.js 官方文件 - 響應式狀態重置與監聽 (Watchers & Reactivity)](https://vuejs.org/guide/essentials/watchers.html)
-- **採用架構**：依據步驟職責落實純淨單一職責分離；步驟 1 透過 `v-if="currentStep === 3"` 徹底隔離光譜演算法懸浮面板與 Header 光譜模式徽章，僅提供原始 RGB 空拍拼接成果與縮放平移 HUD；於 `handleStepChange` 步進切換機制中，切換回步驟 1 時自動觸發 `selectedFormula = 'rgb'` 響應式重置，杜絕跨步驟濾鏡殘留。
+- **採用架構**：依據步驟職責落實純淨單一職責分離；步驟 1 與步驟 3 徹底隔離光譜演算法懸浮面板與 Header 光譜模式徽章，僅於步驟 4（各小區光譜分析）專屬解鎖；於 `handleStepChange` 步進切換機制中，切換離開步驟 4 時自動觸發 `selectedFormula = 'rgb'` 響應式重置，杜絕跨步驟濾鏡殘留。
+
+### 全域置底懸浮導航膠囊架構 (Floating Step Navigation HUD Pattern)
+- [Vue.js 官方文件 - 事件處理 (Event Handling)](https://vuejs.org/guide/essentials/event-handling.html)
+- [Vue.js 官方文件 - 元件 Props 驗證 (Props Declaration)](https://vuejs.org/guide/components/props.html)
+- [Tailwind CSS 官方文件 - Backdrop Blur 與模糊特效](https://tailwindcss.com/docs/backdrop-blur)
+- [Tailwind CSS 官方文件 - Positioning (絕對與固定定位)](https://tailwindcss.com/docs/position)
+- [shadcn-vue Tooltip 官方文件](https://www.shadcn-vue.com/docs/components/tooltip.html)
+- **採用架構**：將四步驟切換職責由頂部 Stepper 轉移至單一職責子組件 `StepNavigationHUD.vue`，以固定定位常駐於專案工作區底部中央（`absolute bottom-4 left-1/2 -translate-x-1/2 z-30`）；採用統一之深色毛玻璃（`bg-zinc-950/85 backdrop-blur-md border-white/15`）風格貫穿步驟 1 至 4，步驟 2 捲動內容容器配合 `pb-20` 達成無縫避障；具備條件鎖定 Tooltip 提示，於步驟 4 時隱藏下一步按鈕，達成沉浸式極簡導覽。
+
+### Tailwind CSS 寬幅排版與四步驟向導架構 (Responsive Wide Container & Four-Step Wizard)
+- [Tailwind CSS 官方文件 - Max-Width 尺寸規範](https://tailwindcss.com/docs/max-width)
+- [Tailwind CSS 官方文件 - Flexbox 與 Grid 佈局](https://tailwindcss.com/docs/flex)
+- [W3C WAI-ARIA 步進式嚮導設計指引 (Wizard Pattern)](https://www.w3.org/WAI/ARIA/apg/patterns/landmarks/)
+- [Lucide Icons 官方圖示庫](https://lucide.dev/icons/)
+- **採用架構**：專案主工作區由 `max-w-4xl`（896px）加寬至 `max-w-7xl`（1280px），使「步驟 1：航拍與正射結果」、「步驟 2：試驗情境設定」、「步驟 3：試驗小區標註」與「步驟 4：各小區光譜分析」四個步驟指示卡片以均衡寬度展開，消除文字緊湊換行問題，並為大螢幕環境下的正射空拍影像畫布提供最大化可視操作面積。
+
+### Google 地圖式滿版暗場圖資架構與直列工具列 (Google Maps Full-Bleed Viewport & Vertical Toolbar)
+- [Google Maps JavaScript API UI 控制項規範 (Controls & Overlays)](https://developers.google.com/maps/documentation/javascript/controls)
+- [OpenLayers 滿版視圖範例 (Full Screen / Viewport Map)](https://openlayers.org/en/latest/examples/full-screen.html)
+- [MDN CSS Layout - Viewport & Flexbox 填滿視窗規範](https://developer.mozilla.org/en-US/docs/Learn/CSS/CSS_layout)
+- [Tailwind CSS 佈局與尺寸規範 (Layout & Sizing)](https://tailwindcss.com/docs/size)
+- [Figma 工具列與調色盤佈局指南 (Toolbar & Palette Patterns)](https://help.figma.com/hc/en-us/articles/360041068294-Get-started-with-the-toolbar-and-left-sidebar)
+- **採用架構**：將步驟 1、步驟 3 與步驟 4 之正射影像底圖與 Canvas 標註層提升為 Google 地圖式滿版視窗（Zero-Scroll，無外層頁面滾動條）；背景採用純黑暗場（`#000000`），專案名稱與狀態以左上角懸浮膠囊 HUD 呈現；縮放 HUD 調整至左下角避免遮擋；步驟 3 小區工具列改採右側直列式圖示膠囊（小畫家樣式），啟用網格生成時向左側平滑展開屬性面板，兼顧沉浸式地圖視野與直覺繪製體驗。
+
+### 極簡試驗情境特徵與多標的獨立組別架構 (Minimalist Scenario & Multi-Target Treatment Architecture)
+- [Vue.js 官方文件 - 列表渲染與雙向綁定 (List Rendering & v-model)](https://vuejs.org/guide/essentials/forms.html)
+- [shadcn-vue Card 組件官方文件](https://www.shadcn-vue.com/docs/components/card.html)
+- [shadcn-vue Input 組件官方文件](https://www.shadcn-vue.com/docs/components/input.html)
+- [Nielsen Norman Group - Minimalism in UI Design (簡約介面設計準則)](https://www.nngroup.com/articles/simplicity-vs-choice/)
+- **採用架構**：徹底剔除試驗情境卡片之冗餘引導長文、副標題說明與鍵盤快捷鍵提示；各組別卡片獨立維護「藥劑/標的名稱」與「劑量/稀釋倍數」，不再綁定全域單一農藥欄位與重複字串，未設定專案預設給予「1 對照組 (CK) ＋ 1 空白處理組」極簡初始骨架，支援多藥劑混合評估與純粹直覺的手動配置。
+
+### 唯一對照組互斥狀態與防呆保護架構 (Mutually Exclusive Single Control Group & Defensive Architecture)
+- [Vue.js 官方文件 - 響應式基礎 (Reactivity Fundamentals)](https://vuejs.org/guide/essentials/reactivity-fundamentals.html)
+- [W3C WAI-ARIA Radio Group 互斥單選設計模式 (Radio Group Pattern)](https://www.w3.org/WAI/ARIA/apg/patterns/radio/)
+- [EPPO Standard PP 1/152(4)：植保產品藥效評估試驗設計與分析標準指南 (對照組基準要求)](https://pp1.eppo.int/standards/pp1-152-4)
+- [Nielsen Norman Group - Preventing User Errors (防呆設計原則)](https://www.nngroup.com/articles/user-interface-errors/)
+- **採用架構**：在 `ProjectScenarioCard.vue` 實作單選互斥模式（Radio-like Mutually Exclusive Pattern），將處理組切換為對照組時自動降級原對照組，確保全專案情境始終維持唯一 CK 基準；對照組卡片條件隱藏刪除按鈕（`v-if="!cat.is_control"`）杜絕誤刪；載入與後端儲存時加入資料歸一化校正，符合 EPPO 田間試驗唯一基準規範與防呆防禦架構。
+
+
 
