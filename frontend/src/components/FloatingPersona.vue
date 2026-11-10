@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
-import { useDraggable, useWindowSize } from '@vueuse/core'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useDraggable, useWindowSize, useIntervalFn } from '@vueuse/core'
 import Persona, { type PersonaState } from '@/components/ai-elements/persona/Persona.vue'
 import AskAgent from './AskAgent.vue'
 import StepBadgeText from '@/components/StepBadgeText.vue'
@@ -21,10 +21,12 @@ const props = withDefaults(
     projectProgress?: number
     hasPlots?: boolean
     isHome?: boolean
+    currentStep?: 1 | 2 | 3
   }>(),
   {
     isHome: false,
     hasPlots: false,
+    currentStep: 1,
   }
 )
 
@@ -36,22 +38,22 @@ const isDialogOpen = ref(false)
 const showBubble = ref(false)
 
 // 初始位置設定在畫面右下角
-const initialX = Math.max(16, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 96)
-const initialY = Math.max(16, (typeof window !== 'undefined' ? window.innerHeight : 800) - 96)
+const initialX = Math.max(16, (typeof window !== 'undefined' ? window.innerWidth : 1200) - 72)
+const initialY = Math.max(16, (typeof window !== 'undefined' ? window.innerHeight : 800) - 72)
 
 const { x, y, isDragging } = useDraggable(personaContainer, {
   initialValue: { x: initialX, y: initialY },
   preventDefault: true,
 })
 
-// 確保組件永不超出視窗可視邊界 (16px padding, 64px 尺寸)
+// 確保組件永不超出視窗可視邊界 (16px padding, 48px 尺寸)
 const clampedX = computed(() => {
-  const maxX = Math.max(16, windowWidth.value - 80)
+  const maxX = Math.max(16, windowWidth.value - 64)
   return Math.min(Math.max(16, x.value), maxX)
 })
 
 const clampedY = computed(() => {
-  const maxY = Math.max(16, windowHeight.value - 80)
+  const maxY = Math.max(16, windowHeight.value - 64)
   return Math.min(Math.max(16, y.value), maxY)
 })
 
@@ -169,6 +171,17 @@ watch(
       if (!isDialogOpen.value) {
         showBubble.value = true
       }
+    } else if (state === 'STITCHING') {
+      if (!promptedProjects.value[`${key}_stitching`] && msgCount === 0) {
+        promptedProjects.value[`${key}_stitching`] = true
+        injectAssistantMessage(
+          '正在為您進行正射影像拼接！趁等待時間，先在上方卡片設定這次的試驗情境（如農藥或劑量）吧～',
+          key
+        )
+        if (!isDialogOpen.value) {
+          showBubble.value = true
+        }
+      }
     } else if (state === 'ASK_SCENARIO') {
       if (!promptedProjects.value[key] && msgCount === 0) {
         promptedProjects.value[key] = true
@@ -207,7 +220,151 @@ watch(
   }
 )
 
-// 自適應碰撞避障定位演算法：根據 Persona 四象限座標動態決定展開方向
+// 當步驟切換時的主動引導問候
+watch(
+  () => props.currentStep,
+  (newStep) => {
+    if (props.isHome || !props.projectId) return
+    const key = `${props.projectId}_step_${newStep}`
+    if (newStep === 2) {
+      if (!promptedProjects.value[key]) {
+        promptedProjects.value[key] = true
+        injectAssistantMessage(
+          '歡迎來到步驟 2：試驗情境設定！請在左側卡片確認或調整農藥名稱、稀釋倍數與對照組。若需要試驗規劃建議，隨時點我提問喔！',
+          props.projectId
+        )
+        if (!isDialogOpen.value) {
+          showBubble.value = true
+        }
+      }
+    } else if (newStep === 3) {
+      if (!promptedProjects.value[key]) {
+        promptedProjects.value[key] = true
+        injectAssistantMessage(
+          '太棒了！已進入步驟 3：小區繪製！您可以使用上方工具列自動偵測白色定位牌、批次生成小區網格，或手動繪製多邊形小區！',
+          props.projectId
+        )
+        if (!isDialogOpen.value) {
+          showBubble.value = true
+        }
+      }
+    }
+  }
+)
+
+// 動態吸附目標候選與指引文字
+interface DockCandidate {
+  selector: string
+  hint: string
+}
+
+const currentTargetInfo = ref<{ selector: string; hint: string } | null>(null)
+
+function getDockCandidates(): DockCandidate[] {
+  if (props.isHome || !props.projectId) {
+    return [
+      { selector: '[data-tour="cancel-upload"]', hint: '相片傳輸中，可隨時點此取消' },
+      { selector: '[data-tour="start-stitching"]', hint: '點擊此處開始正射拼接！' },
+      { selector: '[data-tour="upload-dropzone"]', hint: '把空拍照片拖進來開始～' },
+    ]
+  }
+
+  // 步驟 1：航拍與正射結果檢視
+  if (props.currentStep === 1) {
+    if (typeof props.projectProgress === 'number' && props.projectProgress < 100) {
+      return [
+        { selector: '[data-tour="cancel-stitching"]', hint: '正在拼接中，可隨時中斷' },
+        { selector: '[data-tour="step-tab-2"]', hint: '正射拼圖運算中，可先點此前往步驟 2 設定情境' },
+      ]
+    }
+    return [
+      { selector: '[data-tour="step-tab-2"]', hint: '正射影像拼接已完成！點此前往步驟 2 設定情境' },
+      { selector: '[data-tour="formula-selector"]', hint: '可切換 RGB 或植生光譜指標預覽' },
+    ]
+  }
+
+  // 步驟 2：試驗情境設定與討論
+  if (props.currentStep === 2) {
+    return [
+      { selector: '[data-tour="save-scenario"]', hint: '情境設定完成後，請點此儲存' },
+      { selector: '[data-tour="step-tab-3"]', hint: '情境設定完畢後，點此進入步驟 3 小區繪製' },
+    ]
+  }
+
+  // 步驟 3：小區繪製與標註
+  if (props.currentStep === 3) {
+    if (!props.hasPlots) {
+      return [
+        { selector: '[data-tour="grid-mode"]', hint: '點選網格生成或標記辨識，快速標註小區' },
+      ]
+    }
+    return [
+      { selector: '[data-tour="save-plots"]', hint: '小區繪製或編輯完成後，請記得儲存' },
+      { selector: '[data-tour="formula-selector"]', hint: '試驗小區已就緒，可切換植生指標檢視' },
+    ]
+  }
+
+  return []
+}
+
+function updateDockPosition() {
+  if (isDragging.value) return
+
+  const candidates = getDockCandidates()
+  let matchedEl: HTMLElement | null = null
+  let matchedCandidate: DockCandidate | null = null
+
+  for (const c of candidates) {
+    const el = document.querySelector<HTMLElement>(c.selector)
+    if (el) {
+      const rect = el.getBoundingClientRect()
+      if (rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.top < windowHeight.value) {
+        matchedEl = el
+        matchedCandidate = c
+        break
+      }
+    }
+  }
+
+  currentTargetInfo.value = matchedCandidate
+
+  if (!matchedEl) {
+    x.value = Math.max(16, windowWidth.value - 64)
+    y.value = Math.max(16, windowHeight.value - 64)
+    return
+  }
+
+  const rect = matchedEl.getBoundingClientRect()
+  const orbSize = 48
+  const margin = 12
+
+  // 優先在目標元素右側垂直居中
+  let targetX = rect.right + margin
+  let targetY = rect.top + (rect.height - orbSize) / 2
+
+  // 若右側超出螢幕邊界，則停靠在目標左側
+  if (targetX + orbSize > windowWidth.value - 16) {
+    targetX = rect.left - orbSize - margin
+  }
+
+  targetX = Math.max(16, Math.min(windowWidth.value - orbSize - 16, targetX))
+  targetY = Math.max(16, Math.min(windowHeight.value - orbSize - 16, targetY))
+
+  x.value = Math.round(targetX)
+  y.value = Math.round(targetY)
+}
+
+// 監聽工作流狀態與屬性變化即時重新對齊
+watch(
+  () => [props.isHome, props.projectId, props.projectProgress, props.hasPlots] as const,
+  () => {
+    updateDockPosition()
+  }
+)
+
+useIntervalFn(updateDockPosition, 600, { immediate: true })
+
+// 自適應碰撞避障定位演算法：根據 Persona 四象限座標動態決定展開方向 (48px 尺寸)
 const dialogStyle = computed(() => {
   const px = clampedX.value
   const py = clampedY.value
@@ -224,7 +381,7 @@ const dialogStyle = computed(() => {
       posX = Math.max(16, Math.min(ww - dialogW - 16, px - dialogW / 2))
     }
   } else {
-    posX = px + 64 + 12
+    posX = px + 48 + 12
     if (posX + dialogW > ww - 16) {
       posX = Math.max(16, ww - dialogW - 16)
     }
@@ -232,7 +389,7 @@ const dialogStyle = computed(() => {
 
   let posY: number
   if (py > wh / 2) {
-    posY = py + 64 - dialogH
+    posY = py + 48 - dialogH
     if (posY < 16) posY = 16
   } else {
     posY = py
@@ -249,7 +406,7 @@ const dialogStyle = computed(() => {
   }
 })
 
-// 迷你文字氣泡自適應定位
+// 迷你文字氣泡自適應定位 (48px 尺寸)
 const bubbleStyle = computed(() => {
   const px = clampedX.value
   const py = clampedY.value
@@ -261,11 +418,11 @@ const bubbleStyle = computed(() => {
   if (px > ww / 2) {
     posX = px - bubbleW - 12
   } else {
-    posX = px + 64 + 12
+    posX = px + 48 + 12
   }
   posX = Math.max(16, Math.min(ww - bubbleW - 16, posX))
 
-  let posY = py + 32 - 40
+  let posY = py + 24 - 40
   posY = Math.max(16, Math.min(wh - 140, posY))
 
   return {
@@ -277,8 +434,16 @@ const bubbleStyle = computed(() => {
 
 onMounted(() => {
   if (typeof window !== 'undefined') {
-    x.value = Math.max(16, window.innerWidth - 96)
-    y.value = Math.max(16, window.innerHeight - 96)
+    window.addEventListener('scroll', updateDockPosition, true)
+    window.addEventListener('resize', updateDockPosition)
+    updateDockPosition()
+  }
+})
+
+onUnmounted(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('scroll', updateDockPosition, true)
+    window.removeEventListener('resize', updateDockPosition)
   }
 })
 </script>
@@ -291,9 +456,9 @@ onMounted(() => {
     tabindex="0"
     aria-label="AI Agent Persona 懸浮助手"
     :aria-expanded="isDialogOpen"
-    class="fixed z-50 select-none touch-none cursor-grab active:cursor-grabbing transition-transform duration-150"
+    class="fixed z-50 select-none touch-none cursor-grab active:cursor-grabbing"
     :class="[
-      isDragging ? 'scale-105 opacity-95' : 'hover:scale-105',
+      isDragging ? 'scale-105 opacity-95' : 'hover:scale-105 transition-[left,top,transform] duration-300 ease-out',
     ]"
     :style="{
       left: `${clampedX}px`,
@@ -306,7 +471,7 @@ onMounted(() => {
     @keydown.space.prevent="toggleDialog"
   >
     <div
-      class="relative flex size-16 items-center justify-center rounded-full border-2 border-zinc-900 bg-zinc-950 shadow-2xl backdrop-blur-xl transition-all duration-300 hover:border-black hover:shadow-black/60 ring-2 ring-zinc-800/80 overflow-hidden"
+      class="relative flex size-12 items-center justify-center rounded-full border-2 border-zinc-900 bg-zinc-950 shadow-2xl backdrop-blur-xl transition-all duration-300 hover:border-black hover:shadow-black/60 ring-2 ring-zinc-800/80 overflow-hidden"
     >
       <!-- Rive Persona Obsidian 動態圖示 -->
       <Persona
@@ -327,7 +492,7 @@ onMounted(() => {
     leave-to-class="opacity-0 translate-y-2 scale-95"
   >
     <div
-      v-if="showBubble && !isDialogOpen && latestAssistantMessage.trim().length > 0"
+      v-if="showBubble && !isDialogOpen && (latestAssistantMessage.trim().length > 0 || !!currentTargetInfo?.hint)"
       class="fixed z-40 flex flex-col gap-1.5 rounded-2xl border border-border/80 bg-background/90 p-3 shadow-2xl backdrop-blur-xl text-foreground cursor-pointer hover:border-primary/50 transition-colors group"
       :style="bubbleStyle"
       @click="openDialog"
@@ -353,13 +518,22 @@ onMounted(() => {
         </button>
       </div>
 
-      <div class="text-sm text-foreground/90 leading-relaxed line-clamp-3 select-none">
+      <!-- 當前下一步動作微型導引標籤 -->
+      <div
+        v-if="currentTargetInfo?.hint"
+        class="inline-flex items-center gap-1.5 self-start rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary"
+      >
+        <Sparkles class="size-3" />
+        <span>{{ currentTargetInfo.hint }}</span>
+      </div>
+
+      <div v-if="latestAssistantMessage.trim().length > 0" class="text-sm text-foreground/90 leading-relaxed line-clamp-3 select-none">
         <StepBadgeText :text="latestAssistantMessage" />
       </div>
 
-      <!-- 快捷情境按鈕列 (正射剛完成或小區未劃定前) -->
+      <!-- 快捷情境按鈕列 (正射運算中、剛完成或小區未劃定前) -->
       <div
-        v-if="currentWorkflowState === 'ASK_SCENARIO' || (props.projectId && !hasPlots)"
+        v-if="currentWorkflowState === 'STITCHING' || currentWorkflowState === 'ASK_SCENARIO' || (props.projectId && !hasPlots)"
         class="flex flex-wrap gap-1 pt-1"
         @click.stop
       >

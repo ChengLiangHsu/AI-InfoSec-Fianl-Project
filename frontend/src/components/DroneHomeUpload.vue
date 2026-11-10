@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   X,
+  XCircle,
   Trash2,
   Camera,
   Layers,
@@ -26,6 +27,7 @@ interface Project {
   name: string
   images?: number
   progress?: number
+  fileNames?: string[]
 }
 
 interface UploadFileItem {
@@ -44,6 +46,7 @@ const emit = defineEmits<{
 const isDragging = ref(false)
 const isParsingExif = ref(false)
 const isUploading = ref(false)
+const abortController = ref<AbortController | null>(null)
 const selectedFiles = ref<UploadFileItem[]>([])
 const projectName = ref('')
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -165,6 +168,14 @@ function clearFiles() {
   projectName.value = ''
 }
 
+function handleCancelUpload() {
+  if (abortController.value) {
+    abortController.value.abort()
+    abortController.value = null
+  }
+  isUploading.value = false
+}
+
 async function handleStartOdmTask() {
   if (selectedFiles.value.length === 0) {
     alert('請先拖入或選取空拍照片')
@@ -178,6 +189,7 @@ async function handleStartOdmTask() {
   }
 
   isUploading.value = true
+  abortController.value = new AbortController()
   const currentName = projectName.value.trim() || generateDefaultProjectName()
   const filesToUpload = selectedFiles.value.map((item) => item.file)
 
@@ -191,6 +203,7 @@ async function handleStartOdmTask() {
     const res = await fetch('/api/task/odm-task', {
       method: 'POST',
       body: formData,
+      signal: abortController.value.signal,
     })
     const data = await res.json().catch(() => null)
     if (res.ok && data?.result) {
@@ -199,6 +212,7 @@ async function handleStartOdmTask() {
         name: currentName,
         images: filesToUpload.length,
         progress: 0,
+        fileNames: filesToUpload.map((f) => f.name),
       }
       clearFiles()
       emit('projectCreated', newProj)
@@ -206,11 +220,16 @@ async function handleStartOdmTask() {
       const errMsg = data?.message || '建立正射拼接任務失敗，請檢查 NodeODM 伺服器狀態'
       alert(errMsg)
     }
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      console.log('Upload aborted by user')
+      return
+    }
     console.error('Failed to submit ODM task:', err)
     alert('上傳連線失敗，請確認後端與 NodeODM 服務狀態')
   } finally {
     isUploading.value = false
+    abortController.value = null
   }
 }
 </script>
@@ -223,6 +242,7 @@ async function handleStartOdmTask() {
 
       <!-- 2. 中央上傳拖曳框 (Center Upload Dropzone - 加大字體與焦點感) -->
       <div
+        data-tour="upload-dropzone"
         class="group relative flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed p-10 sm:p-14 text-center transition-all duration-200 cursor-pointer select-none"
         :class="[
           isDragging
@@ -370,17 +390,34 @@ async function handleStartOdmTask() {
             />
           </div>
 
-          <Button
-            type="button"
-            size="default"
-            class="h-10 gap-2 px-7 text-sm font-bold shadow-xs"
-            :disabled="selectedFiles.length === 0 || isUploading || isParsingExif"
-            @click="handleStartOdmTask"
-          >
-            <Spinner v-if="isUploading" class="size-4 animate-spin" />
-            <Sparkles v-else class="size-4" />
-            <span>{{ isUploading ? '正在派送拼接任務...' : '開始航拍正射拼接' }}</span>
-          </Button>
+          <div class="flex items-center gap-2">
+            <Button
+              id="btn-start-odm-task"
+              data-tour="start-stitching"
+              type="button"
+              size="default"
+              class="h-10 gap-2 px-7 text-sm font-bold shadow-xs cursor-pointer"
+              :disabled="selectedFiles.length === 0 || isUploading || isParsingExif"
+              @click="handleStartOdmTask"
+            >
+              <Spinner v-if="isUploading" class="size-4 animate-spin" />
+              <Sparkles v-else class="size-4" />
+              <span>{{ isUploading ? '正在派送拼接任務...' : '開始航拍正射拼接' }}</span>
+            </Button>
+
+            <Button
+              v-if="isUploading"
+              data-tour="cancel-upload"
+              type="button"
+              variant="destructive"
+              size="default"
+              class="h-10 gap-1.5 px-4 text-sm font-semibold shadow-xs cursor-pointer animate-in fade-in"
+              @click="handleCancelUpload"
+            >
+              <XCircle class="size-4" />
+              <span>取消上傳</span>
+            </Button>
+          </div>
         </div>
       </div>
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 
 @dataclass
@@ -17,6 +17,14 @@ class ModelMessageResponse:
     key: str
     role: Literal["user", "assistant"]
     versions: list[Version] = field(default_factory=list)
+
+
+@dataclass
+class ScenarioCategory:
+    """試驗情境處理分類領域實體。"""
+    name: str  # 分類/劑量名稱，如 "500x", "1000x", "CK"
+    color: str  # 視覺標籤色彩代碼，如 "#10b981"
+    is_control: bool = False  # 是否為未施藥對照組
 
 
 @dataclass
@@ -41,3 +49,4 @@ class Task:
     status: int | None = None
     images_count: int | None = None
     plots: list[Plot] = field(default_factory=list)
+    scenario: dict[str, Any] = field(default_factory=dict)

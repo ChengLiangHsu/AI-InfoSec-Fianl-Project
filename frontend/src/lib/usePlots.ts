@@ -25,6 +25,22 @@ export interface ExistingTreatment {
   treatment: string
   dose: string
   label: string
+  color?: string
+}
+
+export interface ScenarioCategoryItem {
+  name: string
+  dose?: string
+  color: string
+  is_control?: boolean
+}
+
+export interface ScenarioDefinition {
+  type?: string
+  title?: string
+  target?: string
+  target_label?: string
+  categories?: ScenarioCategoryItem[]
 }
 
 export interface GridGeneratorState {
@@ -196,14 +212,38 @@ export function usePlots() {
     isDetecting: false,
   })
 
+  const currentScenario = ref<ScenarioDefinition | null>(null)
+
+  function setScenario(sc: ScenarioDefinition | null) {
+    currentScenario.value = sc
+  }
+
   // 動態分配各處理組之顏色標籤
   const treatmentColorMap = computed(() => {
     const map = new Map<string, string>()
     let colorIdx = 0
 
+    // 1. 優先注入專案情境特徵所指定的色彩
+    if (currentScenario.value?.categories && currentScenario.value.categories.length > 0) {
+      const targetName = currentScenario.value.target || ''
+      for (const cat of currentScenario.value.categories) {
+        if (cat.is_control) {
+          map.set('CK', cat.color || CONTROL_COLOR)
+        } else {
+          const doseName = cat.dose || cat.name
+          if (targetName) {
+            map.set(`${targetName}_${doseName}`, cat.color)
+            map.set(`${targetName}_${cat.name}`, cat.color)
+          }
+          map.set(cat.name, cat.color)
+        }
+      }
+    }
+
+    // 2. 小區畫布既有處理組補足
     for (const p of plots.value) {
       if (p.is_control) {
-        map.set('CK', CONTROL_COLOR)
+        if (!map.has('CK')) map.set('CK', CONTROL_COLOR)
       } else if (p.treatment) {
         const key = `${p.treatment}_${p.dose}`
         if (!map.has(key)) {
@@ -217,26 +257,56 @@ export function usePlots() {
 
   // 取得既有專案中出現過的獨立處理組清單，作為快捷選取按鈕
   const existingTreatments = computed<ExistingTreatment[]>(() => {
-    const set = new Set<string>()
-    for (const p of plots.value) {
-      if (p.is_control) {
-        set.add('CK')
-      } else if (p.treatment) {
-        set.add(`${p.treatment}::${p.dose}`)
+    const list: ExistingTreatment[] = []
+    const seen = new Set<string>()
+
+    // 1. 優先加入專案情境設定之預設標籤
+    if (currentScenario.value?.categories && currentScenario.value.categories.length > 0) {
+      const targetName = currentScenario.value.target || ''
+      for (const cat of currentScenario.value.categories) {
+        if (cat.is_control) {
+          if (!seen.has('CK')) {
+            seen.add('CK')
+            list.push({ isControl: true, treatment: '', dose: '', label: '未施藥對照 (CK)', color: cat.color })
+          }
+        } else {
+          const doseName = cat.dose || cat.name
+          const key = `${targetName}::${doseName}`
+          if (!seen.has(key)) {
+            seen.add(key)
+            list.push({
+              isControl: false,
+              treatment: targetName,
+              dose: doseName,
+              label: `${targetName ? targetName + ' ' : ''}${cat.name}`,
+              color: cat.color,
+            })
+          }
+        }
       }
     }
-    return Array.from(set).map((item) => {
-      if (item === 'CK') {
-        return { isControl: true, treatment: '', dose: '', label: '未施藥對照 (CK)' }
+
+    // 2. 補充畫布上已有但在情境中未列出的額外處理組
+    for (const p of plots.value) {
+      if (p.is_control) {
+        if (!seen.has('CK')) {
+          seen.add('CK')
+          list.push({ isControl: true, treatment: '', dose: '', label: '未施藥對照 (CK)' })
+        }
+      } else if (p.treatment) {
+        const key = `${p.treatment}::${p.dose}`
+        if (!seen.has(key)) {
+          seen.add(key)
+          list.push({
+            isControl: false,
+            treatment: p.treatment,
+            dose: p.dose,
+            label: `${p.treatment}${p.dose ? ' (' + p.dose + ')' : ''}`,
+          })
+        }
       }
-      const [treatment, dose] = item.split('::')
-      return {
-        isControl: false,
-        treatment,
-        dose,
-        label: `${treatment}${dose ? ' (' + dose + ')' : ''}`,
-      }
-    })
+    }
+    return list
   })
 
   function getPlotColor(plot: PlotItem): string {
@@ -647,5 +717,7 @@ export function usePlots() {
     copyPlotsToClipboard,
     pastePlotsFromClipboard,
     importPlotsFromExternal,
+    setScenario,
+    currentScenario,
   }
 }

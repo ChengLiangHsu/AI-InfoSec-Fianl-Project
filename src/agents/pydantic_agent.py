@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from io import BytesIO
 import os
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from dotenv import load_dotenv
 
@@ -63,13 +63,26 @@ async def system_prompt(ctx: RunContext[ChatDeps]) -> str:
             proj = await ctx.deps.task_port.get_task(pid)
             ortho_exists = (ODM_DIR / f"{pid}.png").exists()
             plots_count = len(proj.plots) if hasattr(proj, "plots") and proj.plots else 0
+            scenario_desc = "尚未設定"
+            if proj.scenario and isinstance(proj.scenario, dict):
+                s_title = proj.scenario.get("title") or proj.scenario.get("type", "已設定")
+                s_target = proj.scenario.get("target", "")
+                scenario_desc = f"{s_title}{f'（{s_target}）' if s_target else ''}"
+
             base_prompt += (
                 f"\n\n【當前專案資訊】\n"
                 f"- 專案：{proj.name} (ID: {proj.id})\n"
                 f"- 進度：{proj.progress}%，正射圖：{'已就緒' if ortho_exists else '生成中'}\n"
+                f"- 試驗情境：{scenario_desc}\n"
                 f"- 當前劃分小區：{plots_count} 區\n"
                 f"請以 1~2 句親切短句協助使用者進行診斷或推薦下一步。"
             )
+            if proj.progress < 100 and not proj.scenario:
+                base_prompt += (
+                    f"\n【運算等待期指引】：正射圖正在拼接中，專案尚未設定情境。"
+                    f"若使用者打招呼或詢問，請用 1~2 句親切短句主動詢問試驗情境（如農藥或劑量），"
+                    f"並提示可在上方卡片快速建立輸入欄位。"
+                )
         except Exception:
             pass
     else:
@@ -355,4 +368,57 @@ def query_vegetation_index(name_or_keyword: str = "") -> dict:
     return {
         "status": "not_found",
         "message": f"未找到名稱為「{query}」的植生指標。常見 RGB 指標包括：VARI, GLI, EXG, vNDVI, MPRI；NIR 多光譜指標包括：NDVI, GNDVI, SAVI, NDRE。",
+    }
+
+
+@agent.tool
+async def recommend_trial_scenario(
+    ctx: RunContext[ChatDeps],
+    scenario_type: str = "pesticide",
+    target_name: str = "",
+) -> dict[str, Any]:
+    """依據使用者試驗類別（pesticide 農藥、fertilizer 肥料、variety 品種）推薦標準輸入欄位、組別與高對比分類色彩。"""
+    stype = scenario_type.lower()
+    if "pesticide" in stype or "藥" in stype or "蟲" in stype or "草" in stype:
+        return {
+            "status": "success",
+            "type": "pesticide",
+            "title": "農藥藥效試驗",
+            "target": target_name or "快得寧",
+            "target_label": "農藥名稱",
+            "categories": [
+                {"name": "未施藥對照 (CK)", "dose": "", "color": "#64748b", "is_control": True},
+                {"name": "500x", "dose": "500x", "color": "#10b981", "is_control": False},
+                {"name": "1000x", "dose": "1000x", "color": "#8b5cf6", "is_control": False},
+                {"name": "2000x", "dose": "2000x", "color": "#f59e0b", "is_control": False},
+            ],
+            "message": "已推薦農藥藥效試驗模板，包含未施藥對照 (CK) 與三組倍數劑量及專屬高對比色彩標籤。",
+        }
+    if "fertilizer" in stype or "肥" in stype:
+        return {
+            "status": "success",
+            "type": "fertilizer",
+            "title": "肥料肥力試驗",
+            "target": target_name or "特肥一號",
+            "target_label": "肥料品項",
+            "categories": [
+                {"name": "不施肥對照 (CK)", "dose": "", "color": "#64748b", "is_control": True},
+                {"name": "減量組 (50%)", "dose": "50%", "color": "#0ea5e9", "is_control": False},
+                {"name": "標準量 (100%)", "dose": "100%", "color": "#10b981", "is_control": False},
+                {"name": "倍量組 (200%)", "dose": "200%", "color": "#8b5cf6", "is_control": False},
+            ],
+            "message": "已推薦肥料試驗模板，包含不施肥對照 (CK) 與三組施用量及色彩標籤。",
+        }
+    return {
+        "status": "success",
+        "type": "custom",
+        "title": "自訂田間試驗",
+        "target": target_name or "處理品項",
+        "target_label": "試驗品項名稱",
+        "categories": [
+            {"name": "對照組 (CK)", "dose": "", "color": "#64748b", "is_control": True},
+            {"name": "處理組 A", "dose": "處理 A", "color": "#10b981", "is_control": False},
+            {"name": "處理組 B", "dose": "處理 B", "color": "#8b5cf6", "is_control": False},
+        ],
+        "message": "已推薦自訂試驗模板與色彩標籤。",
     }

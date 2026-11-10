@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { SidebarProps } from "@/components/ui/sidebar"
 import { Clock, Command, Images, Plus } from "@lucide/vue"
-import { computed, defineModel, ref } from "vue"
+import { computed, defineModel, ref, watch } from "vue"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -15,6 +15,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import { useChatAgent } from "@/lib/useChatAgent"
 
@@ -28,6 +29,26 @@ const selectedProject = defineModel("selectedProject")
 const projects = defineModel<any[]>("projects")
 
 const { clearChat } = useChatAgent()
+const { setOpen, setOpenMobile, isMobile } = useSidebar()
+
+function closeSidebar() {
+  if (isMobile.value) {
+    setOpenMobile(false)
+  } else {
+    setOpen(false)
+  }
+}
+
+function handleSelectProject(project: any) {
+  selectedProject.value = project
+  closeSidebar()
+}
+
+watch(selectedProject, (newProj) => {
+  if (newProj) {
+    closeSidebar()
+  }
+})
 
 async function handleGoHome() {
   selectedProject.value = null
@@ -88,7 +109,7 @@ const filteredProjects = computed(() => {
           <a
             v-for="project in filteredProjects"
             :key="project.id"
-            @click="selectedProject = project"
+            @click="handleSelectProject(project)"
             :disabled="isCreatingProject === true"
             class="cursor-pointer flex flex-col gap-1.5 border-b border-l-2 p-3 text-sm transition-colors last:border-b-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             :class="selectedProject?.id === project.id

@@ -57,6 +57,10 @@ class DetectMarkersPayload(BaseModel):
     roi: list[float] | None = None
 
 
+class UpdateScenarioPayload(BaseModel):
+    scenario: dict[str, Any] = Field(default_factory=dict)
+
+
 # ============================================================================
 # 內部輔助與序列化子函式 (Helpers & Serializers)
 # ============================================================================
@@ -69,6 +73,7 @@ def _task_to_dict(task: Task) -> dict[str, Any]:
         "images": task.images,
         "progress": task.progress,
         "plots": [asdict(p) for p in task.plots],
+        "scenario": task.scenario,
     }
 
 
@@ -307,6 +312,17 @@ async def update_plots(
     plots_data = [p.model_dump() for p in payload.plots]
     updated_plots = await usecase.update_plots(task_id, plots_data)
     return success_response(data=[asdict(p) for p in updated_plots])
+
+
+@router.patch("/scenario/{task_id}")
+async def update_task_scenario(
+    task_id: str,
+    payload: UpdateScenarioPayload,
+    usecase: TaskUseCase = Depends(get_task_usecase),
+) -> JSONResponse:
+    """主流程：更新指定航拍任務之試驗情境特徵。"""
+    updated_scenario = await usecase.update_scenario(task_id, payload.scenario)
+    return success_response(data=updated_scenario)
 
 
 @router.post("/detect-markers/{task_id}")

@@ -292,6 +292,19 @@ class TaskUseCase:
         await self.task_port.update_plots(task_id, merged_plots)
         return merged_plots
 
+    async def update_scenario(
+        self,
+        task_id: str,
+        scenario_data: dict[str, Any],
+    ) -> dict[str, Any]:
+        """校驗並更新指定任務之試驗情境特徵。"""
+        _validate_task_id(task_id)
+        if not isinstance(scenario_data, dict):
+            raise ValueError("情境資料格式不正確，必須為字典結構")
+        await self.task_port.get_task(task_id)
+        await self.task_port.update_scenario(task_id, scenario_data)
+        return scenario_data
+
     async def get_messages(self, task_id: str) -> list[Any]:
         """查詢指定任務之對話歷史列表（確保任務存在）。"""
         _validate_task_id(task_id)

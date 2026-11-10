@@ -80,8 +80,14 @@
 ### AI Elements Vue & Persona 組件
 - [AI Elements Vue - Persona 組件官方文件](https://www.ai-elements-vue.com/components/voice/persona#obsidian-default)
 - [Rive Runtime WebGL2 官方文件](https://help.rive.app/runtimes/overview/web-js)
-- [VueUse useDraggable 官方文件](https://vueuse.org/core/useDraggable/)
-- **採用架構**：採用 Obsidian 變體 64px 懸浮互動球體，動畫狀態與 Agent 推論生命週期連動，透過 `useDraggable` 與視窗邊界箝制演算法實現防誤觸拖曳與自適應避障視窗展開。
+- [VueUse useElementBounding 官方文件](https://vueuse.org/core/useElementBounding/)
+- [Vue 3 範本引用 (Template Refs) 指引](https://vuejs.org/guide/essentials/template-refs.html)
+- **採用架構**：採用 Obsidian 變體約 48px 動態吸附互動球體，動畫狀態與 Agent 推論生命週期連動，透過 `useElementBounding` 計算當前步驟之目標按鈕邊界，平滑吸附伴隨並附帶引導氣泡，點擊可就地展開自適應避障之 AskAgent 對話面板。
+
+### Web APIs & 請求中斷架構 (Request Abort & Cancellation)
+- [MDN Fetch API - AbortController 官方文件](https://developer.mozilla.org/en-US/docs/Web/API/AbortController)
+- [NodeODM REST API 規範與任務移除](https://github.com/OpenDroneMap/NodeODM)
+- **採用架構**：前端使用 `AbortController` 實作非同步上傳連線中斷，安全終止進行中之 HTTP POST Multipart 傳輸且保留選取相片；後端在拼接階段提供任務取消機制調度 NodeODM 容器終止，形成全流程雙階中斷機制。
 
 ### Exifr (影像中繼資料解析)
 - [exifr 影像 EXIF/GPS 讀取工具官方文件](https://github.com/MikeKovarik/exifr)
@@ -100,3 +106,35 @@
 - [Caddy 2 官方文件：Automatic HTTPS 全自動憑證](https://caddyserver.com/docs/automatic-https)
 - [DuckDNS 官方規範與 HTTP API 規格](https://www.duckdns.org/spec.jsp)
 - **採用架構**：以 Docker Compose 編排 FastAPI、NodeODM 與 Caddy 反向代理，透過具名資料卷 `app_data` 無縫保留 SQLite 資料庫與航拍快取，並由 Caddy 結合 DuckDNS 全自動申請維護 HTTPS 憑證。
+
+### 步驟式工作流與嚮導架構 (Wizard & Stepper Pattern)
+- [W3C WAI-ARIA 步進式嚮導設計指引 (Wizard Pattern)](https://www.w3.org/WAI/ARIA/apg/patterns/landmarks/)
+- [Vue.js 官方文件 - 條件渲染與動態組件 (Conditional Rendering & Dynamic Components)](https://vuejs.org/guide/essentials/conditional.html)
+- [Vue.js 官方文件 - 轉場與動畫 (Transition & Animation)](https://vuejs.org/guide/built-ins/transition.html)
+- **採用架構**：以三步驟循序引導模式重構專案工作區；頂部採用狀態感知之 Stepper 步進指示條，底部配置常駐「上一頁 / 下一頁」導航條；結合條件鎖定防呆與未儲存狀態守衛（Dirty Guard），使正射檢視、情境設定與小區標註各自職責專一且操作簡潔。
+
+### 畫布快捷操作與幾何放樣 (Canvas Shortcuts & Computational Geometry)
+- [MDN KeyboardEvent 官方文件](https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent)
+- [MDN MouseEvent: dblclick 官方文件](https://developer.mozilla.org/en-US/docs/Web/API/Element/dblclick_event)
+- [MDN MouseEvent: clientX / clientY 與 BoundingClientRect 規範](https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent/clientX)
+- **採用架構**：於 `PlotCanvasOverlay.vue` 監聽鍵盤與滑鼠事件；透過 `Ctrl + C` 緩存選取小區，按下 `Ctrl + V` 時計算原小區左上角外接頂點（$\min(x), \min(y)$），求得相對於滑鼠游標之偏移量並執行正規化平移；畫布交互全面改為「單擊純選取、雙擊才開啟特徵標記對話框」，確保操作專一精準。
+
+### 純手動工作流驗證與無代理人調度 (Manual Workflow Verification)
+- [Vue.js 官方文件 - 響應式基礎 (Reactivity Fundamentals)](https://vuejs.org/guide/essentials/reactivity-fundamentals.html)
+- [Vue.js 官方文件 - 表單輸入綁定 (Form Input Bindings)](https://vuejs.org/guide/essentials/forms.html)
+- **採用架構**：在暫時停用 FloatingPersona 期間，透過純前端響應式狀態驅動完整三步驟工作流；步驟 2 依賴純手動表單綁定與模板設定，消除對外部 AI Agent 的即時依賴，驗證核心業務邏輯的獨立性與可用性。
+
+### shadcn-vue & Reka UI (Sidebar 狀態管理與佈局)
+- [shadcn-vue Sidebar 組件官方文件](https://www.shadcn-vue.com/docs/components/sidebar.html)
+- [Reka UI createContext 官方指引](https://reka-ui.com/)
+- [Vue.js 官方文件 - 依賴注入 (Provide / Inject)](https://vuejs.org/guide/components/provide-inject.html)
+- [VueUse useMediaQuery 官方文件](https://vueuse.org/core/useMediaQuery/)
+- **採用架構**：使用 shadcn-vue 的 `SidebarProvider` 與 `useSidebar` 上下文管理機制，在點選 Task 卡片或新建專案時調用 `setOpen(false)` 與 `setOpenMobile(false)` 自動閉合側邊欄，釋放最大工作區畫布空間。
+
+### 狀態感知整合卡片架構 (State-Aware Consolidated Card Pattern)
+- [shadcn-vue Card 組件官方文件](https://www.shadcn-vue.com/docs/components/card.html)
+- [shadcn-vue Progress 組件官方文件](https://www.shadcn-vue.com/docs/components/progress.html)
+- [Vue.js 官方文件 - 條件渲染與列表渲染 (Conditional & List Rendering)](https://vuejs.org/guide/essentials/conditional.html)
+- [Radix Vue 官方文件 - 狀態無縫切換無障礙規範](https://www.radix-vue.com/)
+- **採用架構**：將專案元資料、拼接進度反饋與正射成果檢視收斂於單一動態卡片；卡片 Header 維持「專案名稱＋ID＋狀態與光譜徽章」跨步驟一致性外觀；卡片 Body 依 `progress` 狀態在「運算進度條與中斷按鈕」與「正射影像高解析度畫布」間無縫切換，徹底消除多卡片上下堆疊造成的視覺噪音與垂直空間浪費。
+

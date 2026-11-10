@@ -34,6 +34,10 @@ class TaskPort(Protocol):
         """非同步更新指定任務之小區列表。"""
         ...
 
+    async def update_scenario(self, task_id: str, scenario: dict[str, Any]) -> None:
+        """非同步更新指定任務之試驗情境特徵。"""
+        ...
+
     async def get_messages(self, task_id: str) -> list[Any]:
         """非同步查詢指定任務之對話歷史列表。"""
         ...

@@ -20,6 +20,7 @@ import {
   Scan,
   RotateCcw,
   X,
+  XCircle,
   Save,
   Pencil,
 } from '@lucide/vue'
@@ -75,10 +76,11 @@ import {
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import FloatingPersona from './components/FloatingPersona.vue'
 import DroneHomeUpload from './components/DroneHomeUpload.vue'
+import ProjectScenarioCard, { type ScenarioData } from './components/ProjectScenarioCard.vue'
 import PlotToolbar from './components/PlotToolbar.vue'
 import PlotCanvasOverlay from './components/PlotCanvasOverlay.vue'
 import PlotTreatmentDialog, { type TreatmentData } from './components/PlotTreatmentDialog.vue'
-import CopyPlotsDialog from './components/CopyPlotsDialog.vue'
+import TaskStepper from './components/TaskStepper.vue'
 import { usePlots, type NormalizedPoint, type PlotItem } from './lib/usePlots'
 import { useChatAgent } from './lib/useChatAgent'
 import { useOdmProgress } from './lib/useOdmProgress'
@@ -113,19 +115,19 @@ const {
   toggleExcludeGridCell,
   clearExcludedGridCells,
   duplicatePlot,
+  pastePlotWithDelta,
   duplicateAllPlots,
   movePlot,
   copyPlotsToClipboard,
   pastePlotsFromClipboard,
   importPlotsFromExternal,
+  setScenario,
 } = usePlots()
 
 const previewGridPlots = computed(() => {
   if (!gridState.value.isActive) return []
   return computeGridPlots()
 })
-
-const copyDialogOpen = ref(false)
 
 async function handleDetectMarkers() {
   if (!selectedProject.value?.id) return
@@ -148,28 +150,9 @@ function handleDuplicatePlot(plotNum: number) {
   nextTick(() => plotCanvasOverlayRef.value?.redraw())
 }
 
-function handleDuplicateAll() {
-  duplicateAllPlots()
+function handlePastePlot(payload: { sourcePlot: PlotItem; delta: { dx: number; dy: number } }) {
+  pastePlotWithDelta(payload.sourcePlot, payload.delta)
   nextTick(() => plotCanvasOverlayRef.value?.redraw())
-}
-
-function handleCopyToClipboard() {
-  const ok = copyPlotsToClipboard()
-  if (ok) {
-    alert(`已將 ${plots.value.length} 個小區設定複製至剪貼簿！`)
-  } else {
-    alert('畫布上暫無小區可供複製')
-  }
-}
-
-async function handlePasteFromClipboard() {
-  const count = await pastePlotsFromClipboard()
-  if (count > 0) {
-    nextTick(() => plotCanvasOverlayRef.value?.redraw())
-    alert(`已由剪貼簿貼上 ${count} 個小區！`)
-  } else {
-    alert('剪貼簿中未發現有效的小區 JSON 格式資料')
-  }
 }
 
 function handleClearAllPlots() {
@@ -177,23 +160,6 @@ function handleClearAllPlots() {
   if (confirm(`確定要清空畫布上的所有 ${plots.value.length} 個小區嗎？`)) {
     clearAllPlots()
     nextTick(() => plotCanvasOverlayRef.value?.redraw())
-  }
-}
-
-async function handleConfirmCopyFromProject(payload: { sourceProjectId: string; mode: 'replace' | 'append' }) {
-  try {
-    const res = await fetch(`/api/task/plots/${payload.sourceProjectId}`)
-    const json = await res.json()
-    if (res.ok && json.result && Array.isArray(json.data)) {
-      const count = importPlotsFromExternal(json.data, payload.mode)
-      copyDialogOpen.value = false
-      nextTick(() => plotCanvasOverlayRef.value?.redraw())
-      alert(`已成功由來源專案匯入 ${count} 個小區！`)
-    } else {
-      alert('無法取得來源專案之小區資料')
-    }
-  } catch (err: any) {
-    alert(`匯入失敗: ${err.message}`)
   }
 }
 
@@ -264,16 +230,8 @@ function onImageLoaded() {
 }
 
 function onPlotDrawn(points: NormalizedPoint[]) {
-  const maxNum = plots.value.reduce((acc, cur) => Math.max(acc, cur.plot_number), 0)
-  treatmentDialogState.value = {
-    open: true,
-    isNewPlot: true,
-    plotNumber: maxNum + 1,
-    points,
-    initialTreatment: '',
-    initialDose: '',
-    initialIsControl: false,
-  }
+  addPlotWithTreatment(points, '', '', false)
+  nextTick(() => plotCanvasOverlayRef.value?.redraw())
 }
 
 function onEditPlot(plot: PlotItem) {
@@ -335,6 +293,41 @@ async function handleSavePlots() {
   }
 }
 
+const currentStep = ref<1 | 2 | 3>(1)
+
+function isStepUnlocked(stepId: 1 | 2 | 3): boolean {
+  if (stepId === 1 || stepId === 2) return true
+  return (selectedProject.value?.progress ?? 0) === 100
+}
+
+function canSafelyLeaveStep3(): boolean {
+  if (currentStep.value === 3 && isDirty.value) {
+    return window.confirm('小區標註尚有未儲存的變更，確定要切換步驟嗎？（建議先點擊「儲存小區」以保留進度）')
+  }
+  return true
+}
+
+function handleStepChange(targetStep: 1 | 2 | 3) {
+  if (targetStep === currentStep.value) return
+  if (!isStepUnlocked(targetStep)) {
+    alert(`需待正射影像拼接完成（目前進度 ${selectedProject.value?.progress ?? 0}%）方可進入小區標註步驟`)
+    return
+  }
+  if (currentStep.value === 3 && !canSafelyLeaveStep3()) {
+    return
+  }
+  currentStep.value = targetStep
+  nextTick(() => {
+    if (imageRef.value && imageRef.value.complete && imageRef.value.naturalWidth > 0) {
+      onFitToScreen()
+    }
+    if (plotCanvasOverlayRef.value) {
+      plotCanvasOverlayRef.value.syncCanvasSize()
+      plotCanvasOverlayRef.value.redraw()
+    }
+  })
+}
+
 async function handleGoHome() {
   if (isDirty.value) {
     if (!confirm('您有未儲存的小區設定，是否確定返回主畫面？未儲存的變更將會遺失。')) {
@@ -342,6 +335,7 @@ async function handleGoHome() {
     }
   }
   selectedProject.value = null
+  currentStep.value = 1
   await clearChat('home')
 }
 
@@ -366,12 +360,29 @@ interface Project {
   name: string
   images?: number
   progress?: number
+  fileNames?: string[]
+  scenario?: any
 }
 
 const projects = ref<Project[]>([])
 const selectedProject = ref<Project | null>(null)
 const processingProject = ref<Project | null>(null)
 const uploadList = ref<UploadItem[]>([])
+const currentUploadedFileNames = ref<string[]>([])
+
+function onScenarioUpdated(scenario: ScenarioData) {
+  if (selectedProject.value) {
+    selectedProject.value.scenario = scenario
+  }
+  setScenario(scenario)
+}
+
+function onScenarioSaved(scenario: ScenarioData) {
+  if (selectedProject.value) {
+    selectedProject.value.scenario = scenario
+  }
+  setScenario(scenario)
+}
 const isCreatingProject = ref(false)
 const formulas = ref<Formula[]>([])
 const selectedFormula = ref<string>('rgb')
@@ -422,6 +433,9 @@ async function onProjectCreated(newProj: Project) {
   }
 
   const found = projects.value.find((p) => p.id === newProj.id) || newProj
+  if (newProj.fileNames && newProj.fileNames.length > 0) {
+    currentUploadedFileNames.value = newProj.fileNames
+  }
   selectedProject.value = found
   processingProject.value = found
 
@@ -443,6 +457,21 @@ async function onProjectCreated(newProj: Project) {
   })
 }
 
+
+async function handleCancelStitching(id: string) {
+  if (!confirm("確定要中斷航拍正射影像運算嗎？這將終止 NodeODM 拼圖運算並清理暫存。")) return
+  const response = await fetch(`/api/task/odm-task/${id}`, {
+    method: "DELETE",
+  })
+  if (!response.ok) {
+    alert("中斷拼接任務失敗，請稍後再試")
+    return
+  }
+  projects.value = projects.value.filter((p) => p.id !== id)
+  if (selectedProject.value?.id === id) {
+    await handleGoHome()
+  }
+}
 
 async function handleDeleteProject(id: string) {
   if (!confirm("確定要刪除此專案嗎？")) return
@@ -496,11 +525,15 @@ onMounted(async () => {
 })
 
 watch(selectedProject, async (newProj) => {
+  currentStep.value = 1
   uploadList.value = []
   selectedFormula.value = 'rgb'
   isImageLoading.value = true
   if (newProj?.id) {
+    setScenario(newProj.scenario || null)
     await loadPlots(newProj.id)
+  } else {
+    setScenario(null)
   }
 })
 
@@ -549,59 +582,78 @@ watch(selectedProject, async (newProj) => {
         </Button>
       </header>
       <div v-if="selectedProject" class="mx-auto flex w-full max-w-4xl flex-col gap-6 p-6">
-        <!-- 專案資訊卡片 -->
-        <Card>
-          <CardHeader class="pb-3">
-            <div class="flex items-start justify-between gap-4">
-              <div class="space-y-1">
-                <CardTitle class="text-xl font-bold">{{ selectedProject.name }}</CardTitle>
-                <CardDescription class="font-mono text-xs text-muted-foreground">
-                  ID: {{ selectedProject.id }}
-                </CardDescription>
-              </div>
+        <!-- 專案工作流三步驟導覽指示條 -->
+        <TaskStepper
+          :current-step="currentStep"
+          :project-progress="selectedProject.progress"
+          @change-step="handleStepChange"
+        />
+
+        <!-- 步驟 1 與步驟 3：專案主卡片（動態切換：拼接中進度條 / 拼接完成正射圖檢視與小區標註） -->
+        <Card v-if="currentStep === 1 || currentStep === 3">
+          <CardHeader class="flex flex-row items-center justify-between pb-3">
+            <div class="space-y-1">
+              <CardTitle class="text-xl font-bold">{{ selectedProject.name }}</CardTitle>
+              <CardDescription class="font-mono text-xs text-muted-foreground">
+                ID: {{ selectedProject.id }}
+              </CardDescription>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
               <Badge :variant="selectedProject.progress === 100 ? 'default' : 'secondary'">
                 <CheckCircle2 v-if="selectedProject.progress === 100" class="size-3.5 mr-1" />
                 <Spinner v-else class="size-3.5 mr-1 animate-spin" />
                 {{ selectedProject.progress === 100 ? '已完成' : `處理中 (${selectedProject.progress ?? 0}%)` }}
               </Badge>
-            </div>
-          </CardHeader>
-          <CardContent class="space-y-4">
-            <div class="flex flex-wrap items-center gap-6 text-sm text-muted-foreground">
-              <div class="flex items-center gap-2">
-                <Images class="size-4" />
-                <span>圖片數量：<strong class="text-foreground">{{ selectedProject.images ?? 0 }}</strong> 張</span>
-              </div>
-              <div class="flex items-center gap-2">
-                <Clock class="size-4" />
-                <span>運算進度：<strong class="text-foreground">{{ selectedProject.progress ?? 0 }}%</strong></span>
-              </div>
-            </div>
-
-            <!-- 處理中進度條 -->
-            <div v-if="selectedProject.progress !== 100" class="space-y-2 pt-2">
-              <Progress :model-value="selectedProject.progress ?? 0" />
-              <p class="text-xs text-muted-foreground">正在進行航拍正射影像運算，請稍候...</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <!-- 正射影像成果卡片 -->
-        <Card v-if="selectedProject.progress === 100">
-          <CardHeader class="flex flex-row items-center justify-between pb-3">
-            <div>
-              <CardTitle class="text-lg">正射影像成果 (Orthophoto)</CardTitle>
-              <CardDescription>拼接完成的空拍高解析度影像與植生指標運算</CardDescription>
-            </div>
-            <div class="flex items-center gap-2">
-              <Badge variant="outline" class="font-mono text-xs">
+              <Badge variant="outline" class="text-xs">
+                <Images class="size-3.5 mr-1 text-muted-foreground" />
+                {{ selectedProject.images ?? 0 }} 張相片
+              </Badge>
+              <Badge
+                v-if="selectedProject.progress === 100"
+                data-tour="formula-selector"
+                variant="outline"
+                class="font-mono text-xs"
+              >
                 目前顯示：{{ selectedFormula === 'rgb' ? '原始正射影像 (RGB)' : selectedFormula }}
               </Badge>
             </div>
           </CardHeader>
 
-          <!-- 小區多邊形分割與處理組工具列 -->
+          <!-- 拼接運算中（進度未達 100%）：顯示進度條、提示與中斷按鈕 -->
+          <CardContent v-if="selectedProject.progress !== 100" class="space-y-4 pt-2">
+            <div class="space-y-3 rounded-lg border border-dashed bg-muted/20 p-6 text-center">
+              <div class="mx-auto flex max-w-lg flex-col gap-4">
+                <div class="flex items-center justify-between text-sm">
+                  <span class="flex items-center gap-1.5 font-medium text-foreground">
+                    <Spinner class="size-4 animate-spin text-primary" />
+                    正射影像拼接運算中...
+                  </span>
+                  <span class="font-mono font-semibold text-primary">{{ selectedProject.progress ?? 0 }}%</span>
+                </div>
+                <Progress :model-value="selectedProject.progress ?? 0" class="h-2" />
+                <div class="flex items-center justify-between gap-4 pt-1">
+                  <p class="text-xs text-muted-foreground text-left">
+                    正在進行航拍特徵匹配與高解析度正射拼圖，完成後將在此直接顯示成果。您可先點擊下方按鈕前往「步驟 2：設定試驗情境」。
+                  </p>
+                  <Button
+                    data-tour="cancel-stitching"
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    class="h-8 gap-1.5 px-3 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30 shrink-0 cursor-pointer"
+                    @click="handleCancelStitching(selectedProject.id)"
+                  >
+                    <XCircle class="size-3.5" />
+                    <span>中斷拼接</span>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+
+          <!-- 小區多邊形分割與處理組工具列 (僅步驟 3 顯示) -->
           <PlotToolbar
+            v-if="currentStep === 3"
             v-model:active-mode="activeMode"
             v-model:draw-tool="drawTool"
             :plots="plots"
@@ -631,7 +683,7 @@ watch(selectedProject, async (newProj) => {
             @update:grid-scale-y="gridState.scaleY = $event"
           />
 
-          <CardContent class="p-4">
+          <CardContent v-if="selectedProject.progress === 100" class="p-4">
             <div
               ref="orthoContainerRef"
               class="relative flex flex-col w-full overflow-hidden select-none min-h-[460px] h-[68vh] rounded-lg border bg-muted/20 p-1"
@@ -791,14 +843,14 @@ watch(selectedProject, async (newProj) => {
                 >
                 <PlotCanvasOverlay
                   ref="plotCanvasOverlayRef"
-                  :plots="plots"
-                  :active-mode="activeMode"
+                  :plots="currentStep === 3 ? plots : []"
+                  :active-mode="currentStep === 3 ? activeMode : 'view'"
                   :draw-tool="drawTool"
-                  :selected-plot-number="selectedPlotNumber"
+                  :selected-plot-number="currentStep === 3 ? selectedPlotNumber : null"
                   :get-plot-color="getPlotColor"
                   :viewport="viewport"
-                  :grid-state="gridState"
-                  :preview-plots="previewGridPlots"
+                  :grid-state="currentStep === 3 ? gridState : { isActive: false, corners: [], rows: 3, cols: 3, marginRatio: 0.1, scaleX: 0.8, scaleY: 0.8, paddingRatio: 0, offsetX: 0, offsetY: 0, excludedIndices: [] }"
+                  :preview-plots="currentStep === 3 ? previewGridPlots : []"
                   @plot-drawn="onPlotDrawn"
                   @edit-plot="onEditPlot"
                   @update-plot-points="onUpdatePlotPoints"
@@ -814,6 +866,7 @@ watch(selectedProject, async (newProj) => {
           </CardContent>
 
           <PlotTreatmentDialog
+            v-if="currentStep === 3"
             v-model:open="treatmentDialogState.open"
             :plot-number="treatmentDialogState.plotNumber"
             :is-new-plot="treatmentDialogState.isNewPlot"
@@ -827,6 +880,7 @@ watch(selectedProject, async (newProj) => {
           />
 
           <CopyPlotsDialog
+            v-if="currentStep === 3"
             v-model:open="copyDialogOpen"
             :projects="projects"
             :current-project-id="selectedProject?.id"
@@ -834,21 +888,25 @@ watch(selectedProject, async (newProj) => {
           />
         </Card>
 
-        <!-- 運算中提示 -->
-        <Card v-else class="border-dashed p-8 text-center text-muted-foreground">
-          <div class="flex flex-col items-center justify-center gap-3">
-            <Spinner class="size-8 animate-spin text-primary" />
-            <div class="text-sm font-medium text-foreground">正射影像生成中...</div>
-            <p class="text-xs text-muted-foreground">任務完成後將在此自動顯示拼接成果影像</p>
-          </div>
-        </Card>
+        <!-- 步驟 2：專案試驗情境特徵動態卡片 (僅步驟 2 顯示) -->
+        <ProjectScenarioCard
+          v-if="currentStep === 2"
+          :project-id="selectedProject.id"
+          :project-name="selectedProject.name"
+          :initial-scenario="selectedProject.scenario"
+          :file-names="currentUploadedFileNames"
+          :project-progress="selectedProject.progress"
+          @update:scenario="onScenarioUpdated"
+          @saved="onScenarioSaved"
+        />
       </div>
       <div v-if="!selectedProject" class="h-[calc(100vh-3.5rem)] w-full overflow-hidden">
         <DroneHomeUpload @project-created="onProjectCreated" />
       </div>
     </SidebarInset>
   </SidebarProvider>
-  <!-- 懸浮 Persona AI 代理人組件 (全域常駐) -->
+  <!-- 懸浮 Persona AI 代理人組件 (手動全流程測試暫時停用) -->
+  <!--
   <FloatingPersona
     :project-id="selectedProject?.id"
     :project-name="selectedProject?.name"
@@ -856,5 +914,7 @@ watch(selectedProject, async (newProj) => {
     :project-progress="selectedProject?.progress"
     :has-plots="plots.length > 0"
     :is-home="!selectedProject"
+    :current-step="currentStep"
   />
+  -->
 </template>

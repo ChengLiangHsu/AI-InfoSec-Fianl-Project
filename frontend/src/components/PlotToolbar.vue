@@ -151,6 +151,7 @@ function toggleGridMode() {
           </Button>
 
           <Button
+            data-tour="grid-mode"
             size="sm"
             :variant="gridState?.isActive ? 'secondary' : 'ghost'"
             class="h-7 gap-1.5 px-3 text-xs font-medium shadow-none cursor-pointer"

@@ -37,6 +37,23 @@ def _json_to_plots(plots_json: str) -> list[Plot]:
         return []
 
 
+def _scenario_to_json(scenario: dict[str, Any]) -> str:
+    """將情境字典序列化為 JSON 字串。"""
+    if not scenario:
+        return ""
+    return json.dumps(scenario, ensure_ascii=False)
+
+
+def _json_to_scenario(scenario_json: str | None) -> dict[str, Any]:
+    """將 JSON 字串反序列化為情境字典。"""
+    if not scenario_json or scenario_json.strip() in ("", "{}"):
+        return {}
+    try:
+        return json.loads(scenario_json)
+    except Exception:
+        return {}
+
+
 class TaskModel(SQLModel, table=True):
     """NodeODM 航拍任務持久化資料表模型。"""
     __tablename__ = "tasks"
@@ -48,6 +65,7 @@ class TaskModel(SQLModel, table=True):
     progress: int = Field(default=0)
     messages: str = Field(default="")
     plots: str = Field(default="")
+    scenario: str = Field(default="")
 
 
 class TaskRepository(TaskPort):
@@ -77,11 +95,13 @@ class TaskRepository(TaskPort):
             progress=model.progress,
             messages=model.messages,
             plots=_json_to_plots(model.plots),
+            scenario=_json_to_scenario(getattr(model, "scenario", "")),
         )
 
     async def add_task(self, task: Task) -> None:
         """非同步新增或更新任務記錄。"""
         plots_json = _plots_to_json(task.plots)
+        scenario_json = _scenario_to_json(task.scenario)
         existing = self.session.get(TaskModel, task.id)
         if existing:
             existing = self._get_owned_model(task.id)
@@ -90,6 +110,7 @@ class TaskRepository(TaskPort):
             existing.progress = task.progress
             existing.messages = task.messages
             existing.plots = plots_json
+            existing.scenario = scenario_json
             self.session.add(existing)
         else:
             model = TaskModel(
@@ -100,6 +121,7 @@ class TaskRepository(TaskPort):
                 progress=task.progress,
                 messages=task.messages,
                 plots=plots_json,
+                scenario=scenario_json,
             )
             self.session.add(model)
         self.session.commit()
@@ -149,6 +171,14 @@ class TaskRepository(TaskPort):
         model = self._get_owned_model(task_id)
         if model:
             model.plots = _plots_to_json(plots)
+            self.session.add(model)
+            self.session.commit()
+
+    async def update_scenario(self, task_id: str, scenario: dict[str, Any]) -> None:
+        """非同步更新指定任務之試驗情境特徵。"""
+        model = self._get_owned_model(task_id)
+        if model:
+            model.scenario = _scenario_to_json(scenario)
             self.session.add(model)
             self.session.commit()
 

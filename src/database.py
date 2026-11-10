@@ -22,6 +22,7 @@ def init_db() -> None:
 
     prepare_storage()
     _migrate_task_ownership()
+    _migrate_task_scenario()
     SQLModel.metadata.create_all(engine)
 
 
@@ -35,6 +36,17 @@ def _migrate_task_ownership() -> None:
         if "owner_id" not in names:
             connection.execute(text("ALTER TABLE tasks ADD COLUMN owner_id VARCHAR"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_tasks_owner_id ON tasks (owner_id)"))
+
+
+def _migrate_task_scenario() -> None:
+    """為舊資料庫增量加上情境特徵欄位；無縫相容既有任務。"""
+    with engine.begin() as connection:
+        inspector = inspect(connection)
+        if not inspector.has_table("tasks"):
+            return
+        names = {column["name"] for column in inspector.get_columns("tasks")}
+        if "scenario" not in names:
+            connection.execute(text("ALTER TABLE tasks ADD COLUMN scenario TEXT DEFAULT ''"))
 
 
 def get_session() -> Generator[Session, None, None]:

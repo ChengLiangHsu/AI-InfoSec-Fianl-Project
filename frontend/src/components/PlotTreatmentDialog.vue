@@ -201,10 +201,15 @@ function onOpenChange(val: boolean) {
             <Badge
               v-for="(preset, idx) in existingTreatments"
               :key="idx"
-              variant="secondary"
-              class="cursor-pointer hover:bg-primary/15 text-[11px] font-normal transition-colors py-0.5 px-2"
+              variant="outline"
+              class="cursor-pointer hover:bg-primary/15 text-[11px] font-normal transition-colors py-0.5 px-2 flex items-center gap-1.5"
               @click="selectPreset(preset)"
             >
+              <span
+                v-if="preset.color"
+                class="size-2 rounded-full shrink-0"
+                :style="{ backgroundColor: preset.color }"
+              />
               {{ preset.label }}
             </Badge>
           </div>
