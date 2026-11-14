@@ -5,6 +5,7 @@ import numpy as np
 from PIL import Image
 
 from src.utility.formulas import lookup_formula
+from src.utility.image_export import atomic_output
 
 
 def create_spectral_color_lut() -> np.ndarray:
@@ -52,5 +53,6 @@ def generate_spectral_image(input_path: Path, output_path: Path, formula: str = 
     else:
         out_img = Image.fromarray(rgb_colored, mode="RGB")
 
-    out_img.save(output_path, "PNG", compress_level=1)
+    with out_img, atomic_output(output_path) as temporary:
+        out_img.save(temporary, "PNG", compress_level=1)
     return True

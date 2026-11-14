@@ -5,9 +5,9 @@ from collections.abc import AsyncGenerator
 from dataclasses import asdict
 from datetime import datetime, timezone
 import json
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from pydantic_ai import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
@@ -26,7 +26,8 @@ from src.database import get_session
 from src.presenter.response_wrapper import success_response
 from src.usecases.ports.task import TaskPort
 from src.usecases.task import TaskUseCase
-from src.utility.formulas import get_algorithm_list
+from src.utility.formulas import get_algorithm_list, normalize_rgb_formula
+from src.utility.image_export import EXPORT_MEDIA_TYPES, export_filename
 
 router = APIRouter(tags=["task"])
 
@@ -280,6 +281,24 @@ async def get_odm_task_list(
     """主流程：查詢所有任務清單。"""
     tasks = await usecase.get_tasks()
     return success_response(data=[_task_to_dict(t) for t in tasks])
+
+
+@router.get("/odm-task-export/{task_id}")
+async def export_odm_task_image(
+    task_id: str,
+    file_format: Annotated[Literal["tiff", "jpg", "pdf"], Query(alias="format")] = "tiff",
+    formula: str = "rgb",
+    usecase: TaskUseCase = Depends(get_task_usecase),
+) -> FileResponse:
+    """Download a complete image attachment without modifying task state."""
+    task = await usecase.get_task(task_id)
+    formula_id = "rgb" if formula.strip().casefold() == "rgb" else normalize_rgb_formula(formula)
+    path = await usecase.get_image_export_path(task_id, formula_id, file_format)
+    return FileResponse(
+        path,
+        media_type=EXPORT_MEDIA_TYPES[file_format],
+        filename=export_filename(task.name, task_id, formula_id, file_format),
+    )
 
 
 @router.delete("/odm-task/{task_id}")

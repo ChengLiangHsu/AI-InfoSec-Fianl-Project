@@ -4,6 +4,18 @@
 
 ![DEMO 主畫面](docs/assets/demo.png)
 
+## 影像下載
+
+進入專案後，點選頁首「下載影像」，選擇原始正射圖或 RGB 光譜演算法，以及 TIFF、JPG 或 PDF 格式。下載面板獨立於四步驟導覽，不切換主畫布、不變更小區或情境設定；收起面板後下載繼續，可照常操作步驟條。切換專案或回到首頁會取消尚未完成的下載。拼接完成後即可下載，不要求先建立小區。
+
+- 正射 TIFF 直接下載 NodeODM 原始檔案，保留原始像素與地理資訊；只有 PNG 快取的舊專案會重新取得原始 TIFF，來源無法取得時顯示錯誤，不會將 PNG 假裝為原始 GeoTIFF。
+- 光譜圖支援 NDYI、vNDVI、VARI、MPRI、EXG、GLI，與主畫布使用相同著色運算；TIFF 保留透明度並複製來源地理定位標籤，內容為著色影像而非原始浮點指數矩陣。
+- JPG／PDF 使用完整尺寸影像，透明區域填白；PDF 為維持長寬比例的單頁影像文件。匯出不含小區邊框、畫布工具或地理定位資訊。格式編碼使用 [Pillow](https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html)，無新增正式環境套件。
+- 下載端點：`GET /api/task/odm-task-export/{task_id}?formula=rgb&format=tiff`；`formula` 可改為支援的演算法，`format` 接受 `tiff`、`jpg`、`pdf`。以 [FastAPI FileResponse](https://fastapi.tiangolo.com/advanced/custom-response/#fileresponse) 傳送具檔名的附件。
+- 面板採用 [Reka UI 非模態 Dialog](https://reka-ui.com/docs/components/dialog)，開關與下載狀態獨立於步驟條；影像轉換在背景執行緒進行，同一成果的並行請求共用快取鎖，完成寫入後才公開檔案。
+
+驗證：根目錄執行 `uv run pytest`，前端目錄執行 `npm test` 與 `npm run build`。測試涵蓋全部影像／格式組合、原始 TIFF 位元組與地理標籤、PDF 內容與比例、取消／重試，以及主流程與未儲存小區保護。[pytest](https://docs.pytest.org/)、[Vitest](https://vitest.dev/guide/)、[Vue Test Utils](https://test-utils.vuejs.org/)
+
 ## 人工智慧與資訊安全期末專題提案
 
 > **專案期程**：2026 年 9 月 7 日 至 12 月 21 日  

@@ -160,6 +160,14 @@ camera_filters = [
     'L',
 ]
 
+
+def normalize_rgb_formula(formula: str) -> str:
+    """Resolve a public RGB algorithm case-insensitively, retaining its canonical ID."""
+    for algorithm in get_algorithm_list(max_bands=3):
+        if algorithm['id'].casefold() == formula.strip().casefold() and 'RGB' in algorithm['filters']:
+            return algorithm['id']
+    raise ValueError(f"不支援的 RGB 光譜演算法：{formula}")
+
 @lru_cache(maxsize=20)
 def lookup_formula(algo, band_order = 'RGB'):
     if algo is None:

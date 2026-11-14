@@ -81,6 +81,7 @@ import PlotToolbar from './components/PlotToolbar.vue'
 import PlotCanvasOverlay from './components/PlotCanvasOverlay.vue'
 import PlotTreatmentDialog, { type TreatmentData } from './components/PlotTreatmentDialog.vue'
 import StepNavigationHUD from './components/StepNavigationHUD.vue'
+import ImageDownloadPanel from './components/ImageDownloadPanel.vue'
 import { usePlots, type NormalizedPoint, type PlotItem } from './lib/usePlots'
 import { useChatAgent } from './lib/useChatAgent'
 import { useOdmProgress } from './lib/useOdmProgress'
@@ -697,8 +698,8 @@ watch(selectedProject, async (newProj) => {
       <header class="bg-background sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b px-4">
         <SidebarTrigger class="-ml-1 cursor-pointer" title="切換側邊欄" />
         <Separator orientation="vertical" class="mr-2 data-[orientation=vertical]:h-4" />
-        <Breadcrumb>
-          <BreadcrumbList>
+        <Breadcrumb class="min-w-0 flex-1">
+          <BreadcrumbList class="flex-nowrap">
             <BreadcrumbItem>
               <BreadcrumbLink
                 href="#"
@@ -711,23 +712,32 @@ watch(selectedProject, async (newProj) => {
             </BreadcrumbItem>
             <template v-if="selectedProject">
               <BreadcrumbSeparator class="hidden md:block" />
-              <BreadcrumbItem>
-                <BreadcrumbLink class="font-semibold text-foreground">
+              <BreadcrumbItem class="min-w-0">
+                <BreadcrumbLink class="truncate font-semibold text-foreground">
                   {{ selectedProject.name }}
                 </BreadcrumbLink>
               </BreadcrumbItem>
             </template>
           </BreadcrumbList>
         </Breadcrumb>
-        <Button
-          v-if="selectedProject"
-          variant="destructive"
-          size="sm"
-          class="ml-auto cursor-pointer"
-          @click="handleDeleteProject(selectedProject.id)"
-        >
-          刪除專案
-        </Button>
+        <div v-if="selectedProject" class="ml-auto flex shrink-0 items-center gap-2">
+          <ImageDownloadPanel
+            :key="selectedProject.id"
+            :project-id="selectedProject.id"
+            :project-name="selectedProject.name"
+            :progress="selectedProject.progress"
+            :formulas="formulas"
+            :current-formula="selectedFormula"
+          />
+          <Button
+            variant="destructive"
+            size="sm"
+            class="cursor-pointer"
+            @click="handleDeleteProject(selectedProject.id)"
+          >
+            刪除專案
+          </Button>
+        </div>
       </header>
       <!-- 當選定專案時的四步驟工作流 -->
       <div v-if="selectedProject" class="relative flex flex-1 flex-col h-[calc(100vh-theme(spacing.14))] overflow-hidden">

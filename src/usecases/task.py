@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from pathlib import Path
 from typing import Any, Sequence
+from weakref import WeakValueDictionary
 
 from src.entities.task import Plot, Task
 from src.entities.upload import UploadImage
@@ -16,14 +18,31 @@ from src.config import (
 )
 from src.usecases.ports import TaskPort
 from src.usecases.ports.odm import OdmPort
-from src.utility.imagery import extract_orthophoto_from_zip
+from src.utility.imagery import create_orthophoto_preview, extract_orthophoto_tiff
+from src.utility.image_export import EXPORT_MEDIA_TYPES, convert_image_export
+from src.utility.formulas import normalize_rgb_formula
 from src.utility.marker_detection import detect_white_marker_corners
 from src.utility.spectral import generate_spectral_image
+
+_ASSET_LOCKS: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
+
+
+def _asset_lock(path: Path) -> asyncio.Lock:
+    """Share a lock between requests for the same cached artifact."""
+    key = str(path)
+    lock = _ASSET_LOCKS.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _ASSET_LOCKS[key] = lock
+    return lock
+
 
 def _validate_task_id(task_id: str) -> None:
     """校驗任務 ID 是否有效。"""
     if not task_id or not isinstance(task_id, str) or not task_id.strip():
         raise ValueError("任務 ID 不得為空")
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", task_id):
+        raise ValueError("任務 ID 格式無效")
 
 
 def _validate_task_name(name: str) -> None:
@@ -273,7 +292,11 @@ class TaskUseCase:
         except Exception:
             pass
 
-        for f in ODM_DIR.glob(f"{task_id}*.png"):
+        for f in ODM_DIR.glob("*"):
+            if f.stem != task_id and not f.name.startswith(f"{task_id}_"):
+                continue
+            if f.suffix not in {".png", ".tif", ".tiff", ".jpg", ".pdf"}:
+                continue
             try:
                 f.unlink()
             except Exception:
@@ -284,18 +307,23 @@ class TaskUseCase:
         _validate_task_id(task_id)
         await self.get_task(task_id)
         file_path = ODM_DIR / f"{task_id}.png"
-        if file_path.exists():
-            return file_path
+        async with _asset_lock(file_path):
+            if not file_path.exists():
+                tiff_path = await self.get_orthophoto_tiff_path(task_id)
+                await asyncio.to_thread(create_orthophoto_preview, tiff_path, file_path)
+        return file_path
 
-        try:
-            zip_bytes = await self.odm_port.download_task_assets(task_id, asset="all.zip")
-            success = extract_orthophoto_from_zip(zip_bytes, file_path)
-            if success and file_path.exists():
-                return file_path
-        except Exception:
-            pass
-
-        raise KeyError(f"任務 [{task_id}] 正射圖尚未生成或無法取得")
+    async def get_orthophoto_tiff_path(self, task_id: str) -> Path:
+        """Retrieve the original TIFF, including for legacy PNG-only cached tasks."""
+        await self.get_task(task_id)
+        file_path = ODM_DIR / f"{task_id}.tif"
+        async with _asset_lock(file_path):
+            if not file_path.exists():
+                zip_bytes = await self.odm_port.download_task_assets(task_id, asset="all.zip")
+                if not zip_bytes:
+                    raise KeyError("正射圖尚未生成或無法取得")
+                await asyncio.to_thread(extract_orthophoto_tiff, zip_bytes, file_path)
+        return file_path
 
     async def get_spectral_image_path(
         self, task_id: str, formula: str = "VARI"
@@ -303,18 +331,37 @@ class TaskUseCase:
         """主流程：取得或計算指定專案在特定植生指標（如 VARI）下之光譜熱圖路徑。"""
         _validate_task_id(task_id)
         await self.get_task(task_id)
-        formula_upper = formula.strip().upper()
-        from src.utility.formulas import lookup_formula
-        lookup_formula(formula_upper, "RGB")
-        spectral_file_path = ODM_DIR / f"{task_id}_{formula_upper}.png"
-        if spectral_file_path.exists():
-            return spectral_file_path
+        formula_id = normalize_rgb_formula(formula)
+        spectral_file_path = ODM_DIR / f"{task_id}_{formula_id}.png"
+        async with _asset_lock(spectral_file_path):
+            if not spectral_file_path.exists():
+                ortho_path = await self.get_orthophoto_path(task_id)
+                await asyncio.to_thread(generate_spectral_image, ortho_path, spectral_file_path, formula_id)
+        return spectral_file_path
 
-        ortho_path = await self.get_orthophoto_path(task_id)
-        generate_spectral_image(ortho_path, spectral_file_path, formula_upper)
-        if spectral_file_path.exists():
-            return spectral_file_path
-        raise RuntimeError(f"無法產出光譜熱圖指標 [{formula_upper}]")
+    async def get_image_export_path(self, task_id: str, formula: str, file_format: str) -> Path:
+        """Orchestrate a read-only export independently of plots and workflow steps."""
+        task = await self.get_task(task_id)
+        if task.progress != 100:
+            raise RuntimeError("正射影像尚未完成拼接，請完成後再下載")
+        if file_format not in EXPORT_MEDIA_TYPES:
+            raise ValueError("不支援的匯出格式")
+        formula_id = "rgb" if formula.strip().casefold() == "rgb" else normalize_rgb_formula(formula)
+        if formula_id == "rgb" and file_format == "tiff":
+            return await self.get_orthophoto_tiff_path(task_id)
+        output = ODM_DIR / f"{task_id}_{formula_id}.{file_format}"
+        async with _asset_lock(output):
+            if not output.exists():
+                source = await self._get_export_source(task_id, formula_id)
+                georeference = await self.get_orthophoto_tiff_path(task_id) if file_format == "tiff" else None
+                await asyncio.to_thread(convert_image_export, source, output, file_format, georeference)
+        return output
+
+    async def _get_export_source(self, task_id: str, formula: str) -> Path:
+        """Select a complete RGB image or the same spectral rendering used on screen."""
+        if formula == "rgb":
+            return await self.get_orthophoto_path(task_id)
+        return await self.get_spectral_image_path(task_id, formula)
 
     async def get_plots(self, task_id: str) -> list[Plot]:
         """查詢指定任務之小區列表（確保任務存在）。"""
