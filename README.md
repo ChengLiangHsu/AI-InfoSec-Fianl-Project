@@ -16,6 +16,14 @@
 
 驗證：根目錄執行 `uv run pytest`，前端目錄執行 `npm test` 與 `npm run build`。測試涵蓋全部影像／格式組合、原始 TIFF 位元組與地理標籤、PDF 內容與比例、取消／重試，以及主流程與未儲存小區保護。[pytest](https://docs.pytest.org/)、[Vitest](https://vitest.dev/guide/)、[Vue Test Utils](https://test-utils.vuejs.org/)
 
+## 框選區域數值比較
+
+在步驟 3 或步驟 4 點選已框選的小區，左上角會顯示原圖平均 RGB，以及 NDYI、vNDVI、VARI、MPRI、EXG、GLI 的平均指數與著色後平均 RGB。點選面板內的演算法名稱即可切換影像；移動小區或調整頂點後自動重新計算，不需要先儲存。面板可收合，多選時可在下拉選單選擇要查看的小區。
+
+- 統計取自完整解析度正射影像，以像素中心是否位於多邊形內判定，排除完全透明像素；不納入框線、標籤或畫面縮放效果。RGB 採各通道算術平均，保留兩位小數，範圍為 0–255。[Pillow 影像裁切](https://pillow.readthedocs.io/en/stable/reference/Image.html#PIL.Image.Image.crop)、[NumPy 平均值](https://numpy.org/doc/stable/reference/generated/numpy.mean.html)
+- 平均指數先對每個像素套用現有公式，再平均有限值，不先平均 RGB，也不截斷指數；無效指數排除，沒有有效值時顯示「無有效值」。著色 RGB 沿用主畫布的色階與無效值替代規則，與原圖 RGB 分開呈現。[公式來源](https://github.com/dirceup/tiled-vegetation-indices/blob/master/app/lib/vegetation_index.rb)、[NumPy 有限值判定](https://numpy.org/doc/stable/reference/generated/numpy.isfinite.html)
+- `POST /api/task/region-statistics/{task_id}` 接受 `{"points": [[0,0],[1,0],[1,1],[0,1]]}` 格式的正規化座標，回傳有效像素數、原圖平均 RGB 與各演算法統計，不寫入小區資料。[FastAPI 請求內容](https://fastapi.tiangolo.com/tutorial/body/)
+
 ## 人工智慧與資訊安全期末專題提案
 
 > **專案期程**：2026 年 9 月 7 日 至 12 月 21 日  

@@ -58,6 +58,13 @@ class DetectMarkersPayload(BaseModel):
     roi: list[float] | None = None
 
 
+NormalizedCoordinate = Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)]
+
+
+class RegionStatisticsPayload(BaseModel):
+    points: list[tuple[NormalizedCoordinate, NormalizedCoordinate]] = Field(min_length=3, max_length=100)
+
+
 class UpdateScenarioPayload(BaseModel):
     scenario: dict[str, Any] = Field(default_factory=dict)
 
@@ -281,6 +288,17 @@ async def get_odm_task_list(
     """主流程：查詢所有任務清單。"""
     tasks = await usecase.get_tasks()
     return success_response(data=[_task_to_dict(t) for t in tasks])
+
+
+@router.post("/region-statistics/{task_id}")
+async def get_region_statistics(
+    task_id: str,
+    payload: RegionStatisticsPayload,
+    usecase: TaskUseCase = Depends(get_task_usecase),
+) -> JSONResponse:
+    """Read all RGB algorithm statistics for the supplied normalized polygon."""
+    statistics = await usecase.get_region_statistics(task_id, payload.points)
+    return success_response(data=statistics)
 
 
 @router.get("/odm-task-export/{task_id}")

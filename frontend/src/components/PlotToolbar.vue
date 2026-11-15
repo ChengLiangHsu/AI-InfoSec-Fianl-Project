@@ -136,8 +136,13 @@ function toggleGridMode() {
   if (props.gridState?.isActive) {
     emit('close-grid')
   } else {
-    emit('start-grid')
+    startGridSelection()
   }
+}
+
+function startGridSelection() {
+  emit('update:drawTool', 'rect')
+  emit('start-grid')
 }
 
 // 網格配置面板自由拖曳與最小化狀態
@@ -528,7 +533,15 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- 情況 A：自動網格生成屬性面板 (支援自由拖曳與圓形浮動收合) -->
-    <template v-if="gridState?.isActive">
+    <div
+      v-if="gridState?.isActive && gridState.corners.length < 4"
+      role="status"
+      class="absolute right-full mr-3 top-1/2 -translate-y-1/2 w-64 rounded-xl border border-purple-500/40 bg-zinc-950/95 p-3 text-xs text-purple-200 shadow-xl pointer-events-auto"
+    >
+      <p>請在影像上按住滑鼠左鍵，拖曳框選網格範圍；放開後即可微調四角與小區配置。</p>
+      <Button size="sm" variant="ghost" class="mt-2 h-7 text-xs" @click="emit('close-grid')">取消</Button>
+    </div>
+    <template v-else-if="gridState?.isActive">
       <!-- 最小化狀態：紫色網格浮動圓形按鈕 -->
       <div
         v-if="isMinimized"
@@ -593,6 +606,12 @@ onBeforeUnmount(() => {
         </div>
 
       <!-- 列數與行數配置 -->
+      <div class="flex items-center justify-between gap-2 text-xs text-purple-200">
+        <span>拖曳四角或整個網格微調範圍</span>
+        <Button size="sm" variant="ghost" class="h-7 px-2 text-xs" @click="startGridSelection">
+          重新框選
+        </Button>
+      </div>
       <div class="grid grid-cols-2 gap-2 text-xs">
         <div class="space-y-1">
           <span class="text-zinc-400 text-[11px]">列數 (Rows):</span>

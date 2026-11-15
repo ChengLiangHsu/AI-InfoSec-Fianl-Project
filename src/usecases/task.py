@@ -23,6 +23,7 @@ from src.utility.image_export import EXPORT_MEDIA_TYPES, convert_image_export
 from src.utility.formulas import normalize_rgb_formula
 from src.utility.marker_detection import detect_white_marker_corners
 from src.utility.spectral import generate_spectral_image
+from src.utility.region_statistics import calculate_region_statistics, validate_polygon
 
 _ASSET_LOCKS: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
 
@@ -338,6 +339,12 @@ class TaskUseCase:
                 ortho_path = await self.get_orthophoto_path(task_id)
                 await asyncio.to_thread(generate_spectral_image, ortho_path, spectral_file_path, formula_id)
         return spectral_file_path
+
+    async def get_region_statistics(self, task_id: str, points: list[tuple[float, float]]) -> dict:
+        """Calculate statistics for current, potentially unsaved plot geometry."""
+        validate_polygon(points)
+        path = await self.get_orthophoto_path(task_id)
+        return await asyncio.to_thread(calculate_region_statistics, path, points)
 
     async def get_image_export_path(self, task_id: str, formula: str, file_format: str) -> Path:
         """Orchestrate a read-only export independently of plots and workflow steps."""

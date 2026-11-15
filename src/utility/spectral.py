@@ -19,6 +19,20 @@ def create_spectral_color_lut() -> np.ndarray:
     return lut
 
 
+def evaluate_formula_values(arr: np.ndarray, expr: str) -> np.ndarray:
+    """Evaluate each pixel before display clipping; undefined values remain non-finite."""
+    b1, b2, b3 = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        return eval(expr, {"sqrt": np.sqrt}, {"b1": b1, "b2": b2, "b3": b3})
+
+
+def normalize_formula_values(val: np.ndarray, hrange: tuple[float, float] | None) -> np.ndarray:
+    """Map index values to the shared display palette, preserving existing rendering."""
+    val = np.nan_to_num(val, nan=0.0, posinf=1.0, neginf=-1.0)
+    vmin, vmax = hrange if hrange else (-1.0, 1.0)
+    return np.clip((val - vmin) / (vmax - vmin) * 255.0, 0, 255).astype(np.uint8)
+
+
 def calculate_formula_matrix(
     arr: np.ndarray, expr: str, hrange: tuple[float, float] | None
 ) -> tuple[np.ndarray, np.ndarray | None]:
@@ -26,13 +40,7 @@ def calculate_formula_matrix(
     has_alpha = arr.shape[2] == 4
     alpha = (arr[:, :, 3] * 255).astype(np.uint8) if has_alpha else None
 
-    b1, b2, b3 = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
-    with np.errstate(divide="ignore", invalid="ignore"):
-        val = eval(expr, {"sqrt": np.sqrt}, {"b1": b1, "b2": b2, "b3": b3})
-        val = np.nan_to_num(val, nan=0.0, posinf=1.0, neginf=-1.0)
-
-    vmin, vmax = hrange if hrange else (-1.0, 1.0)
-    norm = np.clip((val - vmin) / (vmax - vmin) * 255.0, 0, 255).astype(np.uint8)
+    norm = normalize_formula_values(evaluate_formula_values(arr, expr), hrange)
     return norm, alpha
 
 

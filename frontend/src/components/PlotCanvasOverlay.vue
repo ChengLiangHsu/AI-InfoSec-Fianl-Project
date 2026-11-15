@@ -55,6 +55,9 @@ const emit = defineEmits<{
 
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const containerRef = ref<HTMLDivElement | null>(null)
+const isSelectingGridRegion = computed(() =>
+  Boolean(props.gridState?.isActive && props.gridState.corners.length < 4)
+)
 
 // 網格角點把手拖曳與懸停狀態
 const draggingGridCornerIndex = ref<number | null>(null)
@@ -940,6 +943,14 @@ function handleViewModeDown(
   isRubberBandModifier.value = isModifier
 }
 
+function startRectDrag(screenX: number, screenY: number, norm: NormalizedPoint): void {
+  isDraggingRect.value = true
+  rectStartScreen.value = { x: screenX, y: screenY }
+  rectStartNorm.value = { ...norm }
+  rectCurrentNorm.value = { ...norm }
+  drawCanvas()
+}
+
 function handleDrawModeDown(
   screenX: number,
   screenY: number,
@@ -947,11 +958,7 @@ function handleDrawModeDown(
 ): void {
   // 繪圖模式與選取交互徹底解耦：不檢驗或修改既有小區選取，專注於新小區幾何繪製
   if (props.drawTool === 'rect') {
-    isDraggingRect.value = true
-    rectStartScreen.value = { x: screenX, y: screenY }
-    rectStartNorm.value = { x: norm.x, y: norm.y }
-    rectCurrentNorm.value = { x: norm.x, y: norm.y }
-    drawCanvas()
+    startRectDrag(screenX, screenY, norm)
   } else if (props.drawTool === 'polygon') {
     if (currentDrawingPoints.value.length > 0) {
       if (isNearStartPoint.value && currentDrawingPoints.value.length >= 3) {
@@ -1063,7 +1070,15 @@ function finishRectDrag(screenX: number, screenY: number): void {
         { x: maxX, y: maxY },
         { x: minX, y: maxY },
       ]
-      emit('plot-drawn', points)
+      if (isSelectingGridRegion.value) {
+        const start = props.viewport.normalizedToScreen(points[0])
+        const end = props.viewport.normalizedToScreen(points[2])
+        if (end.x - start.x >= MIN_RECT_DRAG_PX && end.y - start.y >= MIN_RECT_DRAG_PX) {
+          emit('update-grid-corners', points)
+        }
+      } else {
+        emit('plot-drawn', points)
+      }
     }
     isDraggingRect.value = false
     rectStartScreen.value = null
@@ -1085,6 +1100,11 @@ function onMouseDown(e: MouseEvent): void {
   if (e.button !== 0) return
 
   const { screenX, screenY, norm } = getCanvasRelativeCoords(e)
+
+  if (isSelectingGridRegion.value) {
+    startRectDrag(screenX, screenY, norm)
+    return
+  }
 
   if (props.drawTool === 'eraser') {
     handleEraserDown(screenX, screenY)
@@ -1123,6 +1143,14 @@ function onMouseMove(e: MouseEvent): void {
 
   const { screenX, screenY, norm } = getCanvasRelativeCoords(e)
   currentMousePos.value = norm
+
+  if (isSelectingGridRegion.value) {
+    if (isDraggingRect.value) {
+      rectCurrentNorm.value = norm
+      drawCanvas()
+    }
+    return
+  }
 
   if (props.drawTool === 'eraser') {
     handleEraserMove(screenX, screenY)
@@ -1244,7 +1272,7 @@ function onMouseUp(e: MouseEvent): void {
     return
   }
 
-  const { screenX, screenY } = getCanvasRelativeCoords(e)
+  const { screenX, screenY, norm } = getCanvasRelativeCoords(e)
 
   if (isDraggingWholePlot.value) {
     finishWholePlotDrag()
@@ -1258,6 +1286,7 @@ function onMouseUp(e: MouseEvent): void {
   }
 
   if (isDraggingRect.value) {
+    rectCurrentNorm.value = norm
     finishRectDrag(screenX, screenY)
     drawCanvas()
     return
@@ -1450,6 +1479,13 @@ watch(
 watch(
   () => props.gridState?.isActive,
   (active) => {
+    cancelDrawing()
+    finishGridDrag()
+    draggingGridCornerIndex.value = null
+    hoveredGridCornerIndex.value = null
+    isHoveringGridQuad.value = false
+    isRubberBandSelecting.value = false
+    isDraggingWholePlot.value = false
     if (active) {
       draggingVertexIndex.value = null
       hoveredVertexIndex.value = null
@@ -1468,9 +1504,9 @@ watch(
       'cursor-grab': viewport.isPanning.value || (gridState?.isActive && hoveredGridCornerIndex !== null && draggingGridCornerIndex === null && drawTool !== 'eraser') || (activeMode === 'view' && hoveredVertexIndex !== null && draggingVertexIndex === null && !gridState?.isActive),
       'cursor-grabbing': draggingGridCornerIndex !== null || draggingVertexIndex !== null || isDraggingWholeGrid,
       'cursor-move': (gridState?.isActive && isHoveringGridQuad && hoveredGridCornerIndex === null && draggingGridCornerIndex === null && !isDraggingWholeGrid && drawTool !== 'eraser') || isDraggingWholePlot,
-      'cursor-pointer': (activeMode === 'view' && !gridState?.isActive && hoveredVertexIndex === null && draggingVertexIndex === null && !isRubberBandSelecting) || drawTool === 'eraser',
-      'cursor-crosshair': (activeMode === 'draw' && drawTool !== 'eraser' && !gridState?.isActive && !viewport.isPanning.value) || isRubberBandSelecting,
-      'cursor-default': gridState?.isActive && drawTool !== 'eraser' && !viewport.isPanning.value && hoveredGridCornerIndex === null && draggingGridCornerIndex === null && !isHoveringGridQuad && !isDraggingWholeGrid,
+      'cursor-pointer': (activeMode === 'view' && !gridState?.isActive && hoveredVertexIndex === null && draggingVertexIndex === null && !isRubberBandSelecting) || (drawTool === 'eraser' && !isSelectingGridRegion),
+      'cursor-crosshair': ((isSelectingGridRegion || (activeMode === 'draw' && drawTool !== 'eraser' && !gridState?.isActive)) && !viewport.isPanning.value) || isRubberBandSelecting,
+      'cursor-default': gridState?.isActive && !isSelectingGridRegion && drawTool !== 'eraser' && !viewport.isPanning.value && hoveredGridCornerIndex === null && draggingGridCornerIndex === null && !isHoveringGridQuad && !isDraggingWholeGrid,
     }"
     @mousedown="onMouseDown"
     @mousemove="onMouseMove"

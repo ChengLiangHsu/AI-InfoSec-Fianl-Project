@@ -79,6 +79,7 @@ import DroneHomeUpload from './components/DroneHomeUpload.vue'
 import ProjectScenarioCard, { type ScenarioData } from './components/ProjectScenarioCard.vue'
 import PlotToolbar from './components/PlotToolbar.vue'
 import PlotCanvasOverlay from './components/PlotCanvasOverlay.vue'
+import PlotStatisticsPanel from './components/PlotStatisticsPanel.vue'
 import PlotTreatmentDialog, { type TreatmentData } from './components/PlotTreatmentDialog.vue'
 import StepNavigationHUD from './components/StepNavigationHUD.vue'
 import ImageDownloadPanel from './components/ImageDownloadPanel.vue'
@@ -349,7 +350,8 @@ function onUpdatePlotPoints(payload: { plotNumber: number; points: NormalizedPoi
 }
 
 function onSelectPlot(plotNumber: number | null) {
-  selectedPlotNumber.value = plotNumber
+  // The overlay emits the plural selection first; its null single value must preserve multi-selection.
+  if (selectedPlotNumber.value !== plotNumber) selectedPlotNumber.value = plotNumber
 }
 
 function onSelectPlots(plotNumbers: number[]) {
@@ -885,6 +887,14 @@ watch(selectedProject, async (newProj) => {
               </Tooltip>
             </TooltipProvider>
           </div>
+
+          <PlotStatisticsPanel
+            v-if="selectedProject.progress === 100 && (currentStep === 3 || currentStep === 4)"
+            :task-id="selectedProject.id"
+            :plots="plots.filter(plot => selectedPlotNumbers.includes(plot.plot_number))"
+            :current-formula="selectedFormula"
+            @select-formula="selectedFormula = $event"
+          />
 
           <!-- 右側垂直小畫家工具列 (僅步驟 3 顯示) -->
           <PlotToolbar

@@ -269,12 +269,7 @@ export function usePlots() {
   // 一鍵自動網格生成狀態
   const gridState = ref<GridGeneratorState>({
     isActive: false,
-    corners: [
-      { x: 0.30, y: 0.25 },
-      { x: 0.55, y: 0.25 },
-      { x: 0.55, y: 0.38 },
-      { x: 0.30, y: 0.38 },
-    ],
+    corners: [],
     rows: 10,
     cols: 3,
     scaleX: 0.38,
@@ -588,11 +583,10 @@ export function usePlots() {
     isDirty.value = true
   }
 
-  function startGridMode(defaultCorners?: NormalizedPoint[]): void {
+  function startGridMode(): void {
+    gridState.value.corners = []
+    clearExcludedGridCells()
     gridState.value.isActive = true
-    if (defaultCorners && defaultCorners.length === 4) {
-      gridState.value.corners = defaultCorners
-    }
   }
 
   function closeGridMode(): void {
