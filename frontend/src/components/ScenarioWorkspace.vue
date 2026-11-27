@@ -38,6 +38,14 @@ import {
   Sprout,
   ScanSearch,
   SlidersHorizontal,
+  MessageSquare,
+  Wand2,
+  ListPlus,
+  CalendarPlus,
+  Plus,
+  ToggleLeft,
+  Pencil,
+  Trash2,
 } from '@lucide/vue'
 
 const props = withDefaults(
@@ -60,7 +68,7 @@ const emit = defineEmits<{
   (e: 'saved', scenario: ScenarioData): void
 }>()
 
-const { status, messages, loadInitialMessages, sendPrompt, injectAssistantMessage } = useChatAgent(
+const { status, messages, loadInitialMessages, sendPrompt, injectAssistantMessage, clearChat } = useChatAgent(
   () => props.projectId
 )
 
@@ -79,32 +87,115 @@ const isSplitMode = computed<boolean>(
   () => manualExpanded.value || hasConfiguredScenario(currentScenario.value)
 )
 
-const quickScenarios = [
+const hasUserMessage = computed<boolean>(() =>
+  messages.value.some((msg) => msg.role === 'user')
+)
+
+interface QuickSuggestion {
+  label: string
+  icon: typeof Bug
+  iconClass: string
+  prompt: string
+}
+
+const initialSuggestions: QuickSuggestion[] = [
   {
-    label: '農藥藥效試驗',
+    label: '水稻農藥藥效（快得寧 500x/1000x/2000x）',
     icon: Bug,
     iconClass: 'text-primary',
-    prompt: '我想規劃農藥藥效試驗，請跟我確認作物、藥劑名稱與劑量倍數來生成表單。',
+    prompt: '我要做水稻殺蟲劑藥效試驗，測試藥劑「快得寧」500x、1000x、2000x 三個稀釋倍數與對照組，請直接幫我建立試驗表單。',
   },
   {
-    label: '肥料肥力試驗',
+    label: '玉米肥料試驗（50%/100%/200%）',
     icon: FlaskConical,
     iconClass: 'text-sky-500',
-    prompt: '我想規劃肥料肥力試驗，請跟我確認作物、肥料品項與施用量來生成表單。',
+    prompt: '我要做玉米肥料肥力試驗，使用「特肥一號」，比較減量 50%、標準 100%、倍量 200% 與對照組，請直接幫我建立試驗表單。',
   },
   {
-    label: '品種比較試驗',
+    label: '水稻品種比較（台農71/台南11/高雄147）',
     icon: Sprout,
     iconClass: 'text-emerald-500',
-    prompt: '我要做作物品種比較試驗（不需要劑量欄位），請跟我確認品種與想紀錄的項目來生成表單。',
+    prompt: '我要做水稻品種比較試驗（不需要劑量欄位），比較台農71號、台南11號、高雄147號，並紀錄播種日期與是否覆膜，請直接幫我建立試驗表單。',
   },
   {
-    label: '長勢與缺株監測',
+    label: '田間長勢與缺株監測',
     icon: ScanSearch,
     iconClass: 'text-amber-500',
-    prompt: '我要做田間長勢與缺株監測（非用藥情境），請協助我設計分區紀錄表單。',
+    prompt: '我要做甘藍田間長勢與缺株監測（非用藥情境），分區紀錄生育期與缺株程度，請直接幫我建立試驗表單。',
+  },
+  {
+    label: '先從問答開始（多輪引導）',
+    icon: MessageSquare,
+    iconClass: 'text-muted-foreground',
+    prompt: '我想規劃一個田間農藥藥效試驗，請先跟我確認需要哪些資訊。',
   },
 ]
+
+const interviewFollowUpSuggestions: QuickSuggestion[] = [
+  {
+    label: '水稻＋快得寧 500x/1000x/2000x',
+    icon: Bug,
+    iconClass: 'text-primary',
+    prompt: '作物是水稻，目標病蟲害是飛蝨，預計測試「快得寧」500x、1000x、2000x 三個稀釋倍數，請幫我生成表單。',
+  },
+  {
+    label: '改做水稻品種比較（無劑量）',
+    icon: Sprout,
+    iconClass: 'text-emerald-500',
+    prompt: '這次不做用藥，改做水稻品種比較：台農71號、台南11號、高雄147號，請幫我生成表單。',
+  },
+  {
+    label: '直接套用建議模板建表單',
+    icon: Wand2,
+    iconClass: 'text-amber-500',
+    prompt: '先不用再問了，請直接依你的建議模板幫我生成表單草稿。',
+  },
+]
+
+const splitModeSuggestions: QuickSuggestion[] = [
+  {
+    label: '新增「施用時期」下拉欄位',
+    icon: ListPlus,
+    iconClass: 'text-primary',
+    prompt: '請在處理組欄位中新增一個「施用時期」下拉選單欄位，選項為「分蘗期」、「抽穗期」、「乳熟期」。',
+  },
+  {
+    label: '新增「施用日期」日期欄位',
+    icon: CalendarPlus,
+    iconClass: 'text-sky-500',
+    prompt: '請在試驗共通資訊中新增一個「施用日期」的日期欄位。',
+  },
+  {
+    label: '新增一組實驗處理組',
+    icon: Plus,
+    iconClass: 'text-emerald-500',
+    prompt: '請幫我再新增一組實驗處理組，並自動配一個不重複的高對比顏色。',
+  },
+  {
+    label: '新增「是否覆膜」開關欄位',
+    icon: ToggleLeft,
+    iconClass: 'text-amber-500',
+    prompt: '請在處理組欄位中新增一個「是否覆膜」的開關（boolean）欄位。',
+  },
+  {
+    label: '修改對照組名稱',
+    icon: Pencil,
+    iconClass: 'text-muted-foreground',
+    prompt: '請把對照組名稱改為「空白未處理對照 (CK)」。',
+  },
+]
+
+const suggestionGroupLabel = computed<string>(() => {
+  if (isSplitMode.value) return '快速測試表單微調（點擊直接送出）'
+  if (hasUserMessage.value) return '快速回覆（點擊直接送出）'
+  return '快速測試情境（點擊直接送出）'
+})
+
+const activeSuggestions = computed<QuickSuggestion[]>(() => {
+  if (isSplitMode.value) return splitModeSuggestions
+  if (hasUserMessage.value) return interviewFollowUpSuggestions
+  return initialSuggestions
+})
 
 async function initProjectChat(pid: string) {
   await loadInitialMessages(pid)
@@ -197,6 +288,14 @@ async function triggerQuickScenario(promptText: string): Promise<void> {
   })
 }
 
+async function handleClearChat(): Promise<void> {
+  if (isBusy.value || messages.value.length === 0) return
+  if (typeof window !== 'undefined' && !window.confirm('確定要清空目前的對話紀錄嗎？')) {
+    return
+  }
+  await clearChat(props.projectId)
+}
+
 const placeholderText = computed(() => {
   if (isBusy.value) return 'AI 正在整理試驗情境與表單中，請稍候...'
   if (isSplitMode.value) {
@@ -235,30 +334,56 @@ const placeholderText = computed(() => {
             </div>
           </div>
 
-          <Button
-            v-if="!isSplitMode"
-            type="button"
-            variant="outline"
-            size="sm"
-            class="h-7 px-2.5 text-xs gap-1.5 shrink-0 cursor-pointer"
-            @click="handleManualStart"
-          >
-            <SlidersHorizontal class="size-3.5" />
-            <span>直接手動建立表單</span>
-          </Button>
-          <Badge
-            v-else
-            variant="outline"
-            class="text-[10px] text-primary border-primary/30 bg-primary/5 shrink-0"
-          >
-            雙向同步中
-          </Badge>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <Button
+              v-if="!isSplitMode"
+              type="button"
+              variant="outline"
+              size="sm"
+              class="h-7 px-2.5 text-xs gap-1.5 shrink-0 cursor-pointer"
+              @click="handleManualStart"
+            >
+              <SlidersHorizontal class="size-3.5" />
+              <span>直接手動建立表單</span>
+            </Button>
+            <Badge
+              v-else
+              variant="outline"
+              class="text-[10px] text-primary border-primary/30 bg-primary/5 shrink-0"
+            >
+              雙向同步中
+            </Badge>
+
+            <Button
+              type="button"
+              data-testid="clear-chat-button"
+              variant="ghost"
+              size="sm"
+              class="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0 cursor-pointer"
+              :disabled="isBusy || messages.length === 0"
+              aria-label="清空對話紀錄"
+              title="清空對話紀錄"
+              @click="handleClearChat"
+            >
+              <Trash2 class="size-3.5" />
+              <span class="hidden sm:inline">清空對話</span>
+            </Button>
+          </div>
         </header>
 
         <!-- 對話內容區 -->
         <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
           <Conversation class="flex-1 min-h-0">
             <ConversationContent>
+              <div
+                v-if="messages.length === 0 && !isThinking"
+                data-testid="scenario-chat-empty"
+                class="flex h-full min-h-[160px] flex-col items-center justify-center p-4 text-center text-muted-foreground my-auto select-none"
+              >
+                <p class="text-xs text-muted-foreground/75">
+                  對話紀錄已清空，請點選下方快捷建議或直接輸入開始新的討論
+                </p>
+              </div>
               <MessageBranch v-for="message in messages" :key="message.key" :default-branch="0">
                 <MessageBranchContent>
                   <Message
@@ -287,18 +412,36 @@ const placeholderText = computed(() => {
 
           <!-- 快捷情境標籤 + 輸入框 -->
           <div class="w-full px-3.5 pb-3.5 pt-2 space-y-2 border-t border-border/40 bg-background shrink-0">
-            <div v-if="!isSplitMode" class="flex flex-wrap items-center gap-1.5 pb-0.5">
-              <button
-                v-for="item in quickScenarios"
-                :key="item.label"
-                type="button"
-                :disabled="isBusy"
-                class="inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-muted/40 px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                @click="triggerQuickScenario(item.prompt)"
+            <div data-testid="scenario-quick-suggestions" class="space-y-1.5">
+              <p
+                id="scenario-suggestions-heading"
+                class="text-[11px] font-medium text-muted-foreground"
               >
-                <component :is="item.icon" class="size-3.5" :class="item.iconClass" />
-                <span>{{ item.label }}</span>
-              </button>
+                {{ suggestionGroupLabel }}
+              </p>
+              <ul
+                role="list"
+                aria-labelledby="scenario-suggestions-heading"
+                class="flex flex-wrap items-center gap-1.5 pb-0.5 list-none m-0 p-0"
+              >
+                <li v-for="item in activeSuggestions" :key="item.label">
+                  <button
+                    type="button"
+                    data-testid="scenario-suggestion-chip"
+                    :disabled="isBusy"
+                    class="inline-flex min-h-7 items-center gap-1.5 rounded-full border border-border/80 bg-muted/40 px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    @click="triggerQuickScenario(item.prompt)"
+                  >
+                    <component
+                      :is="item.icon"
+                      aria-hidden="true"
+                      class="size-3.5 shrink-0"
+                      :class="item.iconClass"
+                    />
+                    <span>{{ item.label }}</span>
+                  </button>
+                </li>
+              </ul>
             </div>
 
             <PromptInputProvider @submit="onSubmit">

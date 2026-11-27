@@ -5,7 +5,7 @@ import Persona, { type PersonaState } from '@/components/ai-elements/persona/Per
 import AskAgent from './AskAgent.vue'
 import StepBadgeText from '@/components/StepBadgeText.vue'
 import { useChatAgent } from '@/lib/useChatAgent'
-import { Sparkles, X, Bot } from '@lucide/vue'
+import { Sparkles, X, Bot, Trash2 } from '@lucide/vue'
 import {
   Tooltip,
   TooltipContent,
@@ -31,7 +31,8 @@ const props = withDefaults(
 )
 
 const { width: windowWidth, height: windowHeight } = useWindowSize()
-const { status, messages, sendPrompt, injectAssistantMessage } = useChatAgent(() => props.projectId)
+const { status, messages, sendPrompt, injectAssistantMessage, clearChat } = useChatAgent(() => props.projectId)
+const isBusy = computed(() => status.value === 'submitted' || status.value === 'streaming')
 
 const personaContainer = ref<HTMLElement | null>(null)
 const isDialogOpen = ref(false)
@@ -91,6 +92,14 @@ function openDialog() {
 
 function closeDialog() {
   isDialogOpen.value = false
+}
+
+async function handleClearChat() {
+  if (isBusy.value || messages.value.length === 0) return
+  if (typeof window !== 'undefined' && !window.confirm('確定要清空目前的對話紀錄嗎？')) {
+    return
+  }
+  await clearChat(props.projectId || 'home')
 }
 
 // Persona 動畫狀態與後端 Agent 狀態連動
@@ -162,7 +171,8 @@ watch(
     const key = (pid as string) || 'home'
 
     if (state === 'HOME_INTRO') {
-      if (messages.value.length === 0) {
+      if (!promptedProjects.value['home'] && messages.value.length === 0) {
+        promptedProjects.value['home'] = true
         injectAssistantMessage(
           '嗨！歡迎來到田間試驗評估系統～直接把空拍照片拖進來，就可以開始步驟 1：航拍上傳囉！',
           'home'
@@ -298,7 +308,7 @@ function getDockCandidates(): DockCandidate[] {
       ]
     }
     return [
-      { selector: '[data-tour="save-plots"]', hint: '小區繪製或編輯完成後，請記得儲存' },
+      { selector: '[data-tour="save-plots"]', hint: '小區繪製或編輯完成後，系統會自動為您儲存進度' },
       { selector: '[data-tour="step-tab-4"]', hint: '小區標註完成後，點此前往步驟 4 進行光譜分析' },
     ]
   }
@@ -587,6 +597,26 @@ onUnmounted(() => {
           </h2>
         </div>
         <div class="flex items-center gap-1 shrink-0">
+          <TooltipProvider :delay-duration="150">
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <button
+                  type="button"
+                  data-testid="clear-chat-button"
+                  aria-label="清空對話紀錄"
+                  :disabled="isBusy || messages.length === 0"
+                  class="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-40 disabled:pointer-events-none cursor-pointer transition-colors"
+                  @click="handleClearChat"
+                >
+                  <Trash2 class="size-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" class="text-xs">
+                清空對話紀錄
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
           <TooltipProvider :delay-duration="150">
             <Tooltip>
               <TooltipTrigger as-child>

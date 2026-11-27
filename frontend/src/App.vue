@@ -19,12 +19,15 @@ import {
   ZoomOut,
   Scan,
   RotateCcw,
+  RotateCw,
+  Compass,
   X,
   XCircle,
   Save,
   Pencil,
+  AlertCircle,
 } from '@lucide/vue'
-import { useCanvasViewport } from './lib/useCanvasViewport'
+import { useCanvasViewport, ROTATE_STEP_DEG } from './lib/useCanvasViewport'
 import AppSidebar from "@/components/AppSidebar.vue"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -99,12 +102,15 @@ const {
   selectedPlotNumbers,
   isDirty,
   isSaving,
+  saveState,
   errorMessage,
   gridState,
   existingTreatments,
   getPlotColor,
   loadPlots,
   savePlots,
+  flushAutoSave,
+  cancelPendingAutoSave,
   addPlotWithTreatment,
   updatePlotTreatment,
   updatePlotTreatments,
@@ -149,12 +155,7 @@ async function handleDetectMarkers() {
 }
 
 function handleConfirmGrid() {
-  if (plots.value.length > 0) {
-    const replace = window.confirm(`目前畫布上已有 ${plots.value.length} 個小區。\n點擊「確定」替換既有小區，點擊「取消」保留並追加在後方。`)
-    confirmBatchGenerate(replace ? 'replace' : 'append')
-  } else {
-    confirmBatchGenerate('replace')
-  }
+  confirmBatchGenerate('append')
   nextTick(() => plotCanvasOverlayRef.value?.redraw())
 }
 
@@ -184,6 +185,7 @@ const viewportRef = ref<HTMLDivElement | null>(null)
 const imageRef = ref<HTMLImageElement | null>(null)
 
 const viewport = useCanvasViewport()
+const isRotateToolActive = ref(false)
 
 const isDrawing = computed(() => plotCanvasOverlayRef.value?.isDrawing?.() || false)
 
@@ -244,6 +246,35 @@ function onZoomOut() {
   viewport.zoomOut(w, h)
   nextTick(() => plotCanvasOverlayRef.value?.redraw())
 }
+
+function onRotateLeft() {
+  const w = viewportRef.value?.clientWidth
+  const h = viewportRef.value?.clientHeight
+  viewport.rotateBy(-ROTATE_STEP_DEG, w, h)
+  nextTick(() => plotCanvasOverlayRef.value?.redraw())
+}
+
+function onRotateRight() {
+  const w = viewportRef.value?.clientWidth
+  const h = viewportRef.value?.clientHeight
+  viewport.rotateBy(ROTATE_STEP_DEG, w, h)
+  nextTick(() => plotCanvasOverlayRef.value?.redraw())
+}
+
+function onResetRotation() {
+  const w = viewportRef.value?.clientWidth
+  const h = viewportRef.value?.clientHeight
+  viewport.resetRotation(w, h)
+  nextTick(() => plotCanvasOverlayRef.value?.redraw())
+}
+
+function toggleRotateTool() {
+  isRotateToolActive.value = !isRotateToolActive.value
+}
+
+watch([activeMode, () => gridState.value.isActive], () => {
+  isRotateToolActive.value = false
+})
 
 function onImageLoaded() {
   isImageLoading.value = false
@@ -411,10 +442,7 @@ function handleDuplicatePlots(plotNumbers: number[]) {
 
 async function handleSavePlots() {
   if (!selectedProject.value?.id) return
-  const ok = await savePlots(selectedProject.value.id)
-  if (!ok && errorMessage.value) {
-    alert(errorMessage.value)
-  }
+  await savePlots(selectedProject.value.id)
 }
 
 const currentStep = ref<1 | 2 | 3 | 4>(1)
@@ -441,9 +469,13 @@ function isStepUnlocked(stepId: 1 | 2 | 3 | 4): boolean {
   return false
 }
 
-function canSafelyLeaveStep3(): boolean {
-  if (currentStep.value === 3 && isDirty.value) {
-    return window.confirm('小區標註尚有未儲存的變更，確定要切換步驟嗎？（建議先點擊「儲存小區」以保留進度）')
+async function ensurePlotsSavedBeforeLeave(confirmMessage: string): Promise<boolean> {
+  if (!selectedProject.value?.id) return true
+  if (isDirty.value || isSaving.value) {
+    const saved = await flushAutoSave(selectedProject.value.id)
+    if (!saved && isDirty.value) {
+      return window.confirm(confirmMessage)
+    }
   }
   return true
 }
@@ -455,20 +487,24 @@ function resetStepFormula(targetStep: 1 | 2 | 3 | 4) {
   }
 }
 
-function handleStepChange(targetStep: 1 | 2 | 3 | 4) {
+async function handleStepChange(targetStep: 1 | 2 | 3 | 4) {
   if (targetStep === currentStep.value) return
   if (!isStepUnlocked(targetStep)) {
     if ((selectedProject.value?.progress ?? 0) < 100) {
       alert(`需待正射影像拼接完成（目前進度 ${selectedProject.value?.progress ?? 0}%）方可進入該步驟`)
     } else if (targetStep === 4 && plots.value.length === 0) {
-      alert('需先於步驟 3 完成小區網格標註與儲存方可進入各小區光譜分析')
+      alert('需先於步驟 3 完成小區網格標註方可進入各小區光譜分析')
     }
     return
   }
-  if (currentStep.value === 3 && !canSafelyLeaveStep3()) {
-    return
+  if (currentStep.value === 3) {
+    const canLeave = await ensurePlotsSavedBeforeLeave(
+      '小區標註自動儲存失敗，尚有未儲存的變更，確定要切換步驟嗎？'
+    )
+    if (!canLeave) return
   }
   currentStep.value = targetStep
+  isRotateToolActive.value = false
   resetStepFormula(targetStep)
   nextTick(() => {
     if (imageRef.value && imageRef.value.complete && imageRef.value.naturalWidth > 0) {
@@ -482,11 +518,10 @@ function handleStepChange(targetStep: 1 | 2 | 3 | 4) {
 }
 
 async function handleGoHome() {
-  if (isDirty.value) {
-    if (!confirm('您有未儲存的小區設定，是否確定返回主畫面？未儲存的變更將會遺失。')) {
-      return
-    }
-  }
+  const canLeave = await ensurePlotsSavedBeforeLeave(
+    '小區標註自動儲存失敗，是否確定返回主畫面？未儲存的變更將會遺失。'
+  )
+  if (!canLeave) return
   selectedProject.value = null
   currentStep.value = 1
   await clearChat('home')
@@ -653,8 +688,17 @@ async function handleDeleteProject(id: string) {
   }
 }
 
+function handleBeforeUnload(event: BeforeUnloadEvent) {
+  if (selectedProject.value?.id && (isDirty.value || isSaving.value)) {
+    void flushAutoSave(selectedProject.value.id, { keepalive: true })
+    event.preventDefault()
+    event.returnValue = ''
+  }
+}
+
 onMounted(async () => {
   window.addEventListener('resize', handleWindowResize)
+  window.addEventListener('beforeunload', handleBeforeUnload)
   try {
     const formulasRes = await fetch("/api/task/odm-task-formulas")
     const formulasData = await formulasRes.json()
@@ -692,9 +736,14 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleWindowResize)
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+  cancelPendingAutoSave()
 })
 
-watch(selectedProject, async (newProj) => {
+watch(selectedProject, async (newProj, oldProj) => {
+  if (oldProj?.id && oldProj.id !== newProj?.id && (isDirty.value || isSaving.value)) {
+    await flushAutoSave(oldProj.id)
+  }
   currentStep.value = 1
   uploadList.value = []
   selectedFormula.value = 'rgb'
@@ -704,6 +753,7 @@ watch(selectedProject, async (newProj) => {
     await loadPlots(newProj.id)
   } else {
     setScenario(null)
+    await loadPlots('')
   }
 })
 
@@ -785,6 +835,43 @@ watch(selectedProject, async (newProj) => {
             <Badge variant="outline" class="text-xs text-zinc-300 border-white/20">
               <Images class="size-3.5 mr-1 text-zinc-400" />
               {{ selectedProject.images ?? 0 }} 張相片
+            </Badge>
+            <Badge
+              v-if="selectedProject.progress === 100 && currentStep === 3 && saveState === 'saving'"
+              data-testid="plots-autosave-status"
+              variant="outline"
+              class="text-xs text-amber-300 border-amber-400/40 bg-amber-950/40"
+            >
+              <Spinner class="size-3 mr-1 animate-spin" />
+              自動儲存中...
+            </Badge>
+            <Badge
+              v-else-if="selectedProject.progress === 100 && currentStep === 3 && saveState === 'pending'"
+              data-testid="plots-autosave-status"
+              variant="outline"
+              class="text-xs text-amber-200 border-amber-400/30 bg-amber-950/30"
+            >
+              待自動儲存...
+            </Badge>
+            <button
+              v-else-if="selectedProject.progress === 100 && currentStep === 3 && saveState === 'error'"
+              type="button"
+              data-testid="plots-autosave-status"
+              class="inline-flex items-center gap-1 rounded-full border border-destructive/50 bg-destructive/20 px-2.5 py-0.5 text-xs font-medium text-red-200 cursor-pointer hover:bg-destructive/30 transition-colors"
+              :title="errorMessage || '自動儲存失敗'"
+              @click="handleSavePlots"
+            >
+              <AlertCircle class="size-3.5" />
+              儲存失敗（點擊重試）
+            </button>
+            <Badge
+              v-else-if="selectedProject.progress === 100 && currentStep === 3 && saveState === 'saved'"
+              data-testid="plots-autosave-status"
+              variant="outline"
+              class="text-xs text-emerald-300 border-emerald-400/40 bg-emerald-950/40"
+            >
+              <CheckCircle2 class="size-3.5 mr-1" />
+              已自動儲存
             </Badge>
             <Badge
               v-if="selectedProject.progress === 100 && currentStep === 4"
@@ -894,6 +981,80 @@ watch(selectedProject, async (newProj) => {
                   <Button
                     size="sm"
                     variant="ghost"
+                    class="size-7 p-0 cursor-pointer text-zinc-400 hover:text-white hover:bg-white/10"
+                    @click="onRotateLeft"
+                  >
+                    <RotateCcw class="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" class="text-xs">逆時針旋轉 15°</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            <TooltipProvider :delay-duration="150">
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    class="h-7 min-w-11 px-1.5 font-mono text-xs font-semibold cursor-pointer"
+                    :class="viewport.rotationDegrees.value !== 0 ? 'text-purple-300 hover:text-purple-200 hover:bg-purple-500/20' : 'text-zinc-300 hover:text-white hover:bg-white/10'"
+                    @click="onResetRotation"
+                  >
+                    {{ viewport.rotationDegrees }}°
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" class="text-xs">
+                  點擊重設旋轉角度為 0°（滑鼠中鍵拖曳 / Shift+右鍵拖曳 / Alt+滾輪皆可旋轉視角）
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            <TooltipProvider :delay-duration="150">
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    class="size-7 p-0 cursor-pointer text-zinc-400 hover:text-white hover:bg-white/10"
+                    @click="onRotateRight"
+                  >
+                    <RotateCw class="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" class="text-xs">順時針旋轉 15°</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            <TooltipProvider :delay-duration="150">
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    class="size-7 p-0 cursor-pointer transition-colors"
+                    :class="isRotateToolActive ? 'bg-purple-600 text-white hover:bg-purple-500 ring-1 ring-purple-400/60' : 'text-zinc-400 hover:text-white hover:bg-white/10'"
+                    :aria-pressed="isRotateToolActive"
+                    data-testid="toggle-rotate-tool"
+                    @click="toggleRotateTool"
+                  >
+                    <Compass class="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" class="text-xs">
+                  {{ isRotateToolActive ? '關閉滑鼠左鍵旋轉模式' : '啟用滑鼠左鍵拖曳旋轉視角（隨時也可用中鍵或 Shift+右鍵拖曳）' }}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            <div class="my-1 h-3.5 w-px bg-white/20" />
+
+            <TooltipProvider :delay-duration="150">
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <Button
+                    size="sm"
+                    variant="ghost"
                     class="h-7 gap-1 px-2 text-xs font-medium cursor-pointer text-zinc-300 hover:text-white hover:bg-white/10"
                     @click="onFitToScreen"
                   >
@@ -901,7 +1062,7 @@ watch(selectedProject, async (newProj) => {
                     <span class="hidden sm:inline">最適大小</span>
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="top" class="text-xs">重設為最適畫面尺寸 (Fit)</TooltipContent>
+                <TooltipContent side="top" class="text-xs">重設為最適畫面尺寸與 0° 視角 (Fit)</TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </div>
@@ -926,6 +1087,8 @@ watch(selectedProject, async (newProj) => {
             :selected-plot-numbers="selectedPlotNumbers"
             :is-dirty="isDirty"
             :is-saving="isSaving"
+            :save-state="saveState"
+            :error-message="errorMessage"
             :is-drawing="isDrawing"
             :grid-state="gridState"
             class="absolute top-1/2 -translate-y-1/2 right-4 z-20"
@@ -1053,7 +1216,7 @@ watch(selectedProject, async (newProj) => {
               :style="{
                 width: `${viewport.baseWidth.value}px`,
                 height: `${viewport.baseHeight.value}px`,
-                transform: `translate3d(${viewport.panX.value}px, ${viewport.panY.value}px, 0) scale(${viewport.scale.value})`,
+                transform: `translate3d(${viewport.panX.value}px, ${viewport.panY.value}px, 0) rotate(${viewport.rotation.value}deg) scale(${viewport.scale.value})`,
                 transformOrigin: '0 0',
                 imageRendering: 'auto',
               }"
@@ -1073,6 +1236,7 @@ watch(selectedProject, async (newProj) => {
               :selected-plot-numbers="currentStep === 3 || currentStep === 4 ? selectedPlotNumbers : []"
               :get-plot-color="getPlotColor"
               :viewport="viewport"
+              :is-rotate-tool-active="isRotateToolActive"
               :grid-state="currentStep === 3 ? gridState : { isActive: false, corners: [], rows: 3, cols: 3, marginRatio: 0.1, scaleX: 0.8, scaleY: 0.8, paddingRatio: 0, offsetX: 0, offsetY: 0, excludedIndices: [] }"
               :preview-plots="currentStep === 3 ? previewGridPlots : []"
               @plot-drawn="onPlotDrawn"

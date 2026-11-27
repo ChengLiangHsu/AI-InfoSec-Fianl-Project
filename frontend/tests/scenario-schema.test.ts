@@ -112,4 +112,66 @@ describe('scenarioSchema', () => {
     })
     expect(color).toBe('#8b5cf6')
   })
+
+  it('does not append duplicate or extra options from plots when scenario categories are defined', () => {
+    const scenario: ScenarioData = {
+      version: 2,
+      type: 'variety',
+      title: '水稻品種比較試驗',
+      group_fields: [
+        { key: 'variety', label: '品種名稱', type: 'text', required: true },
+        { key: 'method', label: '栽培方式', type: 'select', options: ['慣行', '有機'] },
+      ],
+      categories: [
+        { id: 'ck', name: '對照組 (CK)', color: CONTROL_COLOR, is_control: true, values: {} },
+        {
+          id: 'grp-1',
+          name: '台農71號',
+          color: '#10b981',
+          is_control: false,
+          values: { variety: '台農71號', method: '慣行' },
+        },
+        {
+          id: 'grp-2',
+          name: '高雄147號',
+          color: '#f59e0b',
+          is_control: false,
+          values: { variety: '高雄147號', method: '慣行' },
+        },
+      ],
+    }
+
+    const { setScenario, plots, existingTreatments } = usePlots()
+    setScenario(scenario)
+    plots.value = [
+      {
+        plot_number: 1,
+        coords: '[[0,0],[1,0],[1,1]]',
+        is_control: false,
+        treatment: '台農71號',
+        dose: '',
+      },
+      {
+        plot_number: 2,
+        coords: '[[0,0],[1,0],[1,1]]',
+        is_control: false,
+        treatment: '高雄147號',
+        dose: '',
+      },
+      {
+        plot_number: 3,
+        coords: '[[0,0],[1,0],[1,1]]',
+        is_control: false,
+        treatment: '舊資料處理組',
+        dose: '500x',
+      },
+    ]
+
+    expect(existingTreatments.value).toHaveLength(3)
+    expect(existingTreatments.value.map((t) => t.label)).toEqual([
+      '對照組 (CK)',
+      '台農71號',
+      '高雄147號',
+    ])
+  })
 })

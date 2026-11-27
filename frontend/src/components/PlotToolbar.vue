@@ -18,6 +18,7 @@ import {
   ClipboardCopy,
   ChevronRight,
   Minus,
+  AlertCircle,
 } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -35,7 +36,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
-import type { PlotItem, GridGeneratorState } from '@/lib/usePlots'
+import type { PlotItem, GridGeneratorState, PlotSaveState } from '@/lib/usePlots'
 
 const props = defineProps<{
   plots: PlotItem[]
@@ -45,9 +46,19 @@ const props = defineProps<{
   selectedPlotNumbers?: number[]
   isDirty: boolean
   isSaving: boolean
+  saveState?: PlotSaveState
+  errorMessage?: string | null
   isDrawing: boolean
   gridState?: GridGeneratorState
 }>()
+
+const effectiveSaveState = computed<PlotSaveState>(() => {
+  if (props.saveState) return props.saveState
+  if (props.isSaving) return 'saving'
+  if (props.errorMessage && props.isDirty) return 'error'
+  if (props.isDirty) return 'pending'
+  return 'saved'
+})
 
 const hasSelection = computed(() => {
   if (props.selectedPlotNumbers && props.selectedPlotNumbers.length > 0) return true
@@ -501,27 +512,46 @@ onBeforeUnmount(() => {
 
         <div class="my-0.5 h-px w-5 bg-white/15" />
 
-        <!-- 儲存小區設定按鈕 -->
+        <!-- 自動儲存狀態與立即儲存按鈕 -->
         <Tooltip>
           <TooltipTrigger as-child>
             <Button
+              data-tour="save-plots"
               size="icon"
               variant="ghost"
-              :disabled="isSaving"
+              :disabled="effectiveSaveState === 'saving'"
               class="relative size-9 rounded-xl transition-all cursor-pointer"
-              :class="isDirty ? 'bg-primary text-primary-foreground shadow-md ring-2 ring-primary/50' : 'text-zinc-400 hover:text-white hover:bg-white/10'"
+              :class="
+                effectiveSaveState === 'error'
+                  ? 'bg-destructive/20 text-destructive ring-1 ring-destructive/50 hover:bg-destructive/30'
+                  : effectiveSaveState === 'pending'
+                    ? 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/50 hover:bg-amber-500/30'
+                    : effectiveSaveState === 'saving'
+                      ? 'bg-white/10 text-amber-300'
+                      : 'text-emerald-400 hover:text-emerald-300 hover:bg-white/10'
+              "
               @click="emit('save')"
             >
-              <Spinner v-if="isSaving" class="size-4 animate-spin" />
-              <Save v-else class="size-4" />
+              <Spinner v-if="effectiveSaveState === 'saving'" class="size-4 animate-spin" />
+              <AlertCircle v-else-if="effectiveSaveState === 'error'" class="size-4" />
+              <Save v-else-if="effectiveSaveState === 'pending'" class="size-4" />
+              <Check v-else class="size-4" />
               <span
-                v-if="isDirty"
+                v-if="effectiveSaveState === 'pending'"
                 class="absolute top-1 right-1 size-2 rounded-full bg-amber-400 animate-pulse ring-2 ring-zinc-950"
               />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="left" class="text-xs">
-            {{ isSaving ? '儲存中...' : isDirty ? '儲存小區設定 (有未儲存變更*)' : '小區設定已儲存' }}
+            {{
+              effectiveSaveState === 'saving'
+                ? '正在自動儲存小區設定...'
+                : effectiveSaveState === 'error'
+                  ? `自動儲存失敗（點擊重試）${errorMessage ? `：${errorMessage}` : ''}`
+                  : effectiveSaveState === 'pending'
+                    ? '有變更，即將自動儲存（點擊立即儲存）'
+                    : '小區設定已自動儲存'
+            }}
           </TooltipContent>
         </Tooltip>
 

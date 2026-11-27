@@ -214,4 +214,145 @@ describe('Step 2 AI scenario workspace layout and HUD visibility', () => {
     expect(colorHeader).toBeDefined()
     expect(colorHeader!.classes()).toContain('whitespace-nowrap')
   })
+
+  it('shows contextual quick suggestion chips before and after split mode and sends prompt on click', async () => {
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/api/task/chat') && init?.method === 'POST') {
+        const payload = JSON.stringify({
+          key: 'u-1',
+          role: 'user',
+          versions: [{ id: 'v-1', content: JSON.parse(String(init.body)).prompt }],
+        })
+        return Promise.resolve(new Response(`${payload}\n`, { status: 200 }))
+      }
+      if (url.includes('/api/task/scenario/') && init?.method === 'PATCH') {
+        const body = JSON.parse(String(init.body || '{}'))
+        return Promise.resolve(new Response(JSON.stringify({ result: true, data: body.scenario })))
+      }
+      return Promise.resolve(new Response('', { status: 200 }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const wrapper = mount(ScenarioWorkspace, {
+      props: {
+        projectId: 'proj-suggestions',
+        projectName: '建議測試專案',
+        initialScenario: null,
+      },
+      global: {
+        stubs: {
+          ProjectScenarioCard: true,
+          Conversation: { template: '<div><slot /></div>' },
+          ConversationContent: { template: '<div><slot /></div>' },
+          ConversationScrollButton: true,
+          Message: { template: '<div><slot /></div>' },
+          MessageBranch: { template: '<div><slot /></div>' },
+          MessageBranchContent: { template: '<div><slot /></div>' },
+          MessageContent: { template: '<div><slot /></div>' },
+          MessageResponse: true,
+          PromptInputProvider: { template: '<div><slot /></div>' },
+          PromptInput: { template: '<div><slot /></div>' },
+          PromptInputBody: { template: '<div><slot /></div>' },
+          PromptInputFooter: { template: '<div><slot /></div>' },
+          PromptInputSubmit: true,
+          PromptInputTextarea: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    // Initial state: complete one-click scenario presets
+    const initialChips = wrapper.findAll('[data-testid="scenario-suggestion-chip"]')
+    expect(initialChips.length).toBeGreaterThanOrEqual(4)
+    expect(initialChips[0].text()).toContain('水稻農藥藥效')
+
+    // Clicking a chip sends a POST to /api/task/chat in scenario mode
+    await initialChips[0].trigger('click')
+    await flushPromises()
+    const chatCall = fetchMock.mock.calls.find(
+      ([url, init]) => String(url).includes('/api/task/chat') && init?.method === 'POST'
+    )
+    expect(chatCall).toBeDefined()
+    const sentBody = JSON.parse(String(chatCall![1]?.body))
+    expect(sentBody.mode).toBe('scenario')
+    expect(sentBody.prompt).toContain('快得寧')
+
+    // After a user message is present (still non-split): follow-up quick replies appear
+    const followUpChips = wrapper.findAll('[data-testid="scenario-suggestion-chip"]')
+    expect(followUpChips.some((chip) => chip.text().includes('直接套用建議模板建表單'))).toBe(true)
+
+    // Entering split mode switches to form-editing quick suggestions
+    await wrapper.get('button').trigger('click')
+    await flushPromises()
+    const splitChips = wrapper.findAll('[data-testid="scenario-suggestion-chip"]')
+    expect(splitChips.some((chip) => chip.text().includes('新增「施用時期」下拉欄位'))).toBe(true)
+    expect(splitChips.some((chip) => chip.text().includes('新增一組實驗處理組'))).toBe(true)
+  })
+
+  it('clears conversation history via DELETE API when clear chat button is confirmed', async () => {
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/api/task/chat') && init?.method === 'DELETE') {
+        return Promise.resolve(new Response(JSON.stringify({ result: true }), { status: 200 }))
+      }
+      return Promise.resolve(new Response('', { status: 200 }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const confirmMock = vi.fn(() => false)
+    vi.stubGlobal('confirm', confirmMock)
+
+    const wrapper = mount(ScenarioWorkspace, {
+      props: {
+        projectId: 'proj-clear-chat',
+        projectName: '清空對話測試專案',
+        initialScenario: null,
+      },
+      global: {
+        stubs: {
+          ProjectScenarioCard: true,
+          Conversation: { template: '<div><slot /></div>' },
+          ConversationContent: { template: '<div><slot /></div>' },
+          ConversationScrollButton: true,
+          Message: { template: '<div><slot /></div>' },
+          MessageBranch: { template: '<div><slot /></div>' },
+          MessageBranchContent: { template: '<div><slot /></div>' },
+          MessageContent: { template: '<div><slot /></div>' },
+          MessageResponse: true,
+          PromptInputProvider: { template: '<div><slot /></div>' },
+          PromptInput: { template: '<div><slot /></div>' },
+          PromptInputBody: { template: '<div><slot /></div>' },
+          PromptInputFooter: { template: '<div><slot /></div>' },
+          PromptInputSubmit: true,
+          PromptInputTextarea: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const clearButton = wrapper.get('[data-testid="clear-chat-button"]')
+    expect((clearButton.element as HTMLButtonElement).disabled).toBe(false)
+    expect(wrapper.find('[data-testid="scenario-chat-empty"]').exists()).toBe(false)
+
+    // Cancelling confirm keeps messages and skips DELETE request
+    await clearButton.trigger('click')
+    await flushPromises()
+    expect(confirmMock).toHaveBeenCalledTimes(1)
+    expect(
+      fetchMock.mock.calls.some(([url, init]) => String(url).includes('/api/task/chat') && init?.method === 'DELETE')
+    ).toBe(false)
+    expect(wrapper.find('[data-testid="scenario-chat-empty"]').exists()).toBe(false)
+
+    // Confirming clears messages, calls DELETE, shows empty state, and disables button
+    confirmMock.mockReturnValueOnce(true)
+    await clearButton.trigger('click')
+    await flushPromises()
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) =>
+          String(url) === '/api/task/chat/?project_id=proj-clear-chat' && init?.method === 'DELETE'
+      )
+    ).toBe(true)
+    expect(wrapper.find('[data-testid="scenario-chat-empty"]').exists()).toBe(true)
+    expect((clearButton.element as HTMLButtonElement).disabled).toBe(true)
+  })
 })

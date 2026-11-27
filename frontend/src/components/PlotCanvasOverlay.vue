@@ -26,11 +26,13 @@ const props = withDefaults(
     gridState?: GridGeneratorState
     previewPlots?: NormalizedPoint[][]
     canEdit?: boolean
+    isRotateToolActive?: boolean
   }>(),
   {
     drawTool: 'rect',
     previewPlots: () => [],
     canEdit: true,
+    isRotateToolActive: false,
   }
 )
 
@@ -247,9 +249,11 @@ function isPlotInsideActiveRubberBand(plot: PlotItem): boolean {
   }
   const pts = parseCoords(plot.coords)
   if (pts.length < 3) return false
-  const bounds = calculateNormalizedRectBounds(rubberBandStartNorm.value, rubberBandCurrentNorm.value)
-  const centroid = calculateCentroid(pts)
-  return isCentroidInsideBounds(centroid, bounds)
+  const sp1 = props.viewport.normalizedToScreen(rubberBandStartNorm.value)
+  const sp2 = props.viewport.normalizedToScreen(rubberBandCurrentNorm.value)
+  const bounds = calculateNormalizedRectBounds(sp1, sp2)
+  const centroidScreen = props.viewport.normalizedToScreen(calculateCentroid(pts))
+  return isCentroidInsideBounds(centroidScreen, bounds)
 }
 
 function isPlotEffectivelyHighlighted(plot: PlotItem): boolean {
@@ -754,6 +758,50 @@ function drawPlotCentroidBadge(
   ctx.restore()
 }
 
+function drawRotationIndicator(ctx: CanvasRenderingContext2D): void {
+  if (!props.viewport.isRotating.value) return
+  const px = props.viewport.rotatePivotX.value
+  const py = props.viewport.rotatePivotY.value
+  const label = `${props.viewport.rotationDegrees.value}°`
+
+  ctx.save()
+  ctx.beginPath()
+  ctx.arc(px, py, 8, 0, Math.PI * 2)
+  ctx.strokeStyle = 'rgba(168, 85, 247, 0.9)'
+  ctx.lineWidth = 1.5
+  ctx.stroke()
+
+  ctx.beginPath()
+  ctx.moveTo(px - 14, py)
+  ctx.lineTo(px + 14, py)
+  ctx.moveTo(px, py - 14)
+  ctx.lineTo(px, py + 14)
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)'
+  ctx.lineWidth = 1
+  ctx.stroke()
+
+  ctx.font = 'bold 11px ui-monospace, SFMono-Regular, Menlo, monospace'
+  const textW = ctx.measureText(label).width
+  const badgeW = textW + 14
+  const badgeH = 20
+  const badgeX = px - badgeW / 2
+  const badgeY = py - 34
+
+  ctx.fillStyle = 'rgba(24, 24, 27, 0.92)'
+  ctx.beginPath()
+  roundRect(ctx, badgeX, badgeY, badgeW, badgeH, 5)
+  ctx.fill()
+  ctx.strokeStyle = 'rgba(168, 85, 247, 0.85)'
+  ctx.lineWidth = 1
+  ctx.stroke()
+
+  ctx.fillStyle = '#ffffff'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(label, px, badgeY + badgeH / 2)
+  ctx.restore()
+}
+
 // ==========================================
 // 主繪製調度器 (Main Orchestrator)
 // ==========================================
@@ -776,6 +824,8 @@ function drawCanvas(): void {
   if (props.gridState?.isActive) {
     drawGridGeneratorOverlay(ctx)
   }
+
+  drawRotationIndicator(ctx)
 
   ctx.restore()
 }
@@ -1068,14 +1118,16 @@ function finishRubberBandSelection(screenX: number, screenY: number): void {
   )
 
   if (dist >= MIN_RECT_DRAG_PX) {
-    const bounds = calculateNormalizedRectBounds(rubberBandStartNorm.value, rubberBandCurrentNorm.value)
+    const sp1 = props.viewport.normalizedToScreen(rubberBandStartNorm.value)
+    const sp2 = props.viewport.normalizedToScreen(rubberBandCurrentNorm.value)
+    const bounds = calculateNormalizedRectBounds(sp1, sp2)
 
     const newlySelected: number[] = []
     for (const plot of props.plots) {
       const pts = parseCoords(plot.coords)
       if (pts.length < 3) continue
-      const centroid = calculateCentroid(pts)
-      if (isCentroidInsideBounds(centroid, bounds)) {
+      const centroidScreen = props.viewport.normalizedToScreen(calculateCentroid(pts))
+      if (isCentroidInsideBounds(centroidScreen, bounds)) {
         newlySelected.push(plot.plot_number)
       }
     }
@@ -1108,21 +1160,21 @@ function finishRectDrag(screenX: number, screenY: number): void {
   if (isDraggingRect.value && rectStartScreen.value && rectStartNorm.value && rectCurrentNorm.value) {
     const dist = Math.hypot(screenX - rectStartScreen.value.x, screenY - rectStartScreen.value.y)
     if (dist >= MIN_RECT_DRAG_PX) {
-      const minX = Math.min(rectStartNorm.value.x, rectCurrentNorm.value.x)
-      const maxX = Math.max(rectStartNorm.value.x, rectCurrentNorm.value.x)
-      const minY = Math.min(rectStartNorm.value.y, rectCurrentNorm.value.y)
-      const maxY = Math.max(rectStartNorm.value.y, rectCurrentNorm.value.y)
+      const sp1 = props.viewport.normalizedToScreen(rectStartNorm.value)
+      const sp2 = props.viewport.normalizedToScreen(rectCurrentNorm.value)
+      const minSx = Math.min(sp1.x, sp2.x)
+      const maxSx = Math.max(sp1.x, sp2.x)
+      const minSy = Math.min(sp1.y, sp2.y)
+      const maxSy = Math.max(sp1.y, sp2.y)
 
       const points: NormalizedPoint[] = [
-        { x: minX, y: minY },
-        { x: maxX, y: minY },
-        { x: maxX, y: maxY },
-        { x: minX, y: maxY },
+        props.viewport.screenToNormalized(minSx, minSy),
+        props.viewport.screenToNormalized(maxSx, minSy),
+        props.viewport.screenToNormalized(maxSx, maxSy),
+        props.viewport.screenToNormalized(minSx, maxSy),
       ]
       if (isSelectingGridRegion.value) {
-        const start = props.viewport.normalizedToScreen(points[0])
-        const end = props.viewport.normalizedToScreen(points[2])
-        if (end.x - start.x >= MIN_RECT_DRAG_PX && end.y - start.y >= MIN_RECT_DRAG_PX) {
+        if (maxSx - minSx >= MIN_RECT_DRAG_PX && maxSy - minSy >= MIN_RECT_DRAG_PX) {
           emit('update-grid-corners', points)
         }
       } else {
@@ -1136,11 +1188,33 @@ function finishRectDrag(screenX: number, screenY: number): void {
   }
 }
 
+function getViewportPivot(): { x: number; y: number } {
+  const rect = canvasRef.value?.getBoundingClientRect()
+  if (rect && rect.width > 0 && rect.height > 0) {
+    return { x: rect.width / 2, y: rect.height / 2 }
+  }
+  return props.viewport.normalizedToScreen({ x: 0.5, y: 0.5 })
+}
+
 // ==========================================
 // 滑鼠主流程調度 (Event Orchestrators)
 // ==========================================
 
 function onMouseDown(e: MouseEvent): void {
+  const isRotateTrigger =
+    e.button === 1 ||
+    (e.button === 2 && (e.shiftKey || e.altKey)) ||
+    (e.button === 0 && props.isRotateToolActive)
+
+  if (isRotateTrigger) {
+    e.preventDefault()
+    const { screenX, screenY } = getCanvasRelativeCoords(e)
+    const pivot = getViewportPivot()
+    props.viewport.startRotate(screenX, screenY, pivot.x, pivot.y)
+    drawCanvas()
+    return
+  }
+
   if (e.button === 2) {
     e.preventDefault()
     props.viewport.startPan(e.clientX, e.clientY)
@@ -1181,6 +1255,16 @@ function onMouseDown(e: MouseEvent): void {
 }
 
 function onMouseMove(e: MouseEvent): void {
+  if (props.viewport.isRotating.value) {
+    const { screenX, screenY } = getCanvasRelativeCoords(e)
+    const w = containerRef.value?.clientWidth
+    const h = containerRef.value?.clientHeight
+    if (props.viewport.updateRotate(screenX, screenY, w, h)) {
+      drawCanvas()
+    }
+    return
+  }
+
   if (props.viewport.isPanning.value) {
     const w = containerRef.value?.clientWidth
     const h = containerRef.value?.clientHeight
@@ -1316,6 +1400,12 @@ function onMouseUp(e: MouseEvent): void {
     return
   }
 
+  if (props.viewport.isRotating.value) {
+    props.viewport.endRotate()
+    drawCanvas()
+    return
+  }
+
   if (e.button === 2 || props.viewport.isPanning.value) {
     props.viewport.endPan()
     return
@@ -1365,6 +1455,14 @@ function onWheel(e: WheelEvent): void {
   const rect = canvasRef.value.getBoundingClientRect()
   const screenX = e.clientX - rect.left
   const screenY = e.clientY - rect.top
+
+  if (e.altKey) {
+    const deltaDeg = e.deltaY < 0 ? 5 : -5
+    const pivot = getViewportPivot()
+    props.viewport.rotateAtScreenPoint(pivot.x, pivot.y, deltaDeg, rect.width, rect.height)
+    drawCanvas()
+    return
+  }
 
   const factor = e.deltaY < 0 ? 1.15 : 0.87
   props.viewport.zoomAtScreenPoint(screenX, screenY, factor, rect.width, rect.height)
@@ -1498,6 +1596,8 @@ watch(
     props.gridState?.excludedIndices,
     props.previewPlots,
     props.viewport.scale.value,
+    props.viewport.rotation.value,
+    props.viewport.isRotating.value,
     props.viewport.panX.value,
     props.viewport.panY.value,
     props.viewport.baseWidth.value,
@@ -1550,18 +1650,19 @@ watch(
     ref="containerRef"
     class="absolute inset-0 pointer-events-auto select-none"
     :class="{
-      'cursor-grab': viewport.isPanning.value || (gridState?.isActive && hoveredGridCornerIndex !== null && draggingGridCornerIndex === null && drawTool !== 'eraser') || (activeMode === 'view' && hoveredVertexIndex !== null && draggingVertexIndex === null && !gridState?.isActive),
-      'cursor-grabbing': draggingGridCornerIndex !== null || draggingVertexIndex !== null || isDraggingWholeGrid,
-      'cursor-move': (gridState?.isActive && isHoveringGridQuad && hoveredGridCornerIndex === null && draggingGridCornerIndex === null && !isDraggingWholeGrid && drawTool !== 'eraser') || isDraggingWholePlot,
-      'cursor-pointer': (activeMode === 'view' && !gridState?.isActive && hoveredVertexIndex === null && draggingVertexIndex === null && !isRubberBandSelecting) || (drawTool === 'eraser' && !isSelectingGridRegion),
-      'cursor-crosshair': ((isSelectingGridRegion || (activeMode === 'draw' && drawTool !== 'eraser' && !gridState?.isActive)) && !viewport.isPanning.value) || isRubberBandSelecting,
-      'cursor-default': gridState?.isActive && !isSelectingGridRegion && drawTool !== 'eraser' && !viewport.isPanning.value && hoveredGridCornerIndex === null && draggingGridCornerIndex === null && !isHoveringGridQuad && !isDraggingWholeGrid,
+      'cursor-grab': viewport.isPanning.value || (isRotateToolActive && !viewport.isRotating.value) || (gridState?.isActive && hoveredGridCornerIndex !== null && draggingGridCornerIndex === null && drawTool !== 'eraser') || (activeMode === 'view' && hoveredVertexIndex !== null && draggingVertexIndex === null && !gridState?.isActive),
+      'cursor-grabbing': viewport.isRotating.value || draggingGridCornerIndex !== null || draggingVertexIndex !== null || isDraggingWholeGrid,
+      'cursor-move': !isRotateToolActive && !viewport.isRotating.value && ((gridState?.isActive && isHoveringGridQuad && hoveredGridCornerIndex === null && draggingGridCornerIndex === null && !isDraggingWholeGrid && drawTool !== 'eraser') || isDraggingWholePlot),
+      'cursor-pointer': !isRotateToolActive && !viewport.isRotating.value && ((activeMode === 'view' && !gridState?.isActive && hoveredVertexIndex === null && draggingVertexIndex === null && !isRubberBandSelecting) || (drawTool === 'eraser' && !isSelectingGridRegion)),
+      'cursor-crosshair': !isRotateToolActive && !viewport.isRotating.value && (((isSelectingGridRegion || (activeMode === 'draw' && drawTool !== 'eraser' && !gridState?.isActive)) && !viewport.isPanning.value) || isRubberBandSelecting),
+      'cursor-default': !isRotateToolActive && !viewport.isRotating.value && gridState?.isActive && !isSelectingGridRegion && drawTool !== 'eraser' && !viewport.isPanning.value && hoveredGridCornerIndex === null && draggingGridCornerIndex === null && !isHoveringGridQuad && !isDraggingWholeGrid,
     }"
     @mousedown="onMouseDown"
     @mousemove="onMouseMove"
     @mouseup="onMouseUp"
     @mouseleave="onMouseLeave"
     @wheel="onWheel"
+    @auxclick.prevent
     @contextmenu.prevent
     @dblclick="onDblClick"
   >

@@ -246,7 +246,14 @@ export function generateSubplotPolygon(
   ]
 }
 
-export function usePlots() {
+export type PlotSaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
+
+export interface UsePlotsOptions {
+  autoSaveDelayMs?: number
+}
+
+export function usePlots(options: UsePlotsOptions = {}) {
+  const autoSaveDelayMs = options.autoSaveDelayMs ?? 600
   const plots = ref<PlotItem[]>([])
   const activeMode = ref<'view' | 'draw'>('view')
   const selectedPlotNumbers = ref<number[]>([])
@@ -262,9 +269,50 @@ export function usePlots() {
       }
     },
   })
+  const activeTaskId = ref<string | null>(null)
+  const dirtyVersion = ref(0)
+  const savedVersion = ref(0)
   const isDirty = ref(false)
   const isSaving = ref(false)
   const errorMessage = ref<string | null>(null)
+
+  let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
+  let inFlightSave: Promise<boolean> | null = null
+  let inFlightTaskId: string | null = null
+
+  const saveState = computed<PlotSaveState>(() => {
+    if (isSaving.value) return 'saving'
+    if (errorMessage.value && isDirty.value) return 'error'
+    if (isDirty.value) return 'pending'
+    if (activeTaskId.value) return 'saved'
+    return 'idle'
+  })
+
+  function cancelPendingAutoSave(): void {
+    if (autoSaveTimer !== null) {
+      clearTimeout(autoSaveTimer)
+      autoSaveTimer = null
+    }
+  }
+
+  function scheduleAutoSave(): void {
+    if (!activeTaskId.value) return
+    cancelPendingAutoSave()
+    const targetTaskId = activeTaskId.value
+    autoSaveTimer = setTimeout(() => {
+      autoSaveTimer = null
+      if (activeTaskId.value === targetTaskId && isDirty.value) {
+        void savePlots(targetTaskId)
+      }
+    }, autoSaveDelayMs)
+  }
+
+  function markDirty(): void {
+    dirtyVersion.value += 1
+    isDirty.value = true
+    errorMessage.value = null
+    scheduleAutoSave()
+  }
 
   // 一鍵自動網格生成狀態
   const gridState = ref<GridGeneratorState>({
@@ -357,9 +405,12 @@ export function usePlots() {
   const existingTreatments = computed<ExistingTreatment[]>(() => {
     const list: ExistingTreatment[] = []
     const seen = new Set<string>()
+    const hasScenarioCategories = Boolean(
+      currentScenario.value?.categories && currentScenario.value.categories.length > 0
+    )
 
-    // 1. 優先加入專案情境設定之預設標籤
-    if (currentScenario.value?.categories && currentScenario.value.categories.length > 0) {
+    // 1. 若專案已有表單情境設定，僅列出表單定義之組別
+    if (hasScenarioCategories && currentScenario.value?.categories) {
       const targetName = currentScenario.value.target || ''
       const groupFields = currentScenario.value.group_fields || []
       for (const cat of currentScenario.value.categories) {
@@ -383,7 +434,7 @@ export function usePlots() {
             },
             groupFields
           )
-          const key = `${summary.treatment}::${summary.dose}::${summary.label}`
+          const key = `${summary.treatment.trim()}::${summary.dose.trim()}::${summary.label.trim()}`
           if (!seen.has(key)) {
             seen.add(key)
             list.push({
@@ -405,24 +456,28 @@ export function usePlots() {
       list.unshift({ isControl: true, treatment: '', dose: '', label: '未施藥對照 (CK)', color: CONTROL_COLOR })
     }
 
-    // 2. 補充畫布上已有但在情境中未列出的額外處理組
-    for (const p of plots.value) {
-      if (p.is_control) {
-        if (!seen.has('CK')) {
-          seen.add('CK')
-          list.unshift({ isControl: true, treatment: '', dose: '', label: '未施藥對照 (CK)', color: CONTROL_COLOR })
-        }
-      } else if (p.treatment) {
-        const key = `${p.treatment}::${p.dose}`
-        if (!seen.has(key)) {
-          seen.add(key)
-          list.push({
-            isControl: false,
-            treatment: p.treatment,
-            dose: p.dose,
-            label: `${p.treatment}${p.dose ? ' (' + p.dose + ')' : ''}`,
-            color: getPlotColor(p),
-          })
+    // 2. 僅在尚未設定任何表單情境時，才從畫布既有小區補充處理組選項（相容舊專案）
+    if (!hasScenarioCategories) {
+      for (const p of plots.value) {
+        if (p.is_control) {
+          if (!seen.has('CK')) {
+            seen.add('CK')
+            list.unshift({ isControl: true, treatment: '', dose: '', label: '未施藥對照 (CK)', color: CONTROL_COLOR })
+          }
+        } else if (p.treatment) {
+          const trt = p.treatment.trim()
+          const ds = (p.dose || '').trim()
+          const key = `${trt}::${ds}`
+          if (!seen.has(key)) {
+            seen.add(key)
+            list.push({
+              isControl: false,
+              treatment: trt,
+              dose: ds,
+              label: `${trt}${ds ? ' (' + ds + ')' : ''}`,
+              color: getPlotColor(p),
+            })
+          }
         }
       }
     }
@@ -442,16 +497,22 @@ export function usePlots() {
   }
 
   async function loadPlots(taskId: string): Promise<void> {
+    cancelPendingAutoSave()
+    activeTaskId.value = taskId || null
+    dirtyVersion.value = 0
+    savedVersion.value = 0
     if (!taskId) {
       plots.value = []
       isDirty.value = false
       selectedPlotNumber.value = null
+      errorMessage.value = null
       return
     }
     errorMessage.value = null
     try {
       const res = await fetch(`/api/task/plots/${taskId}`)
       const json = await res.json()
+      if (activeTaskId.value !== taskId) return
       if (res.ok && json.result && Array.isArray(json.data)) {
         plots.value = json.data
         isDirty.value = false
@@ -460,47 +521,108 @@ export function usePlots() {
         errorMessage.value = json.message || '無法取得小區資料'
       }
     } catch (err: any) {
+      if (activeTaskId.value !== taskId) return
       errorMessage.value = `載入小區失敗: ${err.message}`
     }
   }
 
-  async function savePlots(taskId: string): Promise<boolean> {
-    if (!taskId) return false
-    isSaving.value = true
-    errorMessage.value = null
-    try {
-      const payload = {
-        plots: plots.value.map((p) => ({
-          plot_number: p.plot_number,
-          coords: p.coords,
-          is_control: p.is_control,
-          treatment: p.treatment,
-          dose: p.dose,
-          metrics: p.metrics || {},
-        })),
+  function mergeServerMetrics(serverPlots: PlotItem[]): void {
+    const metricsByNumber = new Map<number, Record<string, any>>()
+    for (const item of serverPlots) {
+      if (item && typeof item.plot_number === 'number' && item.metrics && Object.keys(item.metrics).length > 0) {
+        metricsByNumber.set(item.plot_number, item.metrics)
       }
-      const res = await fetch(`/api/task/plots/${taskId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const json = await res.json()
-      if (res.ok && json.result) {
-        if (Array.isArray(json.data)) {
-          plots.value = json.data
-        }
-        isDirty.value = false
-        return true
-      } else {
-        errorMessage.value = json.message || '儲存小區失敗'
-        return false
-      }
-    } catch (err: any) {
-      errorMessage.value = `儲存失敗: ${err.message}`
-      return false
-    } finally {
-      isSaving.value = false
     }
+    if (metricsByNumber.size === 0) return
+    for (const localPlot of plots.value) {
+      if (!localPlot.metrics || Object.keys(localPlot.metrics).length === 0) {
+        const preserved = metricsByNumber.get(localPlot.plot_number)
+        if (preserved) {
+          localPlot.metrics = preserved
+        }
+      }
+    }
+  }
+
+  async function savePlots(taskId: string, saveOptions: { keepalive?: boolean } = {}): Promise<boolean> {
+    if (!taskId) return false
+    cancelPendingAutoSave()
+
+    if (inFlightSave && inFlightTaskId === taskId) {
+      const prevOk = await inFlightSave
+      if (activeTaskId.value && activeTaskId.value !== taskId) return prevOk
+      if (!isDirty.value) return prevOk
+    }
+
+    const runSave = async (): Promise<boolean> => {
+      isSaving.value = true
+      errorMessage.value = null
+      try {
+        while (true) {
+          const versionToSave = dirtyVersion.value
+          const payload = {
+            plots: plots.value.map((p) => ({
+              plot_number: p.plot_number,
+              coords: p.coords,
+              is_control: p.is_control,
+              treatment: p.treatment,
+              dose: p.dose,
+              metrics: p.metrics || {},
+            })),
+          }
+          const res = await fetch(`/api/task/plots/${taskId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            ...(saveOptions.keepalive ? { keepalive: true } : {}),
+          })
+          const json = await res.json().catch(() => ({}))
+          if (res.ok && json.result) {
+            const isSameTask = !activeTaskId.value || activeTaskId.value === taskId
+            if (isSameTask) {
+              if (Array.isArray(json.data)) {
+                mergeServerMetrics(json.data)
+              }
+              savedVersion.value = Math.max(savedVersion.value, versionToSave)
+              isDirty.value = dirtyVersion.value > savedVersion.value
+              if (dirtyVersion.value > savedVersion.value) {
+                continue
+              }
+            }
+            return true
+          } else {
+            if (!activeTaskId.value || activeTaskId.value === taskId) {
+              errorMessage.value = json.message || '儲存小區失敗'
+            }
+            return false
+          }
+        }
+      } catch (err: any) {
+        if (!activeTaskId.value || activeTaskId.value === taskId) {
+          errorMessage.value = `儲存失敗: ${err.message}`
+        }
+        return false
+      } finally {
+        isSaving.value = false
+        inFlightSave = null
+        inFlightTaskId = null
+      }
+    }
+
+    inFlightTaskId = taskId
+    inFlightSave = runSave()
+    return inFlightSave
+  }
+
+  async function flushAutoSave(taskId?: string, saveOptions: { keepalive?: boolean } = {}): Promise<boolean> {
+    cancelPendingAutoSave()
+    const targetTaskId = taskId ?? activeTaskId.value
+    if (!targetTaskId) return true
+    if (!isDirty.value && !inFlightSave) return true
+    if (inFlightSave && inFlightTaskId === targetTaskId && !isDirty.value) {
+      return inFlightSave
+    }
+    return savePlots(targetTaskId, saveOptions)
   }
 
   function addPlotWithTreatment(
@@ -521,7 +643,7 @@ export function usePlots() {
     }
     plots.value.push(newPlot)
     selectedPlotNumber.value = newPlot.plot_number
-    isDirty.value = true
+    markDirty()
     return newPlot
   }
 
@@ -553,7 +675,7 @@ export function usePlots() {
     target.is_control = isControl
     target.treatment = isControl ? '' : treatment.trim()
     target.dose = isControl ? '' : dose.trim()
-    isDirty.value = true
+    markDirty()
   }
 
   function updatePlotTreatments(
@@ -571,7 +693,7 @@ export function usePlots() {
         p.dose = isControl ? '' : dose.trim()
       }
     }
-    isDirty.value = true
+    markDirty()
   }
 
   function updatePlotPoints(plotNumber: number, points: NormalizedPoint[]): void {
@@ -579,7 +701,7 @@ export function usePlots() {
     const target = plots.value.find((p) => p.plot_number === plotNumber)
     if (target) {
       target.coords = serializePoints(points)
-      isDirty.value = true
+      markDirty()
     }
   }
 
@@ -588,7 +710,7 @@ export function usePlots() {
     if (idx !== -1) {
       plots.value.splice(idx, 1)
       selectedPlotNumbers.value = selectedPlotNumbers.value.filter((n) => n !== plotNumber)
-      isDirty.value = true
+      markDirty()
     }
   }
 
@@ -597,13 +719,13 @@ export function usePlots() {
     const numSet = new Set(plotNumbers)
     plots.value = plots.value.filter((p) => !numSet.has(p.plot_number))
     selectedPlotNumbers.value = selectedPlotNumbers.value.filter((n) => !numSet.has(n))
-    isDirty.value = true
+    markDirty()
   }
 
   function clearAllPlots(): void {
     plots.value = []
     selectedPlotNumbers.value = []
-    isDirty.value = true
+    markDirty()
   }
 
   function startGridMode(): void {
@@ -719,7 +841,7 @@ export function usePlots() {
     }
     plots.value.push(cloned)
     selectedPlotNumber.value = cloned.plot_number
-    isDirty.value = true
+    markDirty()
     return cloned
   }
 
@@ -742,7 +864,7 @@ export function usePlots() {
       })
     }
     plots.value.push(...newPlots)
-    isDirty.value = true
+    markDirty()
   }
 
   function movePlot(plotNumber: number, delta: { dx: number; dy: number }): void {
@@ -751,7 +873,7 @@ export function usePlots() {
     const pts = parseCoords(target.coords)
     if (pts.length < 3) return
     target.coords = serializePoints(shiftPoints(pts, delta.dx, delta.dy))
-    isDirty.value = true
+    markDirty()
   }
 
   function movePlots(plotNumbers: number[], delta: { dx: number; dy: number }): void {
@@ -765,7 +887,7 @@ export function usePlots() {
         }
       }
     }
-    isDirty.value = true
+    markDirty()
   }
 
   function duplicatePlots(plotNumbers: number[], offset = { dx: 0.02, dy: 0.02 }): PlotItem[] {
@@ -792,7 +914,7 @@ export function usePlots() {
     }
     plots.value.push(...newPlots)
     selectedPlotNumbers.value = newPlots.map((p) => p.plot_number)
-    isDirty.value = true
+    markDirty()
     return newPlots
   }
 
@@ -829,7 +951,7 @@ export function usePlots() {
         })
         added++
       }
-      if (added > 0) isDirty.value = true
+      if (added > 0) markDirty()
       return added
     } catch {
       return 0
@@ -856,7 +978,7 @@ export function usePlots() {
       })
       count++
     }
-    if (count > 0) isDirty.value = true
+    if (count > 0) markDirty()
     return count
   }
 
@@ -898,7 +1020,7 @@ export function usePlots() {
       })
     }
 
-    isDirty.value = true
+    markDirty()
     selectedPlotNumber.value = null
     closeGridMode()
   }
@@ -910,6 +1032,7 @@ export function usePlots() {
     selectedPlotNumbers,
     isDirty,
     isSaving,
+    saveState,
     errorMessage,
     gridState,
     treatmentColorMap,
@@ -917,6 +1040,8 @@ export function usePlots() {
     getPlotColor,
     loadPlots,
     savePlots,
+    flushAutoSave,
+    cancelPendingAutoSave,
     addPlotWithTreatment,
     updatePlotTreatment,
     updatePlotTreatments,
