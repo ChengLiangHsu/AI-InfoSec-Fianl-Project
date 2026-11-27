@@ -351,11 +351,26 @@ function onUpdatePlotPoints(payload: { plotNumber: number; points: NormalizedPoi
 
 function onSelectPlot(plotNumber: number | null) {
   // The overlay emits the plural selection first; its null single value must preserve multi-selection.
-  if (selectedPlotNumber.value !== plotNumber) selectedPlotNumber.value = plotNumber
+  if (plotNumber === null) {
+    if (selectedPlotNumbers.value.length <= 1) {
+      selectedPlotNumbers.value = []
+    }
+  } else {
+    selectedPlotNumbers.value = [plotNumber]
+  }
 }
 
 function onSelectPlots(plotNumbers: number[]) {
   selectedPlotNumbers.value = plotNumbers
+}
+
+function handleCopyToClipboard() {
+  copyPlotsToClipboard()
+}
+
+function handlePasteFromClipboard() {
+  pastePlotsFromClipboard()
+  nextTick(() => plotCanvasOverlayRef.value?.redraw())
 }
 
 function handleDeleteSelectedPlots() {

@@ -292,6 +292,16 @@
   1. **全步驟全域常駐 HUD**：將原步驟 1/3/4 的懸浮專案資訊膠囊提升至專案工作區頂層父層（`top-4 left-4 z-20`），各步驟動態渲染一致之「步驟名稱徽章」（步驟 1：航拍正射、步驟 2：試驗情境、步驟 3：小區標註、步驟 4：光譜分析），徹底杜絕跨步驟切換時標題文字與專案資訊之位置跳動與字級割裂。
   2. **情境特徵卡片永久展開與極簡操作列**：廢除 `Collapsible` 折疊組件與收合開關，移除「專案試驗情境特徵」重複標題列，頂部直接整合為組別操作列（左側「試驗組別」標籤與「已儲存特徵/未儲存變更」狀態徽章，右側「+ 新增組別」按鈕）；步驟 2 容器配置 `pt-20` 上方內距，確保卡片內容與左上角常駐 HUD 完美避障。
 
+### 畫布多選狀態解耦與拉框即時預覽架構 (Canvas Multi-Select State Decoupling & Real-time Rubber-band Preview)
+- [Vue.js 官方文件 - 計算屬性與 Setter (Computed Properties & Writable Computed)](https://vuejs.org/guide/essentials/computed.html#writable-computed)
+- [HTML5 Canvas 官方規範 - 2D Context 與 即時路徑命中檢測 (W3C Canvas 2D Context)](https://www.w3.org/TR/2dcontext/)
+- [W3C WAI-ARIA 多選與選取模式指引 (Multi-select & Selection Patterns)](https://www.w3.org/WAI/ARIA/apg/patterns/)
+- [MDN Web Docs - 矩形包含幾何運算 (Bounding Box Containment)](https://developer.mozilla.org/en-US/docs/Games/Techniques/2D_collision_detection)
+- **採用架構**：
+  1. **多選單一事實來源與防覆蓋保護**：將 `selectedPlotNumbers` 陣列確立為多選狀態的單一事實來源（SSOT），在計算屬性 `selectedPlotNumber` setter 及父層 `onSelectPlot` 加入防呆保護條件，僅在當前選取小區數量小於等於 1 時允許賦值清空，杜絕因發送 `select-plot: null` 而造成既有多選清單被連鎖抹除之問題。
+  2. **框選拖曳即時高亮反饋**：在 `PlotCanvasOverlay.vue` 實作 `isPlotInsideActiveRubberBand` 與 `isPlotEffectivelyHighlighted` 子函式，滑鼠左鍵拉框拖曳過程中即時計算各小區中心點是否落入框內矩形邊界（`bounds`），動態標亮小區多邊形與標籤徽章（並支援 Shift/Ctrl 組合鍵疊加既有選取），放開滑鼠後無縫維持選取狀態，並隱藏個別頂點把手以防干擾。
+
+
 
 
 

@@ -256,7 +256,9 @@ export function usePlots() {
     get: () => (selectedPlotNumbers.value.length === 1 ? selectedPlotNumbers.value[0] : null),
     set: (val: number | null) => {
       if (val === null) {
-        selectedPlotNumbers.value = []
+        if (selectedPlotNumbers.value.length <= 1) {
+          selectedPlotNumbers.value = []
+        }
       } else {
         selectedPlotNumbers.value = [val]
       }

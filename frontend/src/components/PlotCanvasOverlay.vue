@@ -216,6 +216,53 @@ function calculateCentroid(pts: NormalizedPoint[]): NormalizedPoint & { cx: numb
   }
 }
 
+interface RectBounds {
+  minX: number
+  maxX: number
+  minY: number
+  maxY: number
+}
+
+function calculateNormalizedRectBounds(p1: NormalizedPoint, p2: NormalizedPoint): RectBounds {
+  return {
+    minX: Math.min(p1.x, p2.x),
+    maxX: Math.max(p1.x, p2.x),
+    minY: Math.min(p1.y, p2.y),
+    maxY: Math.max(p1.y, p2.y),
+  }
+}
+
+function isCentroidInsideBounds(centroid: NormalizedPoint, bounds: RectBounds): boolean {
+  return (
+    centroid.x >= bounds.minX &&
+    centroid.x <= bounds.maxX &&
+    centroid.y >= bounds.minY &&
+    centroid.y <= bounds.maxY
+  )
+}
+
+function isPlotInsideActiveRubberBand(plot: PlotItem): boolean {
+  if (!isRubberBandSelecting.value || !rubberBandStartNorm.value || !rubberBandCurrentNorm.value) {
+    return false
+  }
+  const pts = parseCoords(plot.coords)
+  if (pts.length < 3) return false
+  const bounds = calculateNormalizedRectBounds(rubberBandStartNorm.value, rubberBandCurrentNorm.value)
+  const centroid = calculateCentroid(pts)
+  return isCentroidInsideBounds(centroid, bounds)
+}
+
+function isPlotEffectivelyHighlighted(plot: PlotItem): boolean {
+  if (isRubberBandSelecting.value) {
+    const insideBox = isPlotInsideActiveRubberBand(plot)
+    if (isRubberBandModifier.value) {
+      return isPlotSelected(plot.plot_number) || insideBox
+    }
+    return insideBox
+  }
+  return isPlotSelected(plot.plot_number)
+}
+
 function roundRect(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -505,7 +552,7 @@ function drawExistingPlots(ctx: CanvasRenderingContext2D): void {
     const rawPts = parseCoords(plot.coords)
     if (rawPts.length < 3) continue
 
-    const isSelected = isPlotSelected(plot.plot_number)
+    const isSelected = isPlotEffectivelyHighlighted(plot)
     const isEraserHover = props.drawTool === 'eraser' && hoveredPlotNumber.value === plot.plot_number
 
     // 若正在拖曳移動（非 Alt 複製模式），渲染平移後位置
@@ -516,11 +563,12 @@ function drawExistingPlots(ctx: CanvasRenderingContext2D): void {
 
     drawSingleExistingPlot(ctx, plot, pts, isSelected, isEraserHover)
 
-    // 只有在「單選」且未拖曳時繪製頂點手柄（多選時隱藏手柄）
+    // 只有在「單選」且未拖曳時繪製頂點手柄（多選或拉框預覽時隱藏手柄）
     if (
       props.activeMode === 'view' &&
       isSelected &&
       effectiveSelectedPlotNumbers.value.length === 1 &&
+      !isRubberBandSelecting.value &&
       !isDraggingWholePlot.value &&
       !props.gridState?.isActive
     ) {
@@ -918,7 +966,9 @@ function handleViewModeDown(
         ? cur.filter((n) => n !== hitPlot.plot_number)
         : [...cur, hitPlot.plot_number]
       emit('select-plots', next)
-      emit('select-plot', next.length === 1 ? next[0] : null)
+      if (next.length <= 1) {
+        emit('select-plot', next.length === 1 ? next[0] : null)
+      }
     } else {
       // 若點擊未選中小區，切換為單選該小區
       if (!isPlotSelected(hitPlot.plot_number)) {
@@ -1018,17 +1068,14 @@ function finishRubberBandSelection(screenX: number, screenY: number): void {
   )
 
   if (dist >= MIN_RECT_DRAG_PX) {
-    const minX = Math.min(rubberBandStartNorm.value.x, rubberBandCurrentNorm.value.x)
-    const maxX = Math.max(rubberBandStartNorm.value.x, rubberBandCurrentNorm.value.x)
-    const minY = Math.min(rubberBandStartNorm.value.y, rubberBandCurrentNorm.value.y)
-    const maxY = Math.max(rubberBandStartNorm.value.y, rubberBandCurrentNorm.value.y)
+    const bounds = calculateNormalizedRectBounds(rubberBandStartNorm.value, rubberBandCurrentNorm.value)
 
     const newlySelected: number[] = []
     for (const plot of props.plots) {
       const pts = parseCoords(plot.coords)
       if (pts.length < 3) continue
       const centroid = calculateCentroid(pts)
-      if (centroid.x >= minX && centroid.x <= maxX && centroid.y >= minY && centroid.y <= maxY) {
+      if (isCentroidInsideBounds(centroid, bounds)) {
         newlySelected.push(plot.plot_number)
       }
     }
@@ -1041,7 +1088,9 @@ function finishRubberBandSelection(screenX: number, screenY: number): void {
     }
 
     emit('select-plots', finalSelected)
-    emit('select-plot', finalSelected.length === 1 ? finalSelected[0] : null)
+    if (finalSelected.length <= 1) {
+      emit('select-plot', finalSelected.length === 1 ? finalSelected[0] : null)
+    }
   } else {
     emit('select-plots', [])
     emit('select-plot', null)
