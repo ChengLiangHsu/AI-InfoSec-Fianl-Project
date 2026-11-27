@@ -247,6 +247,7 @@ export function generateSubplotPolygon(
 }
 
 export type PlotSaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
+export type PlotCanvasMode = 'pan' | 'select' | 'draw'
 
 export interface UsePlotsOptions {
   autoSaveDelayMs?: number
@@ -255,7 +256,7 @@ export interface UsePlotsOptions {
 export function usePlots(options: UsePlotsOptions = {}) {
   const autoSaveDelayMs = options.autoSaveDelayMs ?? 600
   const plots = ref<PlotItem[]>([])
-  const activeMode = ref<'view' | 'draw'>('view')
+  const activeMode = ref<PlotCanvasMode>('pan')
   const selectedPlotNumbers = ref<number[]>([])
   const selectedPlotNumber = computed<number | null>({
     get: () => (selectedPlotNumbers.value.length === 1 ? selectedPlotNumbers.value[0] : null),

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import {
+  Hand,
   MousePointer,
   Pencil,
   Square,
@@ -36,11 +37,11 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
-import type { PlotItem, GridGeneratorState, PlotSaveState } from '@/lib/usePlots'
+import type { PlotItem, PlotCanvasMode, GridGeneratorState, PlotSaveState } from '@/lib/usePlots'
 
 const props = defineProps<{
   plots: PlotItem[]
-  activeMode: 'view' | 'draw'
+  activeMode: PlotCanvasMode
   drawTool: 'rect' | 'polygon' | 'eraser'
   selectedPlotNumber: number | null
   selectedPlotNumbers?: number[]
@@ -71,7 +72,7 @@ const selectionCount = computed(() => {
 })
 
 const emit = defineEmits<{
-  (e: 'update:activeMode', mode: 'view' | 'draw'): void
+  (e: 'update:activeMode', mode: PlotCanvasMode): void
   (e: 'update:drawTool', tool: 'rect' | 'polygon' | 'eraser'): void
   (e: 'save'): void
   (e: 'undo-point'): void
@@ -124,11 +125,20 @@ function handleScaleYChange(val: number) {
   }
 }
 
-function setMode(mode: 'view' | 'draw') {
+function setMode(mode: PlotCanvasMode) {
   if (props.gridState?.isActive) {
     emit('close-grid')
   }
   emit('update:activeMode', mode)
+}
+
+function toggleSelectMode() {
+  if (props.gridState?.isActive) {
+    emit('close-grid')
+    emit('update:activeMode', 'select')
+    return
+  }
+  emit('update:activeMode', props.activeMode === 'select' ? 'pan' : 'select')
 }
 
 function setDrawTool(tool: 'rect' | 'polygon' | 'eraser') {
@@ -256,21 +266,43 @@ onBeforeUnmount(() => {
       class="flex flex-col items-center gap-1.5 rounded-2xl border border-white/15 bg-zinc-950/85 p-1.5 shadow-2xl backdrop-blur-md pointer-events-auto"
     >
       <TooltipProvider :delay-duration="120">
-        <!-- 選取與檢視模式按鈕 -->
+        <!-- 移動模式按鈕（預設：左鍵拖曳移動、右鍵拖曳旋轉） -->
         <Tooltip>
           <TooltipTrigger as-child>
             <Button
+              data-testid="mode-pan-button"
               size="icon"
               variant="ghost"
               class="size-9 rounded-xl transition-all cursor-pointer"
-              :class="activeMode === 'view' && !gridState?.isActive ? 'bg-white/20 text-white font-bold shadow-xs' : 'text-zinc-400 hover:text-white hover:bg-white/10'"
-              @click="setMode('view')"
+              :class="activeMode === 'pan' && !gridState?.isActive ? 'bg-white/20 text-white font-bold shadow-xs' : 'text-zinc-400 hover:text-white hover:bg-white/10'"
+              :aria-pressed="activeMode === 'pan' && !gridState?.isActive"
+              @click="setMode('pan')"
+            >
+              <Hand class="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="left" class="text-xs">
+            移動模式（滑鼠左鍵拖曳移動影像、右鍵拖曳旋轉）
+          </TooltipContent>
+        </Tooltip>
+
+        <!-- 選取模式按鈕（按下後才可選取／拖曳／編輯小區） -->
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button
+              data-testid="mode-select-button"
+              size="icon"
+              variant="ghost"
+              class="size-9 rounded-xl transition-all cursor-pointer"
+              :class="activeMode === 'select' && !gridState?.isActive ? 'bg-sky-600 text-white font-bold shadow-xs' : 'text-zinc-400 hover:text-white hover:bg-white/10'"
+              :aria-pressed="activeMode === 'select' && !gridState?.isActive"
+              @click="toggleSelectMode"
             >
               <MousePointer class="size-4" />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="left" class="text-xs">
-            選取與檢視模式 (單擊選取小區、快點 2 下編輯特徵)
+            {{ activeMode === 'select' && !gridState?.isActive ? '關閉選取模式（返回左鍵移動）' : '選取模式（單擊/框選小區、快點 2 下編輯特徵；右鍵仍可旋轉）' }}
           </TooltipContent>
         </Tooltip>
 

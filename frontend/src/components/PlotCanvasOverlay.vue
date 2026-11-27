@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import {
   type PlotItem,
+  type PlotCanvasMode,
   type NormalizedPoint,
   type GridGeneratorState,
   type CellSpan,
@@ -17,7 +18,7 @@ import type { CanvasViewport } from '@/lib/useCanvasViewport'
 const props = withDefaults(
   defineProps<{
     plots: PlotItem[]
-    activeMode: 'view' | 'draw'
+    activeMode: PlotCanvasMode
     drawTool?: 'rect' | 'polygon' | 'eraser'
     selectedPlotNumber?: number | null
     selectedPlotNumbers?: number[]
@@ -59,6 +60,9 @@ const canvasRef = ref<HTMLCanvasElement | null>(null)
 const containerRef = ref<HTMLDivElement | null>(null)
 const isSelectingGridRegion = computed(() =>
   Boolean(props.gridState?.isActive && props.gridState.corners.length < 4)
+)
+const isEraserActive = computed(() =>
+  Boolean(props.drawTool === 'eraser' && (props.activeMode === 'draw' || props.gridState?.isActive))
 )
 
 // 網格角點把手拖曳與懸停狀態
@@ -557,7 +561,7 @@ function drawExistingPlots(ctx: CanvasRenderingContext2D): void {
     if (rawPts.length < 3) continue
 
     const isSelected = isPlotEffectivelyHighlighted(plot)
-    const isEraserHover = props.drawTool === 'eraser' && hoveredPlotNumber.value === plot.plot_number
+    const isEraserHover = isEraserActive.value && hoveredPlotNumber.value === plot.plot_number
 
     // 若正在拖曳移動（非 Alt 複製模式），渲染平移後位置
     let pts = rawPts
@@ -567,9 +571,9 @@ function drawExistingPlots(ctx: CanvasRenderingContext2D): void {
 
     drawSingleExistingPlot(ctx, plot, pts, isSelected, isEraserHover)
 
-    // 只有在「單選」且未拖曳時繪製頂點手柄（多選或拉框預覽時隱藏手柄）
+    // 只有在「選取模式」且「單選」且未拖曳時繪製頂點手柄（多選或拉框預覽時隱藏手柄）
     if (
-      props.activeMode === 'view' &&
+      props.activeMode === 'select' &&
       isSelected &&
       effectiveSelectedPlotNumbers.value.length === 1 &&
       !isRubberBandSelecting.value &&
@@ -1202,8 +1206,8 @@ function getViewportPivot(): { x: number; y: number } {
 
 function onMouseDown(e: MouseEvent): void {
   const isRotateTrigger =
+    e.button === 2 ||
     e.button === 1 ||
-    (e.button === 2 && (e.shiftKey || e.altKey)) ||
     (e.button === 0 && props.isRotateToolActive)
 
   if (isRotateTrigger) {
@@ -1215,11 +1219,6 @@ function onMouseDown(e: MouseEvent): void {
     return
   }
 
-  if (e.button === 2) {
-    e.preventDefault()
-    props.viewport.startPan(e.clientX, e.clientY)
-    return
-  }
   if (e.button !== 0) return
 
   const { screenX, screenY, norm } = getCanvasRelativeCoords(e)
@@ -1229,7 +1228,7 @@ function onMouseDown(e: MouseEvent): void {
     return
   }
 
-  if (props.drawTool === 'eraser') {
+  if (isEraserActive.value) {
     handleEraserDown(screenX, screenY)
     return
   }
@@ -1241,10 +1240,18 @@ function onMouseDown(e: MouseEvent): void {
     if (handleGridQuadDown(screenX, screenY, norm)) {
       return
     }
+    e.preventDefault()
+    props.viewport.startPan(e.clientX, e.clientY)
     return
   }
 
-  if (props.activeMode === 'view') {
+  if (props.activeMode === 'pan') {
+    e.preventDefault()
+    props.viewport.startPan(e.clientX, e.clientY)
+    return
+  }
+
+  if (props.activeMode === 'select') {
     handleViewModeDown(screenX, screenY, norm, e)
     return
   }
@@ -1285,7 +1292,7 @@ function onMouseMove(e: MouseEvent): void {
     return
   }
 
-  if (props.drawTool === 'eraser') {
+  if (isEraserActive.value) {
     handleEraserMove(screenX, screenY)
     return
   }
@@ -1300,7 +1307,7 @@ function onMouseMove(e: MouseEvent): void {
     } else if (isDraggingWholeGrid.value && gridDragStartNorm.value && gridDragStartCorners.value) {
       handleGridDragMove(norm)
       drawCanvas()
-    } else if (props.drawTool !== 'eraser') {
+    } else if (!isEraserActive.value) {
       handleGridHoverMove(screenX, screenY)
     }
     return
@@ -1345,9 +1352,9 @@ function onMouseMove(e: MouseEvent): void {
     return
   }
 
-  // 檢視模式下懸停選中小區頂點把手檢測 (僅在單選時)
+  // 選取模式下懸停選中小區頂點把手檢測 (僅在單選時)
   if (
-    props.activeMode === 'view' &&
+    props.activeMode === 'select' &&
     effectiveSelectedPlotNumbers.value.length === 1 &&
     !props.gridState?.isActive &&
     !isDraggingWholePlot.value &&
@@ -1406,7 +1413,7 @@ function onMouseUp(e: MouseEvent): void {
     return
   }
 
-  if (e.button === 2 || props.viewport.isPanning.value) {
+  if (props.viewport.isPanning.value) {
     props.viewport.endPan()
     return
   }
@@ -1475,7 +1482,7 @@ function onDblClick(e: MouseEvent): void {
     return
   }
 
-  if (props.activeMode === 'view' && props.canEdit && !props.gridState?.isActive) {
+  if (props.activeMode === 'select' && props.canEdit && !props.gridState?.isActive) {
     const { screenX, screenY } = getCanvasRelativeCoords(e)
     const hitPlot = findPlotAtPoint(screenX, screenY)
     if (hitPlot) {
@@ -1618,7 +1625,16 @@ watch(
     hoveredVertexIndex.value = null
     if (newMode !== 'draw') {
       cancelDrawing()
-    } else {
+    }
+    if (newMode !== 'select') {
+      isRubberBandSelecting.value = false
+      rubberBandStartScreen.value = null
+      rubberBandStartNorm.value = null
+      rubberBandCurrentNorm.value = null
+      isRubberBandModifier.value = false
+      isDraggingWholePlot.value = false
+    }
+    if (newMode === 'draw') {
       emit('select-plots', [])
       emit('select-plot', null)
     }
@@ -1650,12 +1666,11 @@ watch(
     ref="containerRef"
     class="absolute inset-0 pointer-events-auto select-none"
     :class="{
-      'cursor-grab': viewport.isPanning.value || (isRotateToolActive && !viewport.isRotating.value) || (gridState?.isActive && hoveredGridCornerIndex !== null && draggingGridCornerIndex === null && drawTool !== 'eraser') || (activeMode === 'view' && hoveredVertexIndex !== null && draggingVertexIndex === null && !gridState?.isActive),
-      'cursor-grabbing': viewport.isRotating.value || draggingGridCornerIndex !== null || draggingVertexIndex !== null || isDraggingWholeGrid,
-      'cursor-move': !isRotateToolActive && !viewport.isRotating.value && ((gridState?.isActive && isHoveringGridQuad && hoveredGridCornerIndex === null && draggingGridCornerIndex === null && !isDraggingWholeGrid && drawTool !== 'eraser') || isDraggingWholePlot),
-      'cursor-pointer': !isRotateToolActive && !viewport.isRotating.value && ((activeMode === 'view' && !gridState?.isActive && hoveredVertexIndex === null && draggingVertexIndex === null && !isRubberBandSelecting) || (drawTool === 'eraser' && !isSelectingGridRegion)),
-      'cursor-crosshair': !isRotateToolActive && !viewport.isRotating.value && (((isSelectingGridRegion || (activeMode === 'draw' && drawTool !== 'eraser' && !gridState?.isActive)) && !viewport.isPanning.value) || isRubberBandSelecting),
-      'cursor-default': !isRotateToolActive && !viewport.isRotating.value && gridState?.isActive && !isSelectingGridRegion && drawTool !== 'eraser' && !viewport.isPanning.value && hoveredGridCornerIndex === null && draggingGridCornerIndex === null && !isHoveringGridQuad && !isDraggingWholeGrid,
+      'cursor-grab': !viewport.isPanning.value && !viewport.isRotating.value && (isRotateToolActive || (activeMode === 'pan' && !gridState?.isActive) || (gridState?.isActive && !isSelectingGridRegion && !isEraserActive && hoveredGridCornerIndex === null && draggingGridCornerIndex === null && !isHoveringGridQuad && !isDraggingWholeGrid) || (gridState?.isActive && hoveredGridCornerIndex !== null && draggingGridCornerIndex === null && !isEraserActive) || (activeMode === 'select' && hoveredVertexIndex !== null && draggingVertexIndex === null && !gridState?.isActive)),
+      'cursor-grabbing': viewport.isPanning.value || viewport.isRotating.value || draggingGridCornerIndex !== null || draggingVertexIndex !== null || isDraggingWholeGrid,
+      'cursor-move': !isRotateToolActive && !viewport.isRotating.value && !viewport.isPanning.value && ((gridState?.isActive && isHoveringGridQuad && hoveredGridCornerIndex === null && draggingGridCornerIndex === null && !isDraggingWholeGrid && !isEraserActive) || isDraggingWholePlot),
+      'cursor-pointer': !isRotateToolActive && !viewport.isRotating.value && !viewport.isPanning.value && ((activeMode === 'select' && !gridState?.isActive && hoveredVertexIndex === null && draggingVertexIndex === null && !isRubberBandSelecting) || (isEraserActive && !isSelectingGridRegion)),
+      'cursor-crosshair': !isRotateToolActive && !viewport.isRotating.value && !viewport.isPanning.value && (isSelectingGridRegion || (activeMode === 'draw' && !isEraserActive && !gridState?.isActive) || isRubberBandSelecting),
     }"
     @mousedown="onMouseDown"
     @mousemove="onMouseMove"

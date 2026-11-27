@@ -17,7 +17,7 @@ function setupGrid() {
   plots.startGridMode()
   const canvas = mount(PlotCanvasOverlay, {
     props: {
-      plots: [], activeMode: 'view', drawTool: 'rect',
+      plots: [], activeMode: 'pan', drawTool: 'rect',
       gridState: plots.gridState.value, viewport,
       getPlotColor: () => '#ffffff',
       'onUpdate-grid-corners': plots.updateGridCorners,
@@ -102,7 +102,7 @@ it('shows configuration only after framing and offers a fresh selection', async 
   const plots = usePlots()
   plots.startGridMode()
   const toolbar = mount(PlotToolbar, { props: {
-    plots: [], activeMode: 'view', drawTool: 'rect', selectedPlotNumber: null,
+    plots: [], activeMode: 'pan', drawTool: 'rect', selectedPlotNumber: null,
     isDirty: false, isSaving: false, isDrawing: false, gridState: plots.gridState.value,
     onStartGrid: plots.startGridMode,
   } })

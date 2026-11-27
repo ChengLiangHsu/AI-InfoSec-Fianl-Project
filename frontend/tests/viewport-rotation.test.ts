@@ -1,20 +1,25 @@
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import PlotCanvasOverlay from '@/components/PlotCanvasOverlay.vue'
+import PlotToolbar from '@/components/PlotToolbar.vue'
 import { useCanvasViewport, normalizeRotationDeg, clampPanBounds } from '@/lib/useCanvasViewport'
-import { usePlots } from '@/lib/usePlots'
+import { usePlots, type PlotCanvasMode, type PlotItem } from '@/lib/usePlots'
 
 beforeEach(() => {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null)
 })
 
 function createMountedCanvas(options?: {
-  activeMode?: 'view' | 'draw'
+  activeMode?: PlotCanvasMode
   drawTool?: 'rect' | 'polygon' | 'eraser'
   isRotateToolActive?: boolean
   gridActive?: boolean
+  initialPlots?: PlotItem[]
 }) {
   const plots = usePlots()
+  if (options?.initialPlots) {
+    plots.plots.value = options.initialPlots
+  }
   if (options?.gridActive) {
     plots.startGridMode()
   }
@@ -24,7 +29,7 @@ function createMountedCanvas(options?: {
   const canvas = mount(PlotCanvasOverlay, {
     props: {
       plots: plots.plots.value,
-      activeMode: options?.activeMode ?? 'view',
+      activeMode: options?.activeMode ?? 'pan',
       drawTool: options?.drawTool ?? 'rect',
       isRotateToolActive: options?.isRotateToolActive ?? false,
       gridState: plots.gridState.value,
@@ -105,25 +110,107 @@ describe('PlotCanvasOverlay mouse rotation interactions', () => {
     expect(viewport.isRotating.value).toBe(false)
   })
 
-  it('rotates via Shift+Right-drag while keeping plain Right-drag as pan', async () => {
-    const { viewport, canvas } = createMountedCanvas()
+  it('pans via Left-drag in default pan mode and rotates via Right-drag without selecting plots', async () => {
+    const samplePlots: PlotItem[] = [
+      {
+        plot_number: 1,
+        coords: JSON.stringify([
+          [0.2, 0.2],
+          [0.4, 0.2],
+          [0.4, 0.4],
+          [0.2, 0.4],
+        ]),
+        is_control: false,
+        treatment: 'A',
+        dose: '1x',
+      },
+    ]
+    const { viewport, canvas } = createMountedCanvas({
+      activeMode: 'pan',
+      initialPlots: samplePlots,
+    })
 
-    // Shift + Right-drag rotates
-    await canvas.trigger('mousedown', { button: 2, shiftKey: true, clientX: 700, clientY: 500 })
-    await canvas.trigger('mousemove', { clientX: 500, clientY: 300 })
-    await canvas.trigger('mouseup', { button: 2, clientX: 500, clientY: 300 })
-    expect(viewport.rotation.value).toBeCloseTo(-90, 1)
-    expect(viewport.isPanning.value).toBe(false)
-
-    // Plain Right-drag pans without changing rotation
+    // Left-drag pans without rotating or selecting plots
     const prevPanX = viewport.panX.value
-    const prevRotation = viewport.rotation.value
-    await canvas.trigger('mousedown', { button: 2, clientX: 300, clientY: 300 })
+    const prevPanY = viewport.panY.value
+    await canvas.trigger('mousedown', { button: 0, clientX: 300, clientY: 300 })
     expect(viewport.isPanning.value).toBe(true)
     await canvas.trigger('mousemove', { clientX: 360, clientY: 340 })
-    await canvas.trigger('mouseup', { button: 2, clientX: 360, clientY: 340 })
+    await canvas.trigger('mouseup', { button: 0, clientX: 360, clientY: 340 })
+    expect(viewport.isPanning.value).toBe(false)
     expect(viewport.panX.value).toBeCloseTo(prevPanX + 60, 4)
-    expect(viewport.rotation.value).toBe(prevRotation)
+    expect(viewport.panY.value).toBeCloseTo(prevPanY + 40, 4)
+    expect(viewport.rotation.value).toBe(0)
+    expect(canvas.emitted('select-plots')).toBeUndefined()
+    expect(canvas.emitted('select-plot')).toBeUndefined()
+
+    // Plain Right-drag rotates without panning (center shifted to 560, 540 after pan)
+    await canvas.trigger('mousedown', { button: 2, clientX: 760, clientY: 540 })
+    expect(viewport.isRotating.value).toBe(true)
+    expect(viewport.isPanning.value).toBe(false)
+    await canvas.trigger('mousemove', { clientX: 560, clientY: 340 })
+    await canvas.trigger('mouseup', { button: 2, clientX: 560, clientY: 340 })
+    expect(viewport.isRotating.value).toBe(false)
+    expect(viewport.rotation.value).toBeCloseTo(-90, 1)
+  })
+
+  it('allows rubber-band plot selection only in select mode while keeping Right-drag as rotate', async () => {
+    const samplePlots: PlotItem[] = [
+      {
+        plot_number: 7,
+        coords: JSON.stringify([
+          [0.2, 0.2],
+          [0.4, 0.2],
+          [0.4, 0.4],
+          [0.2, 0.4],
+        ]),
+        is_control: false,
+        treatment: 'A',
+        dose: '1x',
+      },
+    ]
+    const { viewport, canvas } = createMountedCanvas({
+      activeMode: 'select',
+      initialPlots: samplePlots,
+    })
+
+    // Left-drag rubber-band selects plot #7 (centroid at 300, 300)
+    await canvas.trigger('mousedown', { button: 0, clientX: 150, clientY: 150 })
+    expect(viewport.isPanning.value).toBe(false)
+    await canvas.trigger('mousemove', { clientX: 450, clientY: 450 })
+    await canvas.trigger('mouseup', { button: 0, clientX: 450, clientY: 450 })
+    expect(canvas.emitted('select-plots')?.[0]).toEqual([[7]])
+
+    // Right-drag still rotates in select mode
+    await canvas.trigger('mousedown', { button: 2, clientX: 700, clientY: 500 })
+    await canvas.trigger('mousemove', { clientX: 500, clientY: 700 })
+    await canvas.trigger('mouseup', { button: 2, clientX: 500, clientY: 700 })
+    expect(viewport.rotation.value).toBeCloseTo(90, 1)
+  })
+
+  it('defaults usePlots activeMode to pan and toggles select mode via PlotToolbar', async () => {
+    const plots = usePlots()
+    expect(plots.activeMode.value).toBe('pan')
+
+    const toolbar = mount(PlotToolbar, {
+      props: {
+        plots: [],
+        activeMode: plots.activeMode.value,
+        drawTool: 'rect',
+        selectedPlotNumber: null,
+        isDirty: false,
+        isSaving: false,
+        isDrawing: false,
+        gridState: plots.gridState.value,
+      },
+    })
+
+    await toolbar.get('[data-testid="mode-select-button"]').trigger('click')
+    expect(toolbar.emitted('update:activeMode')?.[0]).toEqual(['select'])
+
+    await toolbar.setProps({ activeMode: 'select' })
+    await toolbar.get('[data-testid="mode-select-button"]').trigger('click')
+    expect(toolbar.emitted('update:activeMode')?.[1]).toEqual(['pan'])
   })
 
   it('rotates via Alt+Wheel without zooming, while plain Wheel zooms without rotating', async () => {

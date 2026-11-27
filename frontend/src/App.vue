@@ -21,6 +21,7 @@ import {
   RotateCcw,
   RotateCw,
   Compass,
+  MousePointer,
   X,
   XCircle,
   Save,
@@ -504,6 +505,7 @@ async function handleStepChange(targetStep: 1 | 2 | 3 | 4) {
     if (!canLeave) return
   }
   currentStep.value = targetStep
+  activeMode.value = 'pan'
   isRotateToolActive.value = false
   resetStepFormula(targetStep)
   nextTick(() => {
@@ -1005,7 +1007,7 @@ watch(selectedProject, async (newProj, oldProj) => {
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="top" class="text-xs">
-                  點擊重設旋轉角度為 0°（滑鼠中鍵拖曳 / Shift+右鍵拖曳 / Alt+滾輪皆可旋轉視角）
+                  點擊重設旋轉角度為 0°（滑鼠右鍵拖曳 / 中鍵拖曳 / Alt+滾輪皆可旋轉視角）
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -1042,10 +1044,35 @@ watch(selectedProject, async (newProj, oldProj) => {
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="top" class="text-xs">
-                  {{ isRotateToolActive ? '關閉滑鼠左鍵旋轉模式' : '啟用滑鼠左鍵拖曳旋轉視角（隨時也可用中鍵或 Shift+右鍵拖曳）' }}
+                  {{ isRotateToolActive ? '關閉滑鼠左鍵旋轉模式' : '啟用滑鼠左鍵拖曳旋轉視角（隨時也可直接用右鍵、中鍵或 Alt+滾輪旋轉）' }}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
+
+            <template v-if="currentStep === 4">
+              <div class="my-1 h-3.5 w-px bg-white/20" />
+              <TooltipProvider :delay-duration="150">
+                <Tooltip>
+                  <TooltipTrigger as-child>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      class="h-7 gap-1 px-2 text-xs font-medium cursor-pointer transition-colors"
+                      :class="activeMode === 'select' ? 'bg-sky-600 text-white hover:bg-sky-500 ring-1 ring-sky-400/60' : 'text-zinc-300 hover:text-white hover:bg-white/10'"
+                      :aria-pressed="activeMode === 'select'"
+                      data-testid="step4-select-mode-toggle"
+                      @click="activeMode = activeMode === 'select' ? 'pan' : 'select'"
+                    >
+                      <MousePointer class="size-3.5" />
+                      <span class="hidden sm:inline">選取模式</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" class="text-xs">
+                    {{ activeMode === 'select' ? '關閉選取模式（返回左鍵拖曳移動）' : '啟用選取模式以點選或框選分析小區（右鍵仍可旋轉）' }}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </template>
 
             <div class="my-1 h-3.5 w-px bg-white/20" />
 
@@ -1229,8 +1256,8 @@ watch(selectedProject, async (newProj, oldProj) => {
               v-if="selectedProject.progress === 100"
               ref="plotCanvasOverlayRef"
               :plots="currentStep === 3 || currentStep === 4 ? plots : []"
-              :active-mode="currentStep === 3 ? activeMode : 'view'"
-              :draw-tool="currentStep === 3 ? drawTool : 'select'"
+              :active-mode="currentStep === 3 ? activeMode : currentStep === 4 ? (activeMode === 'select' ? 'select' : 'pan') : 'pan'"
+              :draw-tool="currentStep === 3 ? drawTool : 'rect'"
               :can-edit="currentStep === 3"
               :selected-plot-number="currentStep === 3 || currentStep === 4 ? selectedPlotNumber : null"
               :selected-plot-numbers="currentStep === 3 || currentStep === 4 ? selectedPlotNumbers : []"
