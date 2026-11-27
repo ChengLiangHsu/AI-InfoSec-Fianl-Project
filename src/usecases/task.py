@@ -163,31 +163,185 @@ def _validate_messages_content(new_messages: str | bytes) -> None:
         raise ValueError("對話內容不得為空")
 
 
+SCENARIO_CONTROL_COLOR = "#94a3b8"
+SCENARIO_TREATMENT_PALETTE = [
+    "#10b981",
+    "#8b5cf6",
+    "#f59e0b",
+    "#0ea5e9",
+    "#ec4899",
+    "#f97316",
+    "#06b6d4",
+    "#84cc16",
+    "#e11d48",
+]
+VALID_DYNAMIC_FIELD_TYPES = {"text", "number", "select", "date", "boolean"}
+DOSE_KEY_HINTS = ("dose", "dosage", "rate", "dilution", "concentration", "劑量", "倍數", "濃度", "施用量")
+
+
+def _normalize_dynamic_fields(raw_fields: Any) -> list[dict[str, Any]]:
+    """校驗並正規化動態表單欄位定義清單。"""
+    if not isinstance(raw_fields, list):
+        return []
+    normalized_fields: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+    for idx, raw in enumerate(raw_fields):
+        if not isinstance(raw, dict):
+            continue
+        key = str(raw.get("key") or f"field_{idx + 1}").strip()
+        if not key or key in seen_keys:
+            key = f"field_{idx + 1}"
+        seen_keys.add(key)
+
+        label = str(raw.get("label") or key).strip()
+        raw_type = str(raw.get("type") or "text").strip().lower()
+        field_type = raw_type if raw_type in VALID_DYNAMIC_FIELD_TYPES else "text"
+
+        field_def: dict[str, Any] = {
+            "key": key,
+            "label": label,
+            "type": field_type,
+        }
+        unit = str(raw.get("unit") or "").strip()
+        if unit:
+            field_def["unit"] = unit
+        if field_type == "select":
+            raw_opts = raw.get("options")
+            options = [str(o).strip() for o in raw_opts if str(o).strip()] if isinstance(raw_opts, list) else []
+            field_def["options"] = options
+        placeholder = str(raw.get("placeholder") or "").strip()
+        if placeholder:
+            field_def["placeholder"] = placeholder
+        if "required" in raw:
+            field_def["required"] = bool(raw.get("required"))
+        normalized_fields.append(field_def)
+    return normalized_fields
+
+
+def _is_dose_like_field(field: dict[str, Any]) -> bool:
+    key_lower = str(field.get("key", "")).lower()
+    label_lower = str(field.get("label", "")).lower()
+    return any(hint in key_lower or hint in label_lower for hint in DOSE_KEY_HINTS)
+
+
+def _format_dynamic_value(val: Any, field: dict[str, Any]) -> str:
+    if val is None or val == "":
+        return ""
+    if field.get("type") == "boolean":
+        return "是" if bool(val) else "否"
+    text = str(val).strip()
+    if not text:
+        return ""
+    unit = str(field.get("unit") or "").strip()
+    if unit and field.get("type") == "number" and not text.endswith(unit):
+        return f"{text}{unit}"
+    return text
+
+
 def _normalize_scenario_data(scenario_data: dict[str, Any]) -> dict[str, Any]:
-    """正規化情境特徵資料，確保對照組 (CK) 數量嚴格恰為 1。"""
+    """正規化情境特徵資料（相容 v1/v2），確保對照組 (CK) 恆為首列且數量嚴格恰為 1。"""
     normalized = dict(scenario_data)
+
+    has_v2_schema = (
+        normalized.get("version") == 2
+        or "group_fields" in normalized
+        or "metadata_fields" in normalized
+    )
+
+    group_fields: list[dict[str, Any]] = []
+    if has_v2_schema:
+        normalized["version"] = 2
+        normalized["metadata_fields"] = _normalize_dynamic_fields(normalized.get("metadata_fields"))
+        raw_meta_vals = normalized.get("metadata_values")
+        normalized["metadata_values"] = dict(raw_meta_vals) if isinstance(raw_meta_vals, dict) else {}
+        group_fields = _normalize_dynamic_fields(normalized.get("group_fields"))
+        normalized["group_fields"] = group_fields
+
     raw_categories = normalized.get("categories")
-    if not isinstance(raw_categories, list) or len(raw_categories) == 0:
+    if not isinstance(raw_categories, list):
+        raw_categories = []
+
+    if len(raw_categories) == 0:
+        if has_v2_schema:
+            normalized["categories"] = [
+                {
+                    "id": "ck",
+                    "name": "對照組 (CK)",
+                    "color": SCENARIO_CONTROL_COLOR,
+                    "is_control": True,
+                    "values": {},
+                    "treatment": "",
+                    "dose": "",
+                }
+            ]
         return normalized
 
-    sanitized: list[dict[str, Any]] = []
-    found_control = False
+    control_item: dict[str, Any] | None = None
+    treatment_items: list[dict[str, Any]] = []
     for cat in raw_categories:
         if not isinstance(cat, dict):
             continue
         item = dict(cat)
-        is_control = bool(item.get("is_control", False))
-        if is_control:
-            if found_control:
-                item["is_control"] = False
-            else:
-                found_control = True
-        sanitized.append(item)
+        if bool(item.get("is_control", False)) and control_item is None:
+            control_item = item
+        else:
+            item["is_control"] = False
+            treatment_items.append(item)
 
-    if not found_control and sanitized:
-        sanitized[0]["is_control"] = True
-        if not sanitized[0].get("name"):
-            sanitized[0]["name"] = "未施藥對照 (CK)"
+    if control_item is None and treatment_items:
+        control_item = treatment_items.pop(0)
+        control_item["is_control"] = True
+
+    sanitized: list[dict[str, Any]] = []
+    if control_item is not None:
+        ck_name = str(control_item.get("name") or "").strip() or "對照組 (CK)"
+        ck_entry: dict[str, Any] = {
+            "id": str(control_item.get("id") or "ck"),
+            "name": ck_name,
+            "color": SCENARIO_CONTROL_COLOR,
+            "is_control": True,
+            "treatment": "",
+            "dose": "",
+        }
+        if has_v2_schema:
+            ck_entry["values"] = {}
+        sanitized.append(ck_entry)
+
+    dose_field = next((f for f in group_fields if _is_dose_like_field(f)), None)
+    primary_field = next((f for f in group_fields if f is not dose_field), None)
+
+    for idx, item in enumerate(treatment_items):
+        color = str(item.get("color") or "").strip() or SCENARIO_TREATMENT_PALETTE[idx % len(SCENARIO_TREATMENT_PALETTE)]
+        entry: dict[str, Any] = {
+            "id": str(item.get("id") or f"grp-{idx + 1}"),
+            "color": color,
+            "is_control": False,
+        }
+
+        if has_v2_schema:
+            raw_vals = item.get("values")
+            values: dict[str, Any] = dict(raw_vals) if isinstance(raw_vals, dict) else {}
+            entry["values"] = values
+
+            primary_text = _format_dynamic_value(values.get(primary_field["key"]), primary_field) if primary_field else ""
+            dose_text = _format_dynamic_value(values.get(dose_field["key"]), dose_field) if dose_field else ""
+
+            explicit_name = str(item.get("name") or "").strip()
+            parts = [p for p in (primary_text, dose_text) if p]
+            derived_name = " ".join(parts) if parts else (explicit_name or f"處理組 {idx + 1}")
+
+            entry["name"] = explicit_name or derived_name
+            entry["treatment"] = primary_text or str(item.get("treatment") or "").strip() or entry["name"]
+            entry["dose"] = dose_text if dose_field else ""
+        else:
+            trt = str(item.get("treatment") or "").strip()
+            dose = str(item.get("dose") or "").strip()
+            name = str(item.get("name") or "").strip() or " ".join(p for p in (trt, dose) if p) or f"處理組 {idx + 1}"
+            entry["name"] = name
+            entry["treatment"] = trt
+            entry["dose"] = dose
+
+        sanitized.append(entry)
 
     normalized["categories"] = sanitized
     return normalized

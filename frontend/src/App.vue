@@ -76,7 +76,8 @@ import {
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import FloatingPersona from './components/FloatingPersona.vue'
 import DroneHomeUpload from './components/DroneHomeUpload.vue'
-import ProjectScenarioCard, { type ScenarioData } from './components/ProjectScenarioCard.vue'
+import ScenarioWorkspace from './components/ScenarioWorkspace.vue'
+import type { ScenarioData } from './lib/scenarioSchema'
 import PlotToolbar from './components/PlotToolbar.vue'
 import PlotCanvasOverlay from './components/PlotCanvasOverlay.vue'
 import PlotStatisticsPanel from './components/PlotStatisticsPanel.vue'
@@ -760,9 +761,11 @@ watch(selectedProject, async (newProj) => {
         </div>
       </header>
       <!-- 當選定專案時的四步驟工作流 -->
-      <div v-if="selectedProject" class="relative flex flex-1 flex-col h-[calc(100vh-theme(spacing.14))] overflow-hidden">
-        <!-- 左上角懸浮專案資訊與步驟膠囊 HUD (全步驟全域常駐) -->
+      <div v-if="selectedProject" class="relative flex flex-1 flex-col h-[calc(100vh-3.5rem)] max-h-[calc(100vh-3.5rem)] overflow-hidden">
+        <!-- 左上角懸浮專案資訊與步驟膠囊 HUD (步驟 1、3、4 顯示；步驟 2 保留專屬 AI 對話工作區版面) -->
         <div
+          v-if="currentStep !== 2"
+          data-testid="project-status-hud"
           class="absolute top-4 left-4 z-20 flex flex-wrap items-center gap-3 rounded-2xl border border-white/15 bg-zinc-950/85 px-4 py-2 text-white shadow-2xl backdrop-blur-md"
         >
           <div class="flex flex-col">
@@ -793,20 +796,17 @@ watch(selectedProject, async (newProj) => {
           </div>
         </div>
 
-        <!-- 步驟 2：專案試驗情境特徵動態卡片 (可捲動表單，預留頂部避障內距) -->
-        <div v-if="currentStep === 2" class="flex-1 min-h-0 overflow-y-auto px-6 pt-20 pb-24 bg-muted/10 space-y-6">
-          <div class="mx-auto max-w-5xl space-y-6">
-            <ProjectScenarioCard
-              :project-id="selectedProject.id"
-              :project-name="selectedProject.name"
-              :initial-scenario="selectedProject.scenario"
-              :file-names="currentUploadedFileNames"
-              :project-progress="selectedProject.progress"
-              @update:scenario="onScenarioUpdated"
-              @saved="onScenarioSaved"
-            />
-          </div>
-        </div>
+        <!-- 步驟 2：AI 對話式情境引導與多型態動態表單工作區 -->
+        <ScenarioWorkspace
+          v-if="currentStep === 2"
+          :project-id="selectedProject.id"
+          :project-name="selectedProject.name"
+          :initial-scenario="selectedProject.scenario"
+          :file-names="currentUploadedFileNames"
+          :project-progress="selectedProject.progress"
+          @update:scenario="onScenarioUpdated"
+          @saved="onScenarioSaved"
+        />
 
         <!-- 步驟 1、步驟 3 與步驟 4：Google 地圖式滿版暗場工作區 (Zero-Scroll 滿版黑底視圖) -->
         <div

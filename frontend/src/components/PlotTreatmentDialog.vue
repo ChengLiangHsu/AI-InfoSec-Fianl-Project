@@ -22,6 +22,7 @@ export interface ExistingTreatment {
   dose: string
   label: string
   color?: string
+  details?: Array<{ key: string; label: string; value: string }>
 }
 
 const props = defineProps<{
@@ -123,7 +124,7 @@ function onOpenChange(val: boolean): void {
           v-for="(preset, idx) in existingTreatments"
           :key="idx"
           type="button"
-          class="flex items-center justify-between w-full px-3.5 py-2.5 rounded-lg border text-xs text-left transition-all cursor-pointer select-none group"
+          class="flex flex-col gap-1.5 w-full px-3.5 py-2.5 rounded-lg border text-xs text-left transition-all cursor-pointer select-none group"
           :class="[
             isSelected(preset)
               ? 'border-primary bg-primary/10 font-semibold shadow-xs ring-1 ring-primary/20'
@@ -131,18 +132,38 @@ function onOpenChange(val: boolean): void {
           ]"
           @click="handleSelectPreset(preset)"
         >
-          <div class="flex items-center gap-2.5 min-w-0">
-            <span
-              class="size-3 rounded-full shrink-0 border border-black/10 dark:border-white/20 shadow-xs transition-transform group-hover:scale-110"
-              :style="{ backgroundColor: preset.color || (preset.isControl ? '#94a3b8' : '#3b82f6') }"
-            />
-            <span class="truncate">{{ preset.label }}</span>
+          <div class="flex items-center justify-between w-full gap-2">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span
+                class="size-3 rounded-full shrink-0 border border-black/10 dark:border-white/20 shadow-xs transition-transform group-hover:scale-110"
+                :style="{ backgroundColor: preset.color || (preset.isControl ? '#94a3b8' : '#3b82f6') }"
+              />
+              <span class="truncate font-medium">{{ preset.label }}</span>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <span
+                v-if="preset.dose && !preset.isControl && (!preset.details || preset.details.length === 0)"
+                class="text-[11px] text-muted-foreground font-mono"
+              >
+                {{ preset.dose }}
+              </span>
+              <Check v-if="isSelected(preset)" class="size-4 text-primary shrink-0" />
+            </div>
           </div>
-          <div class="flex items-center gap-2 shrink-0">
-            <span v-if="preset.dose && !preset.isControl" class="text-[11px] text-muted-foreground font-mono">
-              {{ preset.dose }}
+
+          <!-- 動態多型態欄位摘要標籤 -->
+          <div
+            v-if="!preset.isControl && preset.details && preset.details.length > 0"
+            class="flex flex-wrap items-center gap-1 pl-5.5"
+          >
+            <span
+              v-for="item in preset.details"
+              :key="item.key"
+              class="inline-flex items-center gap-1 rounded bg-muted/70 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground"
+            >
+              <span class="opacity-75">{{ item.label }}:</span>
+              <span class="font-medium text-foreground/85">{{ item.value }}</span>
             </span>
-            <Check v-if="isSelected(preset)" class="size-4 text-primary shrink-0" />
           </div>
         </button>
       </div>

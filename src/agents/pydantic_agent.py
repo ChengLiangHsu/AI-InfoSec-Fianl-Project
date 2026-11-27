@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from io import BytesIO
+import json
 import os
 from pathlib import Path
 from typing import Any, Literal
@@ -12,6 +13,7 @@ load_dotenv()
 
 import numpy as np
 from PIL import Image
+from pydantic import BaseModel, Field
 from pydantic_ai import (
     Agent,
     BinaryContent,
@@ -20,6 +22,7 @@ from pydantic_ai import (
 from pydantic_ai.usage import UsageLimits
 
 from src.usecases.ports.task import TaskPort
+from src.usecases.task import _normalize_scenario_data
 from src.config import ODM_DIR
 from src.utility.formulas import (
     MULTISPECTRAL_REFERENCE_ALGOS,
@@ -34,10 +37,12 @@ from src.utility.spectral import generate_spectral_image
 class ChatDeps:
     project_id: str
     task_port: TaskPort
+    scenario_events: list[dict[str, Any]] = field(default_factory=list)
 
 
 model = os.getenv("PYDANTIC_AI_MODEL", "google:gemini-3.7-flash")
 agent = Agent(model, deps_type=ChatDeps, defer_model_check=True)
+scenario_agent = Agent(model, deps_type=ChatDeps, defer_model_check=True)
 vision_agent = Agent(model, defer_model_check=True)
 
 
@@ -453,4 +458,136 @@ async def recommend_trial_scenario(
             {"name": "處理組 B", "dose": "處理 B", "color": "#8b5cf6", "is_control": False},
         ],
         "message": "已推薦自訂試驗模板與色彩標籤。",
+    }
+
+
+# ============================================================================
+# 步驟 2 專用：田間試驗情境訪談與動態多型態表單建構 Agent (scenario_agent)
+# ============================================================================
+
+
+class DynamicFieldInput(BaseModel):
+    """單一動態表單欄位定義。"""
+    key: str = Field(description="英文或底線識別鍵，如 treatment、dose、variety、spray_date、method")
+    label: str = Field(description="繁體中文欄位顯示名稱，如 藥劑名稱、稀釋倍數、品種名稱、施藥日期")
+    type: Literal["text", "number", "select", "date", "boolean"] = Field(
+        default="text",
+        description="表單輸入元件型態：text 文字、number 數字、select 下拉選單、date 日期、boolean 開關",
+    )
+    unit: str = Field(default="", description="數字欄位單位（僅 number 需要，如 倍、x、kg/ha、mL/L、%）")
+    options: list[str] = Field(default_factory=list, description="下拉選項清單（僅 type='select' 時填寫）")
+    placeholder: str = Field(default="", description="輸入框提示文字")
+    required: bool = Field(default=False, description="是否為必填欄位")
+
+
+class TrialGroupInput(BaseModel):
+    """單一實驗處理組（不含對照組 CK，對照組會由系統自動鎖定於第 1 列）。"""
+    id: str = Field(default="", description="既有組別 ID（修改既有組別時保留原 id，新增可留空）")
+    name: str = Field(default="", description="精簡顯示名稱（可留空由系統自動組合主要欄位）")
+    color: str = Field(default="", description="十六進位色碼（可留空由系統自動分配高對比色彩）")
+    values: dict[str, str | int | float | bool | None] = Field(
+        default_factory=dict,
+        description="對應 group_fields 各欄位 key 的預填數值",
+    )
+
+
+@scenario_agent.system_prompt
+async def scenario_system_prompt(ctx: RunContext[ChatDeps]) -> str:
+    base_prompt = (
+        "你是『田間試驗情境規劃助手』，專門在步驟 2 透過親切自然的繁體中文對話，協助使用者釐清這次無人機空拍的田間試驗情境，並動態生成下一步『框選實驗小區』要用的多型態紀錄表單。\n\n"
+        "【核心設計原則】：\n"
+        "1. **依情境決定欄位，絕不硬塞無關欄位**：\n"
+        "   - 用藥／農藥藥效試驗：通常需要藥劑名稱 (`text`)、劑量或稀釋倍數 (`number` 搭配 `unit` 如 `倍` / `mL/ha` 或 `text`)、可搭配施用方式 (`select`) 或施藥日期 (`date`)。\n"
+        "   - 肥料／營養試驗：通常需要肥料品項 (`text`)、施用量 (`number` 搭配 `unit` 如 `kg/ha` 或 `%`)。\n"
+        "   - 品種比較、長勢與缺株監測、栽培／覆蓋／灌溉方式對比等**非用藥情境**：**不需要**劑量欄位！改生成該情境真正需要的欄位（如品種名稱 `text`、栽培方式 `select`、播種日期 `date`、是否覆膜 `boolean` 等）。\n"
+        "2. **兩區塊表單結構**：\n"
+        "   - `metadata_fields` + `metadata_values`：整場試驗共通背景資訊（選填，例如試驗作物、試驗日期、田區地點、目標病蟲害），保持精簡（1~4 欄即可）。\n"
+        "   - `group_fields` + `groups`：各實驗處理組的動態欄位與組別清單，每列將直接成為步驟 3 框選小區時可點選套用的組別。\n"
+        "3. **對照組 (CK) 自動內建且鎖定**：\n"
+        "   - 系統會自動在表單第 1 列建立且鎖定對照組 (CK)，不可刪除。\n"
+        "   - **不要**問使用者需不需要對照組，也**不要**把對照組放進 `groups` 參數；只要透過 `control_label` 給它一個符合情境的名稱（如「未施藥對照 (CK)」「不施肥對照 (CK)」「標準對照 (CK)」）。\n"
+        "4. **訪談節奏與呼叫工具時機**：\n"
+        "   - 若使用者的描述還太簡略（例如只點了「農藥藥效試驗」或只說「我想做試驗」），先親切回應並提出 1~2 個最關鍵的釐清問題（例如作物是什麼、預計比較哪幾種藥劑／倍數或哪幾個品種），字數精簡好讀。\n"
+        "   - 一旦使用者提供了足夠建立表單草稿的資訊（例如已知道試驗類型與至少 1 個處理方向或組別，或使用者明確要求先建表單／套用建議模板），請**立即呼叫 `upsert_trial_scenario_form` 工具**產出並自動儲存表單，然後在回覆中簡要說明已生成哪些欄位與組別，並邀請使用者在右側微調或繼續用對話修改。\n"
+        "   - 若目前專案已經有表單，使用者要求新增／修改／刪除欄位或組別時，務必**保留既有未要求改動的共通資訊與組別（含既有 id 與 color）**，再呼叫 `upsert_trial_scenario_form` 更新。\n"
+    )
+
+    pid = ctx.deps.project_id
+    if pid and pid != "home":
+        try:
+            proj = await ctx.deps.task_port.get_task(pid)
+            scenario_json = (
+                json.dumps(proj.scenario, ensure_ascii=False)
+                if proj.scenario
+                else "尚未建立表單"
+            )
+            base_prompt += (
+                f"\n【當前專案狀態】\n"
+                f"- 專案名稱：{proj.name}\n"
+                f"- 航拍拼接進度：{proj.progress}%\n"
+                f"- 目前資料庫中最新的表單 JSON（包含使用者可能在右側手動編輯的內容）：\n"
+                f"{scenario_json}\n"
+            )
+        except Exception:
+            pass
+    return base_prompt
+
+
+@scenario_agent.tool
+async def upsert_trial_scenario_form(
+    ctx: RunContext[ChatDeps],
+    scenario_type: str,
+    title: str,
+    description: str = "",
+    control_label: str = "對照組 (CK)",
+    metadata_fields: list[DynamicFieldInput] | None = None,
+    metadata_values: dict[str, str | int | float | bool | None] | None = None,
+    group_fields: list[DynamicFieldInput] | None = None,
+    groups: list[TrialGroupInput] | None = None,
+) -> dict[str, Any]:
+    """依據對話內容建立或更新步驟 2 的多型態動態試驗表單，並立即自動儲存至資料庫。"""
+    pid = ctx.deps.project_id
+    if not pid or pid == "home":
+        return {"status": "error", "message": "目前未選定專案，無法儲存表單。"}
+
+    raw_categories: list[dict[str, Any]] = [
+        {
+            "id": "ck",
+            "name": (control_label or "").strip() or "對照組 (CK)",
+            "is_control": True,
+            "values": {},
+        }
+    ]
+    for grp in groups or []:
+        raw_categories.append(
+            {
+                "id": grp.id,
+                "name": grp.name,
+                "color": grp.color,
+                "is_control": False,
+                "values": dict(grp.values or {}),
+            }
+        )
+
+    raw_scenario: dict[str, Any] = {
+        "version": 2,
+        "type": (scenario_type or "custom").strip() or "custom",
+        "title": (title or "試驗情境設定").strip() or "試驗情境設定",
+        "description": (description or "").strip(),
+        "metadata_fields": [f.model_dump() for f in (metadata_fields or [])],
+        "metadata_values": dict(metadata_values or {}),
+        "group_fields": [f.model_dump() for f in (group_fields or [])],
+        "categories": raw_categories,
+    }
+
+    normalized = _normalize_scenario_data(raw_scenario)
+    await ctx.deps.task_port.update_scenario(pid, normalized)
+    ctx.deps.scenario_events.append(normalized)
+
+    return {
+        "status": "saved",
+        "title": normalized.get("title"),
+        "metadata_field_count": len(normalized.get("metadata_fields", [])),
+        "group_field_count": len(normalized.get("group_fields", [])),
+        "category_count": len(normalized.get("categories", [])),
     }

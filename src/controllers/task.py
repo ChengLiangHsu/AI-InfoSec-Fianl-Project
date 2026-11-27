@@ -14,7 +14,7 @@ from pydantic_ai import ModelMessage, ModelRequest, ModelResponse, TextPart, Use
 from pydantic_ai.usage import UsageLimits
 from sqlmodel import Session
 
-from src.agents import ChatDeps, agent
+from src.agents import ChatDeps, agent, scenario_agent
 from src.controllers.dependencies import (
     get_task_repo,
     get_task_usecase,
@@ -39,6 +39,7 @@ router = APIRouter(tags=["task"])
 class PostChatRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=8000)
     project_id: str = "home"
+    mode: Literal["default", "scenario"] = "default"
 
 
 class PlotItemPayload(BaseModel):
@@ -130,11 +131,18 @@ def _format_initial_user_event(prompt: str) -> bytes:
     return json.dumps(asdict(event), ensure_ascii=False).encode("utf-8") + b"\n"
 
 
+def _format_scenario_updated_event(scenario: dict[str, Any]) -> bytes:
+    """包裝並回傳即時同步給前端的情境表單更新 JSON 事件。"""
+    payload = {"type": "scenario_updated", "scenario": scenario}
+    return json.dumps(payload, ensure_ascii=False).encode("utf-8") + b"\n"
+
+
 async def _stream_agent_dialogue(
     prompt: str,
     project_id: str,
     usecase: TaskUseCase,
     task_port: TaskPort,
+    mode: Literal["default", "scenario"] = "default",
 ) -> AsyncGenerator[bytes, None]:
     """調度 Pydantic AI 串流對話，依據任務生命週期決定是否持久化歷史訊息。"""
     yield _format_initial_user_event(prompt)
@@ -142,15 +150,28 @@ async def _stream_agent_dialogue(
     is_task_scoped = bool(project_id and project_id != "home")
     messages = await usecase.get_messages(project_id) if is_task_scoped else []
     deps = ChatDeps(project_id=project_id, task_port=task_port)
+    active_agent = scenario_agent if mode == "scenario" else agent
+    emitted_scenario_count = 0
 
     limits = UsageLimits(request_limit=6, tool_calls_limit=6, output_tokens_limit=6000)
     try:
-        async with agent.run_stream(prompt, message_history=messages, deps=deps, usage_limits=limits) as result:
+        async with active_agent.run_stream(prompt, message_history=messages, deps=deps, usage_limits=limits) as result:
+            while emitted_scenario_count < len(deps.scenario_events):
+                yield _format_scenario_updated_event(deps.scenario_events[emitted_scenario_count])
+                emitted_scenario_count += 1
+
             async for text in result.stream_output(debounce_by=0.01):
+                while emitted_scenario_count < len(deps.scenario_events):
+                    yield _format_scenario_updated_event(deps.scenario_events[emitted_scenario_count])
+                    emitted_scenario_count += 1
                 m = ModelResponse(parts=[TextPart(text)], timestamp=result.timestamp)
                 converted = _to_model_message_response(m)
                 if converted:
                     yield json.dumps(asdict(converted), ensure_ascii=False).encode("utf-8") + b"\n"
+
+        while emitted_scenario_count < len(deps.scenario_events):
+            yield _format_scenario_updated_event(deps.scenario_events[emitted_scenario_count])
+            emitted_scenario_count += 1
 
         if is_task_scoped:
             await usecase.append_messages(project_id, result.new_messages_json())
@@ -387,7 +408,7 @@ async def post_chat(
         await usecase.get_task(request.project_id)
     consume_chat_quota(session)
     stream = _stream_agent_dialogue(
-        request.prompt, request.project_id, usecase, task_port
+        request.prompt, request.project_id, usecase, task_port, mode=request.mode
     )
     return StreamingResponse(stream, media_type="text/plain")
 

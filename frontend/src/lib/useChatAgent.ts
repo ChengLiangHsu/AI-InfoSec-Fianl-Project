@@ -1,4 +1,5 @@
 import { ref, computed } from 'vue'
+import type { ScenarioData } from './scenarioSchema'
 
 export interface Version {
   id: string
@@ -10,6 +11,13 @@ export interface MessageType {
   role: 'user' | 'assistant'
   versions?: Version[]
   content?: string
+}
+
+export type ChatMode = 'default' | 'scenario'
+
+export interface SendPromptOptions {
+  mode?: ChatMode
+  onScenarioUpdated?: (scenario: ScenarioData) => void
 }
 
 // Global cache: project_id -> MessageType[]
@@ -103,9 +111,32 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
     conversations.value[targetId] = [...currentList]
   }
 
-  async function onFetchResponse(response: Response, targetId: string): Promise<void> {
+  function handleStreamLine(
+    line: string,
+    targetId: string,
+    onScenarioUpdated?: (scenario: ScenarioData) => void
+  ) {
+    const trimmed = line.trim()
+    if (!trimmed) return
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (parsed && parsed.type === 'scenario_updated' && parsed.scenario) {
+        onScenarioUpdated?.(parsed.scenario as ScenarioData)
+        return
+      }
+      updateStreamingContent(parsed as MessageType, targetId)
+    } catch (e) {
+      console.error('Failed to parse chat stream line:', trimmed, e)
+    }
+  }
+
+  async function onFetchResponse(
+    response: Response,
+    targetId: string,
+    onScenarioUpdated?: (scenario: ScenarioData) => void
+  ): Promise<void> {
     statusMap.value[targetId] = 'streaming'
-    let text = ''
+    let buffer = ''
     const decoder = new TextDecoder()
     if (response.ok) {
       const reader = response.body?.getReader()
@@ -113,12 +144,16 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
-        text += decoder.decode(value)
-        const lines = text.split('\n')
-        const newMessages: MessageType[] = lines.filter(line => line.length > 1).map(j => JSON.parse(j))
-        for (const message of newMessages) {
-          updateStreamingContent(message, targetId)
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+        for (const line of lines) {
+          handleStreamLine(line, targetId, onScenarioUpdated)
         }
+      }
+      buffer += decoder.decode()
+      if (buffer.trim()) {
+        handleStreamLine(buffer, targetId, onScenarioUpdated)
       }
       statusMap.value[targetId] = 'ready'
     } else {
@@ -128,7 +163,11 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
     }
   }
 
-  async function sendPrompt(promptText: string, pid?: string): Promise<void> {
+  async function sendPrompt(
+    promptText: string,
+    pid?: string,
+    options?: SendPromptOptions
+  ): Promise<void> {
     if (!promptText.trim()) return
     const targetId = pid || currentProjectId.value
     statusMap.value[targetId] = 'submitted'
@@ -136,13 +175,14 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
       const body = JSON.stringify({
         prompt: promptText,
         project_id: targetId,
+        mode: options?.mode || 'default',
       })
       const response = await fetch('/api/task/chat', {
         method: 'POST',
         body,
         headers: { 'Content-Type': 'application/json' }
       })
-      await onFetchResponse(response, targetId)
+      await onFetchResponse(response, targetId, options?.onScenarioUpdated)
     } catch (err) {
       statusMap.value[targetId] = 'error'
       console.error(`Failed to send prompt to ${targetId}:`, err)

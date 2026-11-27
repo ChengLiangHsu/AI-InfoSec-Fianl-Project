@@ -1,4 +1,11 @@
 import { ref, computed, watch } from 'vue'
+import {
+  deriveCategorySummary,
+  type CategoryDetailItem,
+  type DynamicFieldDef,
+  type ScenarioCategoryItem,
+  type ScenarioData,
+} from './scenarioSchema'
 
 export interface NormalizedPoint {
   x: number
@@ -26,22 +33,13 @@ export interface ExistingTreatment {
   dose: string
   label: string
   color?: string
+  details?: CategoryDetailItem[]
 }
 
-export interface ScenarioCategoryItem {
-  treatment?: string
-  name: string
-  dose?: string
-  color: string
-  is_control?: boolean
-}
+export type { ScenarioCategoryItem }
 
-export interface ScenarioDefinition {
-  type?: string
-  title?: string
-  target?: string
-  target_label?: string
-  categories?: ScenarioCategoryItem[]
+export type ScenarioDefinition = Partial<ScenarioData> & {
+  group_fields?: DynamicFieldDef[]
 }
 
 export interface GridGeneratorState {
@@ -314,17 +312,27 @@ export function usePlots() {
     // 1. 優先注入專案情境特徵所指定的色彩
     if (currentScenario.value?.categories && currentScenario.value.categories.length > 0) {
       const targetName = currentScenario.value.target || ''
+      const groupFields = currentScenario.value.group_fields || []
       for (const cat of currentScenario.value.categories) {
         if (cat.is_control) {
           map.set('CK', cat.color || CONTROL_COLOR)
         } else {
-          const trt = cat.treatment || targetName || ''
-          const doseName = cat.dose || cat.name || ''
+          const summary = deriveCategorySummary(
+            {
+              ...cat,
+              treatment: cat.treatment || targetName || '',
+            },
+            groupFields
+          )
+          const trt = summary.treatment
+          const doseName = summary.dose
           if (trt) {
             map.set(`${trt}_${doseName}`, cat.color)
-            map.set(`${trt}_${cat.name}`, cat.color)
+            map.set(`${trt}_${summary.label}`, cat.color)
+            map.set(trt, cat.color)
           }
           if (doseName) map.set(doseName, cat.color)
+          if (summary.label) map.set(summary.label, cat.color)
           if (cat.name) map.set(cat.name, cat.color)
         }
       }
@@ -353,25 +361,38 @@ export function usePlots() {
     // 1. 優先加入專案情境設定之預設標籤
     if (currentScenario.value?.categories && currentScenario.value.categories.length > 0) {
       const targetName = currentScenario.value.target || ''
+      const groupFields = currentScenario.value.group_fields || []
       for (const cat of currentScenario.value.categories) {
         if (cat.is_control) {
           if (!seen.has('CK')) {
             seen.add('CK')
-            list.push({ isControl: true, treatment: '', dose: '', label: cat.name || '未施藥對照 (CK)', color: cat.color || CONTROL_COLOR })
+            list.push({
+              isControl: true,
+              treatment: '',
+              dose: '',
+              label: cat.name || '對照組 (CK)',
+              color: cat.color || CONTROL_COLOR,
+              details: [],
+            })
           }
         } else {
-          const trt = cat.treatment || targetName || ''
-          const doseName = cat.dose || ''
-          const label = [trt, doseName].filter(Boolean).join(' ') || cat.name || '處理組'
-          const key = `${trt}::${doseName}`
+          const summary = deriveCategorySummary(
+            {
+              ...cat,
+              treatment: cat.treatment || targetName || '',
+            },
+            groupFields
+          )
+          const key = `${summary.treatment}::${summary.dose}::${summary.label}`
           if (!seen.has(key)) {
             seen.add(key)
             list.push({
               isControl: false,
-              treatment: trt,
-              dose: doseName,
-              label,
+              treatment: summary.treatment,
+              dose: summary.dose,
+              label: summary.label,
               color: cat.color,
+              details: summary.details,
             })
           }
         }
