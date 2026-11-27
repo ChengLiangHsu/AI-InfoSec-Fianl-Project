@@ -906,8 +906,9 @@ watch(selectedProject, async (newProj) => {
             </TooltipProvider>
           </div>
 
+          <!-- 區域 RGB 與演算法數值面板 (僅步驟 4 光譜分析顯示) -->
           <PlotStatisticsPanel
-            v-if="selectedProject.progress === 100 && (currentStep === 3 || currentStep === 4)"
+            v-if="selectedProject.progress === 100 && currentStep === 4"
             :task-id="selectedProject.id"
             :plots="plots.filter(plot => selectedPlotNumbers.includes(plot.plot_number))"
             :current-formula="selectedFormula"
