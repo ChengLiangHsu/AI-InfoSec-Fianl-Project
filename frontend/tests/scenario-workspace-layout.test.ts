@@ -31,7 +31,7 @@ afterEach(() => {
 })
 
 describe('Step 2 AI scenario workspace layout and HUD visibility', () => {
-  it('hides the top-left project status HUD on step 2 while keeping it on steps 1, 3, and 4', async () => {
+  it('hides the top-left project status HUD on steps 2 and 4 while keeping it on steps 1 and 3', async () => {
     const project = {
       id: 'proj-1',
       name: '田間航拍_1110_1557',
@@ -56,8 +56,8 @@ describe('Step 2 AI scenario workspace layout and HUD visibility', () => {
           AppSidebar: true,
           DroneHomeUpload: true,
           ScenarioWorkspace: true,
+          SpectralWorkspace: true,
           PlotToolbar: true,
-          PlotStatisticsPanel: true,
           PlotCanvasOverlay: { template: '<div />', methods: { redraw() {}, syncCanvasSize() {} } },
           PlotTreatmentDialog: true,
           CopyPlotsDialog: true,
@@ -87,11 +87,12 @@ describe('Step 2 AI scenario workspace layout and HUD visibility', () => {
     expect(navigation.props('currentStep')).toBe(3)
     expect(wrapper.find('[data-testid="project-status-hud"]').exists()).toBe(true)
 
-    // Step 4: HUD restored
+    // Step 4: HUD hidden for dedicated 3-column spectral workspace
     navigation.vm.$emit('changeStep', 4)
     await flushPromises()
     expect(navigation.props('currentStep')).toBe(4)
-    expect(wrapper.find('[data-testid="project-status-hud"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="project-status-hud"]').exists()).toBe(false)
+    wrapper.unmount()
   })
 
   it('uses full-width 50/50 split layout in split mode and centered single-column before scenario exists', async () => {

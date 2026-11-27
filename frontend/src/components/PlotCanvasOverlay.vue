@@ -28,12 +28,14 @@ const props = withDefaults(
     previewPlots?: NormalizedPoint[][]
     canEdit?: boolean
     isRotateToolActive?: boolean
+    clickSelectOnPan?: boolean
   }>(),
   {
     drawTool: 'rect',
     previewPlots: () => [],
     canEdit: true,
     isRotateToolActive: false,
+    clickSelectOnPan: false,
   }
 )
 
@@ -120,6 +122,14 @@ const isDraggingWholePlot = ref(false)
 const wholePlotDragStartNorm = ref<NormalizedPoint | null>(null)
 const wholePlotCurrentDelta = ref<{ dx: number; dy: number }>({ dx: 0, dy: 0 })
 const isAltDragging = ref(false)
+
+// 步驟 4 檢視模式：平移與點擊選取並存候選狀態
+const panClickCandidate = ref<{
+  clientX: number
+  clientY: number
+  modifier: boolean
+  hitPlotNumber: number | null
+} | null>(null)
 
 const SNAP_THRESHOLD_PX = 18
 const MIN_RECT_DRAG_PX = 8
@@ -1247,6 +1257,17 @@ function onMouseDown(e: MouseEvent): void {
 
   if (props.activeMode === 'pan') {
     e.preventDefault()
+    if (props.clickSelectOnPan && !props.canEdit) {
+      const hitPlot = findPlotAtPoint(screenX, screenY)
+      panClickCandidate.value = {
+        clientX: e.clientX,
+        clientY: e.clientY,
+        modifier: e.shiftKey || e.ctrlKey || e.metaKey,
+        hitPlotNumber: hitPlot ? hitPlot.plot_number : null,
+      }
+    } else {
+      panClickCandidate.value = null
+    }
     props.viewport.startPan(e.clientX, e.clientY)
     return
   }
@@ -1415,6 +1436,31 @@ function onMouseUp(e: MouseEvent): void {
 
   if (props.viewport.isPanning.value) {
     props.viewport.endPan()
+    const candidate = panClickCandidate.value
+    panClickCandidate.value = null
+    if (candidate && props.clickSelectOnPan && !props.canEdit) {
+      const moveDist = Math.hypot(e.clientX - candidate.clientX, e.clientY - candidate.clientY)
+      if (moveDist <= 5) {
+        if (candidate.hitPlotNumber !== null) {
+          if (candidate.modifier) {
+            const cur = effectiveSelectedPlotNumbers.value
+            const next = cur.includes(candidate.hitPlotNumber)
+              ? cur.filter((n) => n !== candidate.hitPlotNumber)
+              : [...cur, candidate.hitPlotNumber]
+            emit('select-plots', next)
+            if (next.length <= 1) {
+              emit('select-plot', next.length === 1 ? next[0] : null)
+            }
+          } else {
+            emit('select-plots', [candidate.hitPlotNumber])
+            emit('select-plot', candidate.hitPlotNumber)
+          }
+        } else if (!candidate.modifier) {
+          emit('select-plots', [])
+          emit('select-plot', null)
+        }
+      }
+    }
     return
   }
 
@@ -1442,6 +1488,7 @@ function onMouseUp(e: MouseEvent): void {
 }
 
 function onMouseLeave(e: MouseEvent): void {
+  panClickCandidate.value = null
   hoveredGridCornerIndex.value = null
   isHoveringGridQuad.value = false
   hoveredVertexIndex.value = null
@@ -1503,7 +1550,7 @@ function onKeyDown(e: KeyboardEvent): void {
   if (targetTag === 'input' || targetTag === 'textarea' || targetTag === 'select') return
 
   if (e.key === 'Delete' || e.key === 'Backspace') {
-    if (effectiveSelectedPlotNumbers.value.length > 0 && !isDraggingRect.value && currentDrawingPoints.value.length === 0) {
+    if (props.canEdit && effectiveSelectedPlotNumbers.value.length > 0 && !isDraggingRect.value && currentDrawingPoints.value.length === 0) {
       e.preventDefault()
       if (effectiveSelectedPlotNumbers.value.length === 1) {
         emit('delete-plot', effectiveSelectedPlotNumbers.value[0])
@@ -1512,7 +1559,7 @@ function onKeyDown(e: KeyboardEvent): void {
       }
     }
   } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
-    if (effectiveSelectedPlotNumbers.value.length > 0) {
+    if (props.canEdit && effectiveSelectedPlotNumbers.value.length > 0) {
       e.preventDefault()
       if (effectiveSelectedPlotNumbers.value.length === 1) {
         emit('duplicate-plot', effectiveSelectedPlotNumbers.value[0])

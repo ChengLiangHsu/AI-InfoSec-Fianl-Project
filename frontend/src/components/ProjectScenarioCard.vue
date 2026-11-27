@@ -25,6 +25,7 @@ import {
   AlertCircle,
   Columns3,
   Lock,
+  Layers,
   X,
 } from '@lucide/vue'
 import {
@@ -68,6 +69,7 @@ const metadataFields = ref<DynamicFieldDef[]>([])
 const metadataValues = ref<Record<string, DynamicFieldValue>>({})
 const groupFields = ref<DynamicFieldDef[]>([])
 const categories = ref<ScenarioCategoryItem[]>([])
+const recommendedFormulas = ref<string[]>([])
 
 const saveState = ref<'idle' | 'saving' | 'saved' | 'error'>('idle')
 const saveError = ref('')
@@ -126,6 +128,7 @@ function buildPayload(): ScenarioData {
     metadata_values: { ...metadataValues.value },
     group_fields: groupFields.value.map((f) => ({ ...f })),
     categories: mappedCategories,
+    ...(recommendedFormulas.value.length > 0 ? { recommended_formulas: [...recommendedFormulas.value] } : {}),
   }
 }
 
@@ -142,6 +145,7 @@ function hydrateFromScenario(raw: ScenarioData | null | undefined) {
     ...c,
     values: { ...(c.values || {}) },
   }))
+  recommendedFormulas.value = normalized.recommended_formulas ? [...normalized.recommended_formulas] : []
   if (raw && Object.keys(raw).length > 0) {
     saveState.value = 'saved'
   }
@@ -726,6 +730,37 @@ function removeGroupField(fieldIdx: number) {
               </tr>
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <!-- 區塊 3：步驟 4 適用光譜指標（由情境規劃代理人唯讀決定） -->
+      <section
+        v-if="recommendedFormulas.length > 0"
+        data-testid="scenario-recommended-formulas"
+        class="space-y-2 rounded-lg border border-border/60 bg-muted/15 px-3.5 py-3"
+      >
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+            <Layers class="size-3.5 text-primary" />
+            <span>步驟 4 適用光譜指標</span>
+          </div>
+          <span class="text-[11px] text-muted-foreground">
+            由情境規劃代理人決定（如需調整請於左側對話告知）
+          </span>
+        </div>
+        <div class="flex flex-wrap items-center gap-1.5">
+          <Badge variant="outline" class="text-[11px] font-mono bg-background">
+            RGB 原圖
+          </Badge>
+          <Badge
+            v-for="fid in recommendedFormulas"
+            :key="fid"
+            data-testid="recommended-formula-badge"
+            variant="secondary"
+            class="text-[11px] font-mono font-semibold"
+          >
+            {{ fid }}
+          </Badge>
         </div>
       </section>
     </CardContent>

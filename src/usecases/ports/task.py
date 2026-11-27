@@ -38,14 +38,16 @@ class TaskPort(Protocol):
         """非同步更新指定任務之試驗情境特徵。"""
         ...
 
-    async def get_messages(self, task_id: str) -> list[Any]:
+    async def get_messages(self, task_id: str, channel: str = "default") -> list[Any]:
         """非同步查詢指定任務之對話歷史列表。"""
         ...
 
-    async def add_messages(self, task_id: str, new_messages: str | bytes) -> None:
+    async def add_messages(
+        self, task_id: str, new_messages: str | bytes, channel: str = "default"
+    ) -> None:
         """非同步新增序列化之對話歷史記錄至任務。"""
         ...
 
-    async def clear_messages(self, task_id: str) -> None:
+    async def clear_messages(self, task_id: str, channel: str = "default") -> None:
         """非同步清空指定任務之對話歷史。"""
         ...

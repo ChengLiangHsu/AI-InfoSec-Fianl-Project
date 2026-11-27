@@ -14,7 +14,7 @@ from pydantic_ai import ModelMessage, ModelRequest, ModelResponse, TextPart, Too
 from pydantic_ai.usage import UsageLimits
 from sqlmodel import Session
 
-from src.agents import ChatDeps, agent, scenario_agent
+from src.agents import ChatDeps, agent, scenario_agent, spectral_agent
 from src.agents.pydantic_agent import _normalize_interview_question
 from src.controllers.dependencies import (
     get_task_repo,
@@ -40,7 +40,9 @@ router = APIRouter(tags=["task"])
 class PostChatRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=8000)
     project_id: str = "home"
-    mode: Literal["default", "scenario"] = "default"
+    mode: Literal["default", "scenario", "spectral"] = "default"
+    selected_plot_numbers: list[int] = Field(default_factory=list)
+    current_formula: str = "rgb"
 
 
 class PlotItemPayload(BaseModel):
@@ -177,15 +179,28 @@ async def _stream_agent_dialogue(
     project_id: str,
     usecase: TaskUseCase,
     task_port: TaskPort,
-    mode: Literal["default", "scenario"] = "default",
+    mode: Literal["default", "scenario", "spectral"] = "default",
+    selected_plot_numbers: list[int] | None = None,
+    current_formula: str = "rgb",
 ) -> AsyncGenerator[bytes, None]:
-    """調度 Pydantic AI 串流對話，依據任務生命週期決定是否持久化歷史訊息。"""
+    """調度 Pydantic AI 串流對話，依據任務生命週期與對話頻道決定持久化位置。"""
     yield _format_initial_user_event(prompt)
 
     is_task_scoped = bool(project_id and project_id != "home")
-    messages = await usecase.get_messages(project_id) if is_task_scoped else []
-    deps = ChatDeps(project_id=project_id, task_port=task_port)
-    active_agent = scenario_agent if mode == "scenario" else agent
+    channel: Literal["default", "spectral"] = "spectral" if mode == "spectral" else "default"
+    messages = await usecase.get_messages(project_id, channel=channel) if is_task_scoped else []
+    deps = ChatDeps(
+        project_id=project_id,
+        task_port=task_port,
+        selected_plot_numbers=list(selected_plot_numbers or []),
+        current_formula=current_formula or "rgb",
+    )
+    if mode == "scenario":
+        active_agent = scenario_agent
+    elif mode == "spectral":
+        active_agent = spectral_agent
+    else:
+        active_agent = agent
     emitted_scenario_count = 0
     emitted_question_count = 0
 
@@ -219,7 +234,7 @@ async def _stream_agent_dialogue(
             emitted_question_count += 1
 
         if is_task_scoped:
-            await usecase.append_messages(project_id, result.new_messages_json())
+            await usecase.append_messages(project_id, result.new_messages_json(), channel=channel)
     except Exception as exc:
         err_msg = f"抱歉，AI 助理連線遇到問題：{exc}"
         m = ModelResponse(parts=[TextPart(err_msg)], timestamp=datetime.now(timezone.utc))
@@ -368,6 +383,16 @@ async def get_region_statistics(
     return success_response(data=statistics)
 
 
+@router.get("/plots-statistics/{task_id}")
+async def get_plots_statistics(
+    task_id: str,
+    usecase: TaskUseCase = Depends(get_task_usecase),
+) -> JSONResponse:
+    """Batch-read RGB & spectral statistics for all saved plots, CK baseline, and treatment groups."""
+    statistics = await usecase.get_plots_statistics(task_id)
+    return success_response(data=statistics)
+
+
 @router.get("/odm-task-export/{task_id}")
 async def export_odm_task_image(
     task_id: str,
@@ -453,7 +478,13 @@ async def post_chat(
         await usecase.get_task(request.project_id)
     consume_chat_quota(session)
     stream = _stream_agent_dialogue(
-        request.prompt, request.project_id, usecase, task_port, mode=request.mode
+        request.prompt,
+        request.project_id,
+        usecase,
+        task_port,
+        mode=request.mode,
+        selected_plot_numbers=request.selected_plot_numbers,
+        current_formula=request.current_formula,
     )
     return StreamingResponse(stream, media_type="text/plain")
 
@@ -462,23 +493,25 @@ async def post_chat(
 @router.get("/chat/")
 async def get_chat(
     project_id: str = "home",
+    channel: Literal["default", "spectral"] = "default",
     usecase: TaskUseCase = Depends(get_task_usecase),
 ) -> Response:
-    """主流程：查詢指定專案之對話歷史列表。"""
+    """主流程：查詢指定專案與頻道之對話歷史列表。"""
     if not project_id or project_id == "home":
         return Response(b"", media_type="text/plain")
-    msgs = await usecase.get_messages(project_id)
+    msgs = await usecase.get_messages(project_id, channel=channel)
 
     serialized = []
     for m in msgs:
         converted = _to_model_message_response(m)
         if converted:
             serialized.append(json.dumps(asdict(converted), ensure_ascii=False).encode("utf-8"))
-    pending_question = _extract_pending_interview_question(msgs)
-    if pending_question:
-        serialized.append(
-            json.dumps({"type": "interview_question", "question": pending_question}, ensure_ascii=False).encode("utf-8")
-        )
+    if channel == "default":
+        pending_question = _extract_pending_interview_question(msgs)
+        if pending_question:
+            serialized.append(
+                json.dumps({"type": "interview_question", "question": pending_question}, ensure_ascii=False).encode("utf-8")
+            )
     return Response(b"\n".join(serialized), media_type="text/plain")
 
 
@@ -486,9 +519,10 @@ async def get_chat(
 @router.delete("/chat/")
 async def delete_chat(
     project_id: str = "home",
+    channel: Literal["default", "spectral"] = "default",
     usecase: TaskUseCase = Depends(get_task_usecase),
 ) -> JSONResponse:
-    """主流程：清空指定專案之對話歷史紀錄。"""
+    """主流程：清空指定專案與頻道之對話歷史紀錄。"""
     if project_id and project_id != "home":
-        await usecase.clear_messages(project_id)
+        await usecase.clear_messages(project_id, channel=channel)
     return success_response()

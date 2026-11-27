@@ -55,13 +55,15 @@ class _InMemoryTaskPort(TaskPort):
         self.task.scenario = scenario
         self.saved_scenarios.append(scenario)
 
-    async def get_messages(self, task_id: str) -> list[Any]:
+    async def get_messages(self, task_id: str, channel: str = "default") -> list[Any]:
         return []
 
-    async def add_messages(self, task_id: str, new_messages: str | bytes) -> None:
-        self.messages_log.append(new_messages)
+    async def add_messages(
+        self, task_id: str, new_messages: str | bytes, channel: str = "default"
+    ) -> None:
+        self.messages_log.append((channel, new_messages))
 
-    async def clear_messages(self, task_id: str) -> None:
+    async def clear_messages(self, task_id: str, channel: str = "default") -> None:
         self.messages_log.clear()
 
 
@@ -69,11 +71,13 @@ class _DummyUseCase:
     def __init__(self, port: _InMemoryTaskPort) -> None:
         self.port = port
 
-    async def get_messages(self, task_id: str) -> list[Any]:
-        return await self.port.get_messages(task_id)
+    async def get_messages(self, task_id: str, channel: str = "default") -> list[Any]:
+        return await self.port.get_messages(task_id, channel=channel)
 
-    async def append_messages(self, task_id: str, new_messages: str | bytes) -> None:
-        await self.port.add_messages(task_id, new_messages)
+    async def append_messages(
+        self, task_id: str, new_messages: str | bytes, channel: str = "default"
+    ) -> None:
+        await self.port.add_messages(task_id, new_messages, channel=channel)
 
 
 def test_normalize_v2_pesticide_scenario_enforces_locked_ck_and_units() -> None:

@@ -23,7 +23,11 @@ from src.utility.image_export import EXPORT_MEDIA_TYPES, convert_image_export
 from src.utility.formulas import normalize_rgb_formula
 from src.utility.marker_detection import detect_white_marker_corners
 from src.utility.spectral import generate_spectral_image
-from src.utility.region_statistics import calculate_region_statistics, validate_polygon
+from src.utility.region_statistics import (
+    calculate_plots_statistics,
+    calculate_region_statistics,
+    validate_polygon,
+)
 
 _ASSET_LOCKS: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
 
@@ -238,9 +242,35 @@ def _format_dynamic_value(val: Any, field: dict[str, Any]) -> str:
     return text
 
 
+def _normalize_recommended_formulas(raw_formulas: Any) -> list[str]:
+    """將情境推薦之純 RGB 光譜指標正規化並去重（保留順序）。"""
+    if not isinstance(raw_formulas, list):
+        return []
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in raw_formulas:
+        if not isinstance(item, str) or not item.strip():
+            continue
+        try:
+            canonical = normalize_rgb_formula(item)
+        except ValueError:
+            continue
+        if canonical not in seen:
+            seen.add(canonical)
+            result.append(canonical)
+    return result
+
+
 def _normalize_scenario_data(scenario_data: dict[str, Any]) -> dict[str, Any]:
     """正規化情境特徵資料（相容 v1/v2），確保對照組 (CK) 恆為首列且數量嚴格恰為 1。"""
     normalized = dict(scenario_data)
+
+    if "recommended_formulas" in normalized:
+        rec = _normalize_recommended_formulas(normalized.get("recommended_formulas"))
+        if rec:
+            normalized["recommended_formulas"] = rec
+        else:
+            normalized.pop("recommended_formulas", None)
 
     has_v2_schema = (
         normalized.get("version") == 2
@@ -500,6 +530,23 @@ class TaskUseCase:
         path = await self.get_orthophoto_path(task_id)
         return await asyncio.to_thread(calculate_region_statistics, path, points)
 
+    async def get_plots_statistics(self, task_id: str) -> dict[str, Any]:
+        """Batch-calculate RGB & spectral statistics for all saved plots plus CK baseline."""
+        _validate_task_id(task_id)
+        task = await self.get_task(task_id)
+        path = await self.get_orthophoto_path(task_id)
+        plots_dicts = [
+            {
+                "plot_number": p.plot_number,
+                "coords": p.coords,
+                "is_control": p.is_control,
+                "treatment": p.treatment,
+                "dose": p.dose,
+            }
+            for p in task.plots
+        ]
+        return await asyncio.to_thread(calculate_plots_statistics, path, plots_dicts)
+
     async def get_image_export_path(self, task_id: str, formula: str, file_format: str) -> Path:
         """Orchestrate a read-only export independently of plots and workflow steps."""
         task = await self.get_task(task_id)
@@ -562,24 +609,26 @@ class TaskUseCase:
         await self.task_port.update_scenario(task_id, normalized_scenario)
         return normalized_scenario
 
-    async def get_messages(self, task_id: str) -> list[Any]:
+    async def get_messages(self, task_id: str, channel: str = "default") -> list[Any]:
         """查詢指定任務之對話歷史列表（確保任務存在）。"""
         _validate_task_id(task_id)
         await self.task_port.get_task(task_id)
-        return await self.task_port.get_messages(task_id)
+        return await self.task_port.get_messages(task_id, channel=channel)
 
-    async def append_messages(self, task_id: str, new_messages: str | bytes) -> None:
+    async def append_messages(
+        self, task_id: str, new_messages: str | bytes, channel: str = "default"
+    ) -> None:
         """新增序列化之對話歷史記錄至指定任務（確保任務存在）。"""
         _validate_task_id(task_id)
         _validate_messages_content(new_messages)
         await self.task_port.get_task(task_id)
-        await self.task_port.add_messages(task_id, new_messages)
+        await self.task_port.add_messages(task_id, new_messages, channel=channel)
 
-    async def clear_messages(self, task_id: str) -> None:
+    async def clear_messages(self, task_id: str, channel: str = "default") -> None:
         """清空指定任務之對話歷史（確保任務存在）。"""
         _validate_task_id(task_id)
         await self.task_port.get_task(task_id)
-        await self.task_port.clear_messages(task_id)
+        await self.task_port.clear_messages(task_id, channel=channel)
 
     async def detect_plot_markers(
         self, task_id: str, roi: Sequence[float] | None = None

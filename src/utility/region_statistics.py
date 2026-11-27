@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from PIL import Image
@@ -106,3 +108,135 @@ def calculate_region_statistics(path: Path, points: list[tuple[float, float]]) -
     Image.MAX_IMAGE_PIXELS = None
     with Image.open(path) as image:
         return _collect_statistics(image, polygon)
+
+
+def _group_label_for_plot(plot: dict[str, Any]) -> tuple[str, str, bool]:
+    """Derive stable (group_key, display_label, is_control) for plot aggregation."""
+    is_control = bool(plot.get("is_control", False))
+    if is_control:
+        return ("CK", "對照組 (CK)", True)
+    treatment = str(plot.get("treatment") or "").strip()
+    dose = str(plot.get("dose") or "").strip()
+    parts = [p for p in (treatment, dose) if p]
+    label = " ".join(parts) if parts else "未分類處理組"
+    return (f"{treatment}::{dose}", label, False)
+
+
+def _average_plot_entries(entries: list[dict[str, Any]], algo_ids: list[str]) -> dict[str, Any]:
+    """Compute unweighted plot-level mean across entries (each plot contributes equally)."""
+    total_pixels = sum(int(e.get("pixel_count") or 0) for e in entries)
+    valid_rgbs = [e["rgb_mean"] for e in entries if e.get("rgb_mean")]
+    rgb_mean = (
+        [round(sum(r[i] for r in valid_rgbs) / len(valid_rgbs), 2) for i in range(3)]
+        if valid_rgbs
+        else None
+    )
+
+    algorithms: list[dict[str, Any]] = []
+    for algo_id in algo_ids:
+        means: list[float] = []
+        valid_pixel_total = 0
+        algo_rgbs: list[list[float]] = []
+        for entry in entries:
+            row = next((a for a in entry.get("algorithms", []) if a["id"] == algo_id), None)
+            if not row:
+                continue
+            valid_pixel_total += int(row.get("valid_pixel_count") or 0)
+            if row.get("index_mean") is not None:
+                means.append(float(row["index_mean"]))
+            if row.get("rgb_mean"):
+                algo_rgbs.append(row["rgb_mean"])
+        algorithms.append(
+            {
+                "id": algo_id,
+                "index_mean": (sum(means) / len(means)) if means else None,
+                "valid_pixel_count": valid_pixel_total,
+                "rgb_mean": (
+                    [round(sum(r[i] for r in algo_rgbs) / len(algo_rgbs), 2) for i in range(3)]
+                    if algo_rgbs
+                    else None
+                ),
+            }
+        )
+
+    return {
+        "plot_count": len(entries),
+        "pixel_count": total_pixels,
+        "rgb_mean": rgb_mean,
+        "algorithms": algorithms,
+    }
+
+
+def calculate_plots_statistics(path: Path, plots: list[dict[str, Any]]) -> dict[str, Any]:
+    """Single-pass batch RGB & spectral statistics for all plots, plus CK baseline & group summaries."""
+    algo_ids = [a["id"] for a in get_algorithm_list()]
+    plot_results: list[dict[str, Any]] = []
+
+    Image.MAX_IMAGE_PIXELS = None
+    with Image.open(path) as image:
+        for plot in plots:
+            raw_coords = plot.get("coords", "")
+            try:
+                pts = json.loads(raw_coords) if isinstance(raw_coords, str) else raw_coords
+                polygon = validate_polygon([(float(p[0]), float(p[1])) for p in pts])
+                stats = _collect_statistics(image, polygon)
+            except Exception:
+                stats = {
+                    "pixel_count": 0,
+                    "rgb_mean": None,
+                    "algorithms": [
+                        {"id": aid, "index_mean": None, "valid_pixel_count": 0, "rgb_mean": None}
+                        for aid in algo_ids
+                    ],
+                }
+
+            plot_results.append(
+                {
+                    "plot_number": int(plot.get("plot_number", 0)),
+                    "is_control": bool(plot.get("is_control", False)),
+                    "treatment": str(plot.get("treatment") or ""),
+                    "dose": str(plot.get("dose") or ""),
+                    **stats,
+                }
+            )
+
+    control_entries = [p for p in plot_results if p["is_control"]]
+    control_baseline = (
+        _average_plot_entries(control_entries, algo_ids) if control_entries else None
+    )
+
+    groups_bucket: dict[str, dict[str, Any]] = {}
+    for entry in plot_results:
+        gkey, glabel, is_ctrl = _group_label_for_plot(entry)
+        if gkey not in groups_bucket:
+            groups_bucket[gkey] = {
+                "key": gkey,
+                "label": glabel,
+                "is_control": is_ctrl,
+                "entries": [],
+            }
+        groups_bucket[gkey]["entries"].append(entry)
+
+    ordered_groups = sorted(
+        groups_bucket.values(),
+        key=lambda g: (not g["is_control"], g["label"]),
+    )
+    treatment_groups = [
+        {
+            "key": g["key"],
+            "label": g["label"],
+            "is_control": g["is_control"],
+            "plot_numbers": [e["plot_number"] for e in g["entries"]],
+            **_average_plot_entries(g["entries"], algo_ids),
+        }
+        for g in ordered_groups
+    ]
+
+    field_summary = _average_plot_entries(plot_results, algo_ids)
+
+    return {
+        "plots": plot_results,
+        "control_baseline": control_baseline,
+        "treatment_groups": treatment_groups,
+        "field_summary": field_summary,
+    }

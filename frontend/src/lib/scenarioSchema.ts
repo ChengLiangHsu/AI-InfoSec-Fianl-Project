@@ -31,6 +31,7 @@ export interface ScenarioData {
   metadata_values?: Record<string, DynamicFieldValue>
   group_fields?: DynamicFieldDef[]
   categories: ScenarioCategoryItem[]
+  recommended_formulas?: string[]
   target?: string
   target_label?: string
 }
@@ -249,6 +250,29 @@ export function createManualDefaultScenario(): ScenarioData {
   }
 }
 
+const CANONICAL_RGB_FORMULAS: ReadonlyMap<string, string> = new Map([
+  ['ndyi', 'NDYI'],
+  ['vari', 'VARI'],
+  ['mpri', 'MPRI'],
+  ['exg', 'EXG'],
+  ['gli', 'GLI'],
+])
+
+export function normalizeRecommendedFormulas(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  const result: string[] = []
+  const seen = new Set<string>()
+  for (const item of raw) {
+    if (typeof item !== 'string') continue
+    const canonical = CANONICAL_RGB_FORMULAS.get(item.trim().toLowerCase())
+    if (canonical && !seen.has(canonical)) {
+      seen.add(canonical)
+      result.push(canonical)
+    }
+  }
+  return result
+}
+
 export function normalizeScenario(raw: ScenarioData | Record<string, unknown> | null | undefined): ScenarioData {
   if (!raw || typeof raw !== 'object' || Object.keys(raw).length === 0) {
     return createManualDefaultScenario()
@@ -340,6 +364,8 @@ export function normalizeScenario(raw: ScenarioData | Record<string, unknown> | 
     normalizedCategories.push(baseCat)
   })
 
+  const recommendedFormulas = normalizeRecommendedFormulas(data.recommended_formulas)
+
   return {
     version: 2,
     type: (data.type || 'custom').trim() || 'custom',
@@ -349,5 +375,6 @@ export function normalizeScenario(raw: ScenarioData | Record<string, unknown> | 
     metadata_values: metadataValues,
     group_fields: groupFields,
     categories: normalizedCategories,
+    ...(recommendedFormulas.length > 0 ? { recommended_formulas: recommendedFormulas } : {}),
   }
 }

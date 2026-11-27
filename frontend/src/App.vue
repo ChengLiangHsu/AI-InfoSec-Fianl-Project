@@ -81,10 +81,10 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import FloatingPersona from './components/FloatingPersona.vue'
 import DroneHomeUpload from './components/DroneHomeUpload.vue'
 import ScenarioWorkspace from './components/ScenarioWorkspace.vue'
+import SpectralWorkspace from './components/SpectralWorkspace.vue'
 import type { ScenarioData } from './lib/scenarioSchema'
 import PlotToolbar from './components/PlotToolbar.vue'
 import PlotCanvasOverlay from './components/PlotCanvasOverlay.vue'
-import PlotStatisticsPanel from './components/PlotStatisticsPanel.vue'
 import PlotTreatmentDialog, { type TreatmentData } from './components/PlotTreatmentDialog.vue'
 import StepNavigationHUD from './components/StepNavigationHUD.vue'
 import ImageDownloadPanel from './components/ImageDownloadPanel.vue'
@@ -814,9 +814,9 @@ watch(selectedProject, async (newProj, oldProj) => {
       </header>
       <!-- 當選定專案時的四步驟工作流 -->
       <div v-if="selectedProject" class="relative flex flex-1 flex-col h-[calc(100vh-3.5rem)] max-h-[calc(100vh-3.5rem)] overflow-hidden">
-        <!-- 左上角懸浮專案資訊與步驟膠囊 HUD (步驟 1、3、4 顯示；步驟 2 保留專屬 AI 對話工作區版面) -->
+        <!-- 左上角懸浮專案資訊與步驟膠囊 HUD (步驟 1、3 顯示；步驟 2 與步驟 4 保留專屬多欄工作區版面) -->
         <div
-          v-if="currentStep !== 2"
+          v-if="currentStep !== 2 && currentStep !== 4"
           data-testid="project-status-hud"
           class="absolute top-4 left-4 z-20 flex flex-wrap items-center gap-3 rounded-2xl border border-white/15 bg-zinc-950/85 px-4 py-2 text-white shadow-2xl backdrop-blur-md"
         >
@@ -897,9 +897,25 @@ watch(selectedProject, async (newProj, oldProj) => {
           @saved="onScenarioSaved"
         />
 
-        <!-- 步驟 1、步驟 3 與步驟 4：Google 地圖式滿版暗場工作區 (Zero-Scroll 滿版黑底視圖) -->
+        <!-- 步驟 4：三欄可拖曳光譜分析工作區（左數值｜中代理人｜右光譜正射圖） -->
+        <SpectralWorkspace
+          v-else-if="currentStep === 4"
+          :project-id="selectedProject.id"
+          :project-name="selectedProject.name"
+          :project-progress="selectedProject.progress"
+          :scenario="selectedProject.scenario"
+          :plots="plots"
+          :formulas="formulas"
+          :selected-formula="selectedFormula"
+          :selected-plot-numbers="selectedPlotNumbers"
+          :get-plot-color="getPlotColor"
+          @update:selected-formula="selectedFormula = $event"
+          @select-plots="onSelectPlots"
+        />
+
+        <!-- 步驟 1 與步驟 3：Google 地圖式滿版暗場工作區 (Zero-Scroll 滿版黑底視圖) -->
         <div
-          v-else-if="currentStep === 1 || currentStep === 3 || currentStep === 4"
+          v-else-if="currentStep === 1 || currentStep === 3"
           class="relative flex-1 min-h-0 w-full h-full bg-black overflow-hidden select-none"
         >
           <!-- 步驟 1 拼接運算中（進度未達 100%）：畫面中央毛玻璃進度對話卡 -->
@@ -1049,31 +1065,6 @@ watch(selectedProject, async (newProj, oldProj) => {
               </Tooltip>
             </TooltipProvider>
 
-            <template v-if="currentStep === 4">
-              <div class="my-1 h-3.5 w-px bg-white/20" />
-              <TooltipProvider :delay-duration="150">
-                <Tooltip>
-                  <TooltipTrigger as-child>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      class="h-7 gap-1 px-2 text-xs font-medium cursor-pointer transition-colors"
-                      :class="activeMode === 'select' ? 'bg-sky-600 text-white hover:bg-sky-500 ring-1 ring-sky-400/60' : 'text-zinc-300 hover:text-white hover:bg-white/10'"
-                      :aria-pressed="activeMode === 'select'"
-                      data-testid="step4-select-mode-toggle"
-                      @click="activeMode = activeMode === 'select' ? 'pan' : 'select'"
-                    >
-                      <MousePointer class="size-3.5" />
-                      <span class="hidden sm:inline">選取模式</span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" class="text-xs">
-                    {{ activeMode === 'select' ? '關閉選取模式（返回左鍵拖曳移動）' : '啟用選取模式以點選或框選分析小區（右鍵仍可旋轉）' }}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </template>
-
             <div class="my-1 h-3.5 w-px bg-white/20" />
 
             <TooltipProvider :delay-duration="150">
@@ -1093,16 +1084,6 @@ watch(selectedProject, async (newProj, oldProj) => {
               </Tooltip>
             </TooltipProvider>
           </div>
-
-          <!-- 區域 RGB 與演算法數值面板 (僅步驟 4 光譜分析顯示) -->
-          <PlotStatisticsPanel
-            v-if="selectedProject.progress === 100 && currentStep === 4"
-            :task-id="selectedProject.id"
-            :plots="plots.filter(plot => selectedPlotNumbers.includes(plot.plot_number))"
-            :current-formula="selectedFormula"
-            :formulas="formulas"
-            @select-formula="selectedFormula = $event"
-          />
 
           <!-- 右側垂直小畫家工具列 (僅步驟 3 顯示) -->
           <PlotToolbar
@@ -1139,87 +1120,6 @@ watch(selectedProject, async (newProj, oldProj) => {
             @update:grid-scale-x="gridState.scaleX = $event; gridState.marginRatio = Number(((1 - $event) / 2).toFixed(3))"
             @update:grid-scale-y="gridState.scaleY = $event"
           />
-
-          <!-- 右側懸浮公式快速切換按鈕群 (僅步驟 4 顯示) -->
-          <div
-            v-if="selectedProject.progress === 100 && currentStep === 4"
-            class="absolute top-4 right-4 z-20 flex flex-col gap-1.5 rounded-2xl border border-white/15 bg-zinc-950/85 p-2 text-white shadow-2xl backdrop-blur-md"
-          >
-            <div class="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
-              <Layers class="size-3.5" />
-              <span>光譜演算法</span>
-            </div>
-            <div class="flex flex-col gap-1 max-h-[320px] overflow-y-auto pr-0.5">
-              <TooltipProvider :delay-duration="150">
-                <Tooltip>
-                  <TooltipTrigger as-child>
-                    <Button
-                      size="sm"
-                      :variant="selectedFormula === 'rgb' ? 'default' : 'outline'"
-                      class="h-8 justify-start gap-2 px-3 text-xs font-medium border-white/15 cursor-pointer"
-                      @click="selectedFormula = 'rgb'"
-                    >
-                      <span
-                        class="size-2 rounded-full"
-                        :class="selectedFormula === 'rgb' ? 'bg-primary-foreground' : 'bg-emerald-500'"
-                      />
-                      <span>RGB 原始</span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="left" class="max-w-xs space-y-1 p-2 text-xs">
-                    <p class="font-bold text-foreground">原始正射影像 (RGB)</p>
-                    <p class="text-muted-foreground leading-relaxed">未經光譜指數計算之原始拼接正射影像。</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-
-              <div class="my-0.5 h-px bg-white/15" />
-
-              <TooltipProvider
-                v-for="f in formulas"
-                :key="f.id"
-                :delay-duration="150"
-              >
-                <Tooltip>
-                  <TooltipTrigger as-child>
-                    <Button
-                      size="sm"
-                      :variant="selectedFormula === f.id ? 'default' : 'outline'"
-                      class="h-8 justify-between gap-2 px-3 text-xs font-medium border-white/15 cursor-pointer"
-                      @click="selectedFormula = f.id"
-                    >
-                      <span class="flex items-center gap-1.5">
-                        <span class="font-semibold">{{ f.id }}</span>
-                        <span
-                          v-if="f.badge && f.badge !== 'RGB 可見光'"
-                          class="rounded bg-amber-500/20 px-1 py-0.5 text-[9px] font-medium text-amber-200"
-                        >
-                          {{ f.badge }}
-                        </span>
-                      </span>
-                      <span
-                        v-if="selectedFormula === f.id"
-                        class="size-1.5 rounded-full bg-primary-foreground animate-pulse"
-                      />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="left" class="max-w-xs space-y-1.5 p-2.5 text-xs">
-                    <div class="flex items-center justify-between gap-2">
-                      <p class="font-bold text-foreground">{{ f.label || f.id }}</p>
-                      <span v-if="f.badge" class="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{{ f.badge }}</span>
-                    </div>
-                    <p v-if="f.help" class="text-muted-foreground leading-relaxed">{{ f.help }}</p>
-                    <p v-if="f.expr" class="font-mono text-[10px] text-muted-foreground/90 bg-muted/60 px-1.5 py-1 rounded">
-                      純 RGB 公式：{{ f.expr }}
-                    </p>
-                    <p v-if="f.limitation" class="text-[11px] text-amber-600 dark:text-amber-300 leading-relaxed">
-                      限制：{{ f.limitation }}
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-          </div>
 
           <!-- 影像載入中遮罩 -->
           <div

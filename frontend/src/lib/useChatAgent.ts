@@ -29,64 +29,84 @@ export interface InterviewQuestion {
   can_generate_now?: boolean
 }
 
-export type ChatMode = 'default' | 'scenario'
+export type ChatMode = 'default' | 'scenario' | 'spectral'
+export type ChatChannel = 'default' | 'spectral'
 
 export interface SendPromptOptions {
   mode?: ChatMode
+  selectedPlotNumbers?: number[]
+  currentFormula?: string
   onScenarioUpdated?: (scenario: ScenarioData) => void
   onQuestionReceived?: (question: InterviewQuestion) => void
 }
 
-// Global cache: project_id -> MessageType[]
+export interface UseChatAgentOptions {
+  channel?: ChatChannel
+}
+
+// Global cache: cacheKey (`projectId` for default, `${projectId}::spectral` for spectral) -> state
 const conversations = ref<Record<string, MessageType[]>>({})
 const statusMap = ref<Record<string, 'submitted' | 'streaming' | 'ready' | 'error'>>({})
 const activeQuestions = ref<Record<string, InterviewQuestion | null>>({})
 
-export function useChatAgent(projectIdRef?: () => string | undefined) {
+function buildCacheKey(projectId: string, channel: ChatChannel): string {
+  return channel === 'spectral' ? `${projectId}::spectral` : projectId
+}
+
+export function useChatAgent(
+  projectIdRef?: () => string | undefined,
+  agentOptions?: UseChatAgentOptions
+) {
+  const channel: ChatChannel = agentOptions?.channel ?? 'default'
+
   const currentProjectId = computed(() => {
     const pid = projectIdRef ? projectIdRef() : 'home'
     return pid || 'home'
   })
 
+  const currentCacheKey = computed(() => buildCacheKey(currentProjectId.value, channel))
+
   const status = computed<'submitted' | 'streaming' | 'ready' | 'error'>({
-    get: () => statusMap.value[currentProjectId.value] || 'ready',
+    get: () => statusMap.value[currentCacheKey.value] || 'ready',
     set: (val) => {
-      statusMap.value[currentProjectId.value] = val
+      statusMap.value[currentCacheKey.value] = val
     }
   })
 
   const messages = computed<MessageType[]>({
-    get: () => conversations.value[currentProjectId.value] || [],
+    get: () => conversations.value[currentCacheKey.value] || [],
     set: (msgs) => {
-      conversations.value[currentProjectId.value] = msgs
+      conversations.value[currentCacheKey.value] = msgs
     }
   })
 
   const activeQuestion = computed<InterviewQuestion | null>({
-    get: () => activeQuestions.value[currentProjectId.value] ?? null,
+    get: () => activeQuestions.value[currentCacheKey.value] ?? null,
     set: (q) => {
-      activeQuestions.value[currentProjectId.value] = q
+      activeQuestions.value[currentCacheKey.value] = q
     }
   })
 
   function setActiveQuestion(question: InterviewQuestion | null, pid?: string) {
-    const targetId = pid || currentProjectId.value
-    activeQuestions.value[targetId] = question
+    const targetKey = buildCacheKey(pid || currentProjectId.value, channel)
+    activeQuestions.value[targetKey] = question
   }
 
   async function loadInitialMessages(pid?: string) {
     const targetId = pid || currentProjectId.value
-    if (conversations.value[targetId] && conversations.value[targetId].length > 0) {
+    const targetKey = buildCacheKey(targetId, channel)
+    if (conversations.value[targetKey] && conversations.value[targetKey].length > 0) {
       return
     }
     if (targetId === 'home') {
-      if (!conversations.value['home']) {
-        conversations.value['home'] = []
+      if (!conversations.value[targetKey]) {
+        conversations.value[targetKey] = []
       }
       return
     }
     try {
-      const res = await fetch(`/api/task/chat/?project_id=${encodeURIComponent(targetId)}`)
+      const channelParam = channel === 'spectral' ? '&channel=spectral' : ''
+      const res = await fetch(`/api/task/chat/?project_id=${encodeURIComponent(targetId)}${channelParam}`)
       if (res.ok) {
         const text = await res.text()
         const lines = text.split('\n').filter(l => l.trim().length > 0)
@@ -104,24 +124,24 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
             // ignore malformed history line
           }
         }
-        conversations.value[targetId] = loadedMessages
+        conversations.value[targetKey] = loadedMessages
         if (pendingQuestion) {
-          activeQuestions.value[targetId] = pendingQuestion
+          activeQuestions.value[targetKey] = pendingQuestion
         }
       }
     } catch (e) {
-      console.error(`Failed to load chat history for ${targetId}`, e)
+      console.error(`Failed to load chat history for ${targetId} (${channel})`, e)
     }
   }
 
   function injectAssistantMessage(content: string, pid?: string) {
-    const targetId = pid || currentProjectId.value
-    if (!conversations.value[targetId]) {
-      conversations.value[targetId] = []
+    const targetKey = buildCacheKey(pid || currentProjectId.value, channel)
+    if (!conversations.value[targetKey]) {
+      conversations.value[targetKey] = []
     }
     const key = `proactive-${Date.now()}`
-    conversations.value[targetId] = [
-      ...conversations.value[targetId],
+    conversations.value[targetKey] = [
+      ...conversations.value[targetKey],
       {
         key,
         role: 'assistant',
@@ -132,20 +152,20 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
   }
 
   function hasMessages(pid?: string): boolean {
-    const targetId = pid || currentProjectId.value
-    return (conversations.value[targetId]?.length || 0) > 0
+    const targetKey = buildCacheKey(pid || currentProjectId.value, channel)
+    return (conversations.value[targetKey]?.length || 0) > 0
   }
 
-  function updateStreamingContent(message: MessageType, targetId: string) {
+  function updateStreamingContent(message: MessageType, targetKey: string) {
     const { key, versions } = message
     if (!versions || versions.length === 0) return
     const versionId = versions[0].id
     const content = versions[0].content
 
-    if (!conversations.value[targetId]) {
-      conversations.value[targetId] = []
+    if (!conversations.value[targetKey]) {
+      conversations.value[targetKey] = []
     }
-    const currentList = conversations.value[targetId]
+    const currentList = conversations.value[targetKey]
     const target = currentList.find(msg => msg.key === key)
     if (!target) {
       currentList.push(message)
@@ -155,12 +175,12 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
         version.content = content
       }
     }
-    conversations.value[targetId] = [...currentList]
+    conversations.value[targetKey] = [...currentList]
   }
 
   function handleStreamLine(
     line: string,
-    targetId: string,
+    targetKey: string,
     onScenarioUpdated?: (scenario: ScenarioData) => void,
     onQuestionReceived?: (question: InterviewQuestion) => void
   ) {
@@ -169,17 +189,17 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
     try {
       const parsed = JSON.parse(trimmed)
       if (parsed && parsed.type === 'scenario_updated' && parsed.scenario) {
-        activeQuestions.value[targetId] = null
+        activeQuestions.value[targetKey] = null
         onScenarioUpdated?.(parsed.scenario as ScenarioData)
         return
       }
       if (parsed && parsed.type === 'interview_question' && parsed.question) {
         const q = parsed.question as InterviewQuestion
-        activeQuestions.value[targetId] = q
+        activeQuestions.value[targetKey] = q
         onQuestionReceived?.(q)
         return
       }
-      updateStreamingContent(parsed as MessageType, targetId)
+      updateStreamingContent(parsed as MessageType, targetKey)
     } catch (e) {
       console.error('Failed to parse chat stream line:', trimmed, e)
     }
@@ -187,11 +207,11 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
 
   async function onFetchResponse(
     response: Response,
-    targetId: string,
+    targetKey: string,
     onScenarioUpdated?: (scenario: ScenarioData) => void,
     onQuestionReceived?: (question: InterviewQuestion) => void
   ): Promise<void> {
-    statusMap.value[targetId] = 'streaming'
+    statusMap.value[targetKey] = 'streaming'
     let buffer = ''
     const decoder = new TextDecoder()
     if (response.ok) {
@@ -204,18 +224,18 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
         const lines = buffer.split('\n')
         buffer = lines.pop() ?? ''
         for (const line of lines) {
-          handleStreamLine(line, targetId, onScenarioUpdated, onQuestionReceived)
+          handleStreamLine(line, targetKey, onScenarioUpdated, onQuestionReceived)
         }
       }
       buffer += decoder.decode()
       if (buffer.trim()) {
-        handleStreamLine(buffer, targetId, onScenarioUpdated, onQuestionReceived)
+        handleStreamLine(buffer, targetKey, onScenarioUpdated, onQuestionReceived)
       }
-      statusMap.value[targetId] = 'ready'
+      statusMap.value[targetKey] = 'ready'
     } else {
       const errorText = await response.text()
-      statusMap.value[targetId] = 'error'
-      console.error(`Unexpected response for ${targetId}: ${response.status}`, { response, errorText })
+      statusMap.value[targetKey] = 'error'
+      console.error(`Unexpected response for ${targetKey}: ${response.status}`, { response, errorText })
     }
   }
 
@@ -226,38 +246,48 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
   ): Promise<void> {
     if (!promptText.trim()) return
     const targetId = pid || currentProjectId.value
-    activeQuestions.value[targetId] = null
-    statusMap.value[targetId] = 'submitted'
+    const effectiveMode: ChatMode = options?.mode || (channel === 'spectral' ? 'spectral' : 'default')
+    const targetKey = buildCacheKey(targetId, effectiveMode === 'spectral' ? 'spectral' : channel)
+    activeQuestions.value[targetKey] = null
+    statusMap.value[targetKey] = 'submitted'
     try {
-      const body = JSON.stringify({
+      const payload: Record<string, unknown> = {
         prompt: promptText,
         project_id: targetId,
-        mode: options?.mode || 'default',
-      })
+        mode: effectiveMode,
+      }
+      if (options?.selectedPlotNumbers) {
+        payload.selected_plot_numbers = options.selectedPlotNumbers
+      }
+      if (options?.currentFormula) {
+        payload.current_formula = options.currentFormula
+      }
       const response = await fetch('/api/task/chat', {
         method: 'POST',
-        body,
+        body: JSON.stringify(payload),
         headers: { 'Content-Type': 'application/json' }
       })
-      await onFetchResponse(response, targetId, options?.onScenarioUpdated, options?.onQuestionReceived)
+      await onFetchResponse(response, targetKey, options?.onScenarioUpdated, options?.onQuestionReceived)
     } catch (err) {
-      statusMap.value[targetId] = 'error'
+      statusMap.value[targetKey] = 'error'
       console.error(`Failed to send prompt to ${targetId}:`, err)
     }
   }
 
   async function clearChat(pid?: string): Promise<void> {
     const targetId = pid || currentProjectId.value
-    conversations.value[targetId] = []
-    activeQuestions.value[targetId] = null
-    statusMap.value[targetId] = 'ready'
+    const targetKey = buildCacheKey(targetId, channel)
+    conversations.value[targetKey] = []
+    activeQuestions.value[targetKey] = null
+    statusMap.value[targetKey] = 'ready'
     if (targetId === 'home') return
     try {
-      await fetch(`/api/task/chat/?project_id=${encodeURIComponent(targetId)}`, {
+      const channelParam = channel === 'spectral' ? '&channel=spectral' : ''
+      await fetch(`/api/task/chat/?project_id=${encodeURIComponent(targetId)}${channelParam}`, {
         method: 'DELETE',
       })
     } catch (e) {
-      console.error(`Failed to clear chat for ${targetId}`, e)
+      console.error(`Failed to clear chat for ${targetId} (${channel})`, e)
     }
   }
 

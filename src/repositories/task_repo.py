@@ -63,6 +63,7 @@ class TaskModel(SQLModel, table=True):
     images: int
     progress: int = Field(default=0)
     messages: str = Field(default="")
+    spectral_messages: str = Field(default="")
     plots: str = Field(default="")
     scenario: str = Field(default="")
 
@@ -90,6 +91,7 @@ class TaskRepository(TaskPort):
             images=model.images,
             progress=model.progress,
             messages=model.messages,
+            spectral_messages=getattr(model, "spectral_messages", "") or "",
             plots=_json_to_plots(model.plots),
             scenario=_json_to_scenario(getattr(model, "scenario", "")),
         )
@@ -105,6 +107,7 @@ class TaskRepository(TaskPort):
             existing.images = task.images
             existing.progress = task.progress
             existing.messages = task.messages
+            existing.spectral_messages = task.spectral_messages
             existing.plots = plots_json
             existing.scenario = scenario_json
             self.session.add(existing)
@@ -115,6 +118,7 @@ class TaskRepository(TaskPort):
                 images=task.images,
                 progress=task.progress,
                 messages=task.messages,
+                spectral_messages=task.spectral_messages,
                 plots=plots_json,
                 scenario=scenario_json,
             )
@@ -177,35 +181,46 @@ class TaskRepository(TaskPort):
             self.session.add(model)
             self.session.commit()
 
-    async def get_messages(self, task_id: str) -> list[ModelMessage]:
-        """非同步查詢指定任務之對話歷史列表。"""
-        model = self._get_model(task_id)
-        if not model or not model.messages:
-            return []
-        return ModelMessagesTypeAdapter.validate_json(model.messages)
+    @staticmethod
+    def _message_field_for_channel(channel: str) -> str:
+        return "spectral_messages" if channel == "spectral" else "messages"
 
-    async def add_messages(self, task_id: str, new_messages: str | bytes) -> None:
-        """非同步新增序列化之對話歷史記錄至任務。"""
+    async def get_messages(self, task_id: str, channel: str = "default") -> list[ModelMessage]:
+        """非同步查詢指定任務與頻道之對話歷史列表。"""
+        model = self._get_model(task_id)
+        field_name = self._message_field_for_channel(channel)
+        raw = getattr(model, field_name, "") if model else ""
+        if not raw:
+            return []
+        return ModelMessagesTypeAdapter.validate_json(raw)
+
+    async def add_messages(
+        self, task_id: str, new_messages: str | bytes, channel: str = "default"
+    ) -> None:
+        """非同步新增序列化之對話歷史記錄至任務指定頻道。"""
         model = self._get_model(task_id)
         if not model:
             return
         new_str = new_messages.decode("utf-8") if isinstance(new_messages, bytes) else str(new_messages)
         if not new_str:
             return
-        if not model.messages or model.messages.strip() in ("", "[]"):
-            model.messages = new_str
+        field_name = self._message_field_for_channel(channel)
+        existing_raw = getattr(model, field_name, "") or ""
+        if not existing_raw or existing_raw.strip() in ("", "[]"):
+            setattr(model, field_name, new_str)
         else:
-            existing_msgs = ModelMessagesTypeAdapter.validate_json(model.messages)
+            existing_msgs = ModelMessagesTypeAdapter.validate_json(existing_raw)
             new_msgs = ModelMessagesTypeAdapter.validate_json(new_str)
             merged = existing_msgs + new_msgs
-            model.messages = ModelMessagesTypeAdapter.dump_json(merged).decode("utf-8")
+            setattr(model, field_name, ModelMessagesTypeAdapter.dump_json(merged).decode("utf-8"))
         self.session.add(model)
         self.session.commit()
 
-    async def clear_messages(self, task_id: str) -> None:
-        """非同步清空指定任務之對話歷史。"""
+    async def clear_messages(self, task_id: str, channel: str = "default") -> None:
+        """非同步清空指定任務指定頻道之對話歷史。"""
         model = self._get_model(task_id)
         if model:
-            model.messages = ""
+            field_name = self._message_field_for_channel(channel)
+            setattr(model, field_name, "")
             self.session.add(model)
             self.session.commit()

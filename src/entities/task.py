@@ -46,6 +46,7 @@ class Task:
     images: int
     progress: int = 0
     messages: str = ""
+    spectral_messages: str = ""
     status: int | None = None
     images_count: int | None = None
     plots: list[Plot] = field(default_factory=list)

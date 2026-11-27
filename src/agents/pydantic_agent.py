@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 from pydantic import BaseModel, Field
 from pydantic_ai import (
     Agent,
@@ -23,7 +23,7 @@ from pydantic_ai import (
 from pydantic_ai.usage import UsageLimits
 
 from src.usecases.ports.task import TaskPort
-from src.usecases.task import _normalize_scenario_data
+from src.usecases.task import _normalize_recommended_formulas, _normalize_scenario_data
 from src.config import ODM_DIR
 from src.utility.formulas import (
     MULTISPECTRAL_REFERENCE_ALGOS,
@@ -32,6 +32,7 @@ from src.utility.formulas import (
     lookup_formula,
     normalize_rgb_formula,
 )
+from src.utility.region_statistics import calculate_plots_statistics
 from src.utility.spectral import generate_spectral_image
 
 @dataclass
@@ -40,11 +41,14 @@ class ChatDeps:
     task_port: TaskPort
     scenario_events: list[dict[str, Any]] = field(default_factory=list)
     question_events: list[dict[str, Any]] = field(default_factory=list)
+    selected_plot_numbers: list[int] = field(default_factory=list)
+    current_formula: str = "rgb"
 
 
 model = os.getenv("PYDANTIC_AI_MODEL", "google:gemini-3.7-flash")
 agent = Agent(model, deps_type=ChatDeps, defer_model_check=True)
 scenario_agent = Agent(model, deps_type=ChatDeps, defer_model_check=True)
+spectral_agent = Agent(model, deps_type=ChatDeps, defer_model_check=True)
 vision_agent = Agent(model, defer_model_check=True)
 
 
@@ -583,8 +587,15 @@ async def scenario_system_prompt(ctx: RunContext[ChatDeps]) -> str:
         "     - 第 4 層：確認是否需要附加輔助欄位（如施用日期、施用時期、噴施方式、是否覆膜等），此時可用 `is_multi_select=True` 且設定 `can_generate_now=True`。\n"
         "   - **每題務必提供 3~5 個具體好選的選項**，並將你最建議的 1 個選項標記 `recommended=True`（附簡短 `description` 說明推薦原因或對應效果）。\n"
         "   - **每輪最多呼叫一次 `ask_clarifying_question`**。呼叫該工具後，你的文字回覆請保持在 1~2 句簡短親切的承接語（例如「了解，我們來確認這次試驗的作物～」），**絕對不要**在文字中把選項再條列一遍（前端會將工具參數直接渲染為可點選的互動卡片）。\n"
-        "   - 若使用者提供的資訊已足以決定表單草稿（例如已點選完整情境範例、或已回答完主要設計問題、或明確說「直接生成表單／套用建議模板」），請**立即呼叫 `upsert_trial_scenario_form` 工具**建立並儲存表單，簡要說明已產出的欄位與組別，無須再追問。\n"
-        "   - 若目前專案已經有表單，使用者要求新增／修改／刪除欄位或組別時，務必**保留既有未要求改動的共通資訊與組別（含既有 id 與 color）**，直接呼叫 `upsert_trial_scenario_form` 更新；僅在需求存在明顯歧義時才呼叫 `ask_clarifying_question` 確認。\n"
+        "   - 若使用者提供的資訊已足以決定表單草稿（例如已點選完整情境範例、或已回答完主要設計問題、或明確說「直接生成表單／套用建議模板」），請**立即呼叫 `upsert_trial_scenario_form` 工具**建立並儲存表單，簡要說明已產出的欄位、組別與選定的步驟 4 適用光譜指標，無須再追問。\n"
+        "   - 若目前專案已經有表單，使用者要求新增／修改／刪除欄位、組別或更換步驟 4 適用光譜時，務必**保留既有未要求改動的共通資訊、組別（含既有 id 與 color）與既有 `recommended_formulas`**，直接呼叫 `upsert_trial_scenario_form` 更新；僅在需求存在明顯歧義時才呼叫 `ask_clarifying_question` 確認。\n"
+        "5. **自動決定步驟 4 適用光譜指標（`recommended_formulas`）**：\n"
+        "   - 呼叫 `upsert_trial_scenario_form` 時，務必從本系統 5 種純 RGB 指標（`VARI`、`GLI`、`EXG`、`NDYI`、`MPRI`）中挑選 2~3 個最適合本次試驗目標的指標填入 `recommended_formulas`，步驟 4 將嚴格只顯示這些光譜選項（加上 RGB 原圖）：\n"
+        "     - 農藥／殺蟲劑／病害藥效試驗：推薦 `[\"VARI\", \"GLI\"]`（觀察受害葉片變色與綠葉覆蓋差異；若關注黃化可加 `NDYI`）。\n"
+        "     - 除草劑防除試驗：推薦 `[\"EXG\", \"VARI\"]`（強化雜草綠色覆蓋與枯死／裸土對比）。\n"
+        "     - 肥料／營養／黃化／開花觀測：推薦 `[\"NDYI\", \"VARI\", \"GLI\"]`（偵測葉色黃綠變化與長勢）。\n"
+        "     - 品種比較／田間長勢與缺株監測：推薦 `[\"VARI\", \"GLI\", \"EXG\"]`（評估冠層覆蓋度、綠度均勻度與缺株空洞）。\n"
+        "     - 葉色綠紅對比或特別指定光化學替代指標時，可納入 `MPRI`。\n"
     )
 
     pid = ctx.deps.project_id
@@ -637,6 +648,20 @@ async def ask_clarifying_question(
     }
 
 
+def _default_recommended_formulas(scenario_type: str, title: str = "", description: str = "") -> list[str]:
+    """依試驗類型與描述推導預設適用的純 RGB 光譜指標清單。"""
+    combined = f"{scenario_type} {title} {description}".lower()
+    if any(k in combined for k in ("herbicide", "除草", "雜草", "weed")):
+        return ["EXG", "VARI"]
+    if any(k in combined for k in ("fertilizer", "肥", "營養", "黃化", "開花", "氮")):
+        return ["NDYI", "VARI", "GLI"]
+    if any(k in combined for k in ("variety", "品種", "monitor", "長勢", "缺株", "growth")):
+        return ["VARI", "GLI", "EXG"]
+    if any(k in combined for k in ("pesticide", "insecticide", "fungicide", "藥", "蟲", "病")):
+        return ["VARI", "GLI"]
+    return ["VARI", "GLI", "EXG"]
+
+
 @scenario_agent.tool
 async def upsert_trial_scenario_form(
     ctx: RunContext[ChatDeps],
@@ -648,8 +673,9 @@ async def upsert_trial_scenario_form(
     metadata_values: dict[str, str | int | float | bool | None] | None = None,
     group_fields: list[DynamicFieldInput] | None = None,
     groups: list[TrialGroupInput] | None = None,
+    recommended_formulas: list[str] | None = None,
 ) -> dict[str, Any]:
-    """依據對話內容建立或更新步驟 2 的多型態動態試驗表單，並立即自動儲存至資料庫。"""
+    """依據對話內容建立或更新步驟 2 的多型態動態試驗表單與步驟 4 適用光譜清單，並立即自動儲存至資料庫。"""
     pid = ctx.deps.project_id
     if not pid or pid == "home":
         return {"status": "error", "message": "目前未選定專案，無法儲存表單。"}
@@ -673,6 +699,10 @@ async def upsert_trial_scenario_form(
             }
         )
 
+    cleaned_formulas = _normalize_recommended_formulas(recommended_formulas)
+    if not cleaned_formulas:
+        cleaned_formulas = _default_recommended_formulas(scenario_type, title, description)
+
     raw_scenario: dict[str, Any] = {
         "version": 2,
         "type": (scenario_type or "custom").strip() or "custom",
@@ -682,6 +712,7 @@ async def upsert_trial_scenario_form(
         "metadata_values": dict(metadata_values or {}),
         "group_fields": [f.model_dump() for f in (group_fields or [])],
         "categories": raw_categories,
+        "recommended_formulas": cleaned_formulas,
     }
 
     normalized = _normalize_scenario_data(raw_scenario)
@@ -694,4 +725,309 @@ async def upsert_trial_scenario_form(
         "metadata_field_count": len(normalized.get("metadata_fields", [])),
         "group_field_count": len(normalized.get("group_fields", [])),
         "category_count": len(normalized.get("categories", [])),
+        "recommended_formulas": normalized.get("recommended_formulas", []),
     }
+
+
+# ============================================================================
+# 步驟 4 專用：光譜分析與小區評估唯讀顧問 Agent (spectral_agent)
+# ============================================================================
+
+
+def _format_plot_label(plot: Any) -> str:
+    if getattr(plot, "is_control", False):
+        return f"#{plot.plot_number} 對照組 (CK)"
+    parts = [p for p in (getattr(plot, "treatment", ""), getattr(plot, "dose", "")) if p]
+    suffix = " ".join(parts) if parts else "未分類處理組"
+    return f"#{plot.plot_number} {suffix}"
+
+
+def _prepare_cropped_plot_bytes(
+    image_path: Path,
+    coords_str: str,
+    padding_ratio: float = 0.15,
+    max_size: tuple[int, int] = (768, 768),
+) -> bytes:
+    """從正射圖或光譜圖依小區多邊形外接框裁切局部影像並描繪輪廓供視覺模型判讀。"""
+    Image.MAX_IMAGE_PIXELS = None
+    pts = json.loads(coords_str)
+    with Image.open(image_path) as im:
+        w, h = im.size
+        px_pts = [(float(p[0]) * w, float(p[1]) * h) for p in pts]
+        xs = [p[0] for p in px_pts]
+        ys = [p[1] for p in px_pts]
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+        pad_x = max(16.0, (max_x - min_x) * padding_ratio)
+        pad_y = max(16.0, (max_y - min_y) * padding_ratio)
+
+        left = max(0, int(np.floor(min_x - pad_x)))
+        top = max(0, int(np.floor(min_y - pad_y)))
+        right = min(w, int(np.ceil(max_x + pad_x)))
+        bottom = min(h, int(np.ceil(max_y + pad_y)))
+        if right <= left or bottom <= top:
+            return _prepare_thumbnail_bytes(image_path, max_size=max_size)
+
+        cropped = im.crop((left, top, right, bottom)).convert("RGBA")
+        draw = ImageDraw.Draw(cropped)
+        rel_pts = [(x - left, y - top) for x, y in px_pts]
+        if len(rel_pts) >= 3:
+            draw.polygon(rel_pts, outline=(56, 189, 248, 230), width=max(2, int(min(cropped.size) * 0.008)))
+        cropped.thumbnail(max_size)
+        buf = BytesIO()
+        cropped.save(buf, format="PNG")
+        return buf.getvalue()
+
+
+@spectral_agent.system_prompt
+async def spectral_system_prompt(ctx: RunContext[ChatDeps]) -> str:
+    base_prompt = (
+        "你是專業的『農業無人機光譜分析顧問（Spectral Agronomist）』，專門在步驟 4 協助使用者解讀田間試驗的光譜指數數值、比較處理組與對照組 (CK) 的差異，並進行小區局部影像的視覺判讀。\n\n"
+        "【核心原則】：\n"
+        "1. **專業精簡、條理清晰**：使用繁體中文，以簡潔清楚的結構呈現重點結論、量化數據對比（附上相對對照組 CK 的差值或百分比）與農藝建議；避免冗長空話，但也不要過度簡化而遺漏關鍵數值。\n"
+        "2. **嚴格唯讀原則**：你僅負責數據與影像分析，**不會也不可宣稱**幫使用者切換右側地圖的光譜演算法或更改小區選取狀態；若建議參考其他已啟用指標，請提醒使用者可於右側地圖自行切換檢視。\n"
+        "3. **嚴謹對照實驗設計**：所有解讀皆應對照本專案的試驗情境、處理組與對照組 (CK) 基準，並遵守純 RGB 光譜的物理限制（不可將純 RGB 指標誤稱為需近紅外光的 NDVI／NDRE）。\n"
+        "4. **善用工具取得真實數據**：\n"
+        "   - 回答數值分析或處理組比較前，務必呼叫 `get_selected_plots_spectral_stats` 取得精確的小區與 CK 統計數據。\n"
+        "   - 回答視覺長勢、缺株、變色斑塊或邊界效應問題時，務必呼叫 `inspect_plot_imagery` 檢視裁切後的目標小區影像（或全田區影像）。\n"
+        "   - 回答指標學理或公式限制時，可呼叫 `query_vegetation_index`。\n"
+    )
+
+    pid = ctx.deps.project_id
+    if pid and pid != "home":
+        try:
+            proj = await ctx.deps.task_port.get_task(pid)
+            scenario = proj.scenario if isinstance(proj.scenario, dict) else {}
+            s_title = scenario.get("title") or "未命名試驗"
+            s_type = scenario.get("type") or "custom"
+            rec_formulas = _normalize_recommended_formulas(scenario.get("recommended_formulas"))
+            formula_scope = ", ".join(rec_formulas) if rec_formulas else "全部純 RGB 指標 (NDYI, VARI, MPRI, EXG, GLI)"
+
+            plots_by_num = {p.plot_number: p for p in (proj.plots or [])}
+            selected_nums = [n for n in ctx.deps.selected_plot_numbers if n in plots_by_num]
+            if selected_nums:
+                selected_desc = "、".join(_format_plot_label(plots_by_num[n]) for n in selected_nums)
+            else:
+                selected_desc = f"全田區（共 {len(plots_by_num)} 個小區，目前未指定單一小區）"
+
+            cur_formula = ctx.deps.current_formula or "rgb"
+            cur_formula_label = "RGB 原始正射圖" if cur_formula.lower() == "rgb" else cur_formula
+
+            base_prompt += (
+                f"\n【當前步驟 4 分析上下文】\n"
+                f"- 專案名稱：{proj.name}\n"
+                f"- 試驗情境：{s_title}（類型：{s_type}）\n"
+                f"- 本試驗適用光譜清單：{formula_scope}\n"
+                f"- 目前綁定分析對象：{selected_desc}\n"
+                f"- 右側地圖目前檢視圖層：{cur_formula_label}\n"
+            )
+        except Exception:
+            pass
+    return base_prompt
+
+
+@spectral_agent.tool
+async def get_selected_plots_spectral_stats(
+    ctx: RunContext[ChatDeps],
+    plot_numbers: list[int] | None = None,
+) -> dict[str, Any]:
+    """取得目前選取小區（或指定小區清單；若皆未指定則回傳全田區與各處理組平均）的 RGB 與適用光譜統計，並附上相對對照組 (CK) 的差值。"""
+    pid = ctx.deps.project_id
+    if not pid or pid == "home":
+        return {"status": "error", "message": "目前未選定專案，無法計算小區統計。"}
+
+    proj = await ctx.deps.task_port.get_task(pid)
+    ortho_path = ODM_DIR / f"{pid}.png"
+    if not ortho_path.exists():
+        return {"status": "error", "message": "尚未找到正射圖檔案，請確認航拍拼接是否已完成。"}
+    if not proj.plots:
+        return {"status": "error", "message": "此專案尚未標註任何實驗小區。"}
+
+    scenario = proj.scenario if isinstance(proj.scenario, dict) else {}
+    rec_formulas = _normalize_recommended_formulas(scenario.get("recommended_formulas"))
+    allowed_set = set(rec_formulas) if rec_formulas else None
+
+    plots_dicts = [
+        {
+            "plot_number": p.plot_number,
+            "coords": p.coords,
+            "is_control": p.is_control,
+            "treatment": p.treatment,
+            "dose": p.dose,
+        }
+        for p in proj.plots
+    ]
+    batch = calculate_plots_statistics(ortho_path, plots_dicts)
+
+    ck_baseline = batch.get("control_baseline")
+    ck_means: dict[str, float | None] = {}
+    if ck_baseline:
+        for row in ck_baseline.get("algorithms", []):
+            ck_means[row["id"]] = row.get("index_mean")
+
+    def _enrich_algos(algos: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        enriched: list[dict[str, Any]] = []
+        for row in algos:
+            aid = row["id"]
+            if allowed_set is not None and aid not in allowed_set:
+                continue
+            mean_val = row.get("index_mean")
+            ck_val = ck_means.get(aid)
+            delta = (
+                round(mean_val - ck_val, 4)
+                if mean_val is not None and ck_val is not None
+                else None
+            )
+            pct = (
+                round(((mean_val - ck_val) / abs(ck_val)) * 100.0, 2)
+                if delta is not None and ck_val is not None and abs(ck_val) > 1e-6
+                else None
+            )
+            enriched.append(
+                {
+                    "id": aid,
+                    "index_mean": round(mean_val, 4) if mean_val is not None else None,
+                    "delta_vs_ck": delta,
+                    "pct_vs_ck": pct,
+                    "valid_pixel_count": row.get("valid_pixel_count", 0),
+                }
+            )
+        return enriched
+
+    target_nums = plot_numbers if plot_numbers is not None else list(ctx.deps.selected_plot_numbers)
+    if target_nums:
+        target_set = set(target_nums)
+        selected_plots = [
+            {
+                "plot_number": p["plot_number"],
+                "is_control": p["is_control"],
+                "treatment": p["treatment"],
+                "dose": p["dose"],
+                "pixel_count": p["pixel_count"],
+                "rgb_mean": p["rgb_mean"],
+                "algorithms": _enrich_algos(p["algorithms"]),
+            }
+            for p in batch["plots"]
+            if p["plot_number"] in target_set
+        ]
+        return {
+            "status": "success",
+            "scope": "selected_plots",
+            "recommended_formulas": rec_formulas or [a["id"] for a in get_algorithm_list()],
+            "selected_plots": selected_plots,
+            "control_baseline": (
+                {
+                    "plot_count": ck_baseline["plot_count"],
+                    "algorithms": _enrich_algos(ck_baseline["algorithms"]),
+                }
+                if ck_baseline
+                else None
+            ),
+        }
+
+    groups = [
+        {
+            "label": g["label"],
+            "is_control": g["is_control"],
+            "plot_count": g["plot_count"],
+            "plot_numbers": g["plot_numbers"],
+            "rgb_mean": g["rgb_mean"],
+            "algorithms": _enrich_algos(g["algorithms"]),
+        }
+        for g in batch["treatment_groups"]
+    ]
+    return {
+        "status": "success",
+        "scope": "whole_field",
+        "recommended_formulas": rec_formulas or [a["id"] for a in get_algorithm_list()],
+        "total_plots": len(batch["plots"]),
+        "treatment_groups": groups,
+        "field_summary": {
+            "plot_count": batch["field_summary"]["plot_count"],
+            "pixel_count": batch["field_summary"]["pixel_count"],
+            "rgb_mean": batch["field_summary"]["rgb_mean"],
+            "algorithms": _enrich_algos(batch["field_summary"]["algorithms"]),
+        },
+    }
+
+
+@spectral_agent.tool
+async def inspect_plot_imagery(
+    ctx: RunContext[ChatDeps],
+    plot_number: int | None = None,
+    image_target: Literal["orthophoto", "spectral"] = "spectral",
+    formula: str | None = None,
+    focus: str = "觀察目標小區作物長勢均勻度、缺株空洞、葉色黃化或局部變色異常",
+) -> str:
+    """裁切指定（或目前選取之）小區的正射圖或光譜熱圖並以多模態視覺模型判讀；若未指定小區則檢視全田區影像。"""
+    pid = ctx.deps.project_id
+    if not pid or pid == "home":
+        return "目前未選定專案，無法進行視覺判讀。"
+
+    proj = await ctx.deps.task_port.get_task(pid)
+    ortho_path = ODM_DIR / f"{pid}.png"
+    if not ortho_path.exists():
+        return "正射圖檔案不存在，無法進行視覺判讀。"
+
+    scenario = proj.scenario if isinstance(proj.scenario, dict) else {}
+    rec_formulas = _normalize_recommended_formulas(scenario.get("recommended_formulas"))
+    active_formula = formula
+    if not active_formula:
+        if ctx.deps.current_formula and ctx.deps.current_formula.lower() != "rgb":
+            active_formula = ctx.deps.current_formula
+        elif rec_formulas:
+            active_formula = rec_formulas[0]
+        else:
+            active_formula = "VARI"
+
+    if image_target == "spectral":
+        try:
+            formula_id = normalize_rgb_formula(active_formula)
+            lookup_formula(formula_id)
+        except Exception as e:
+            return f"不支援的 RGB 光譜指標 '{active_formula}': {e}"
+        target_img_path = ODM_DIR / f"{pid}_{formula_id}.png"
+        if not target_img_path.exists():
+            try:
+                generate_spectral_image(ortho_path, target_img_path, formula_id)
+            except Exception as e:
+                return f"生成光譜圖 {formula_id} 失敗: {e}"
+        layer_desc = f"{formula_id} 光譜熱圖（綠＝高活力、黃＝中度、紅／黑＝低活力或裸土）"
+    else:
+        target_img_path = ortho_path
+        layer_desc = "原始 RGB 正射影像"
+
+    target_plot_num = plot_number
+    if target_plot_num is None and ctx.deps.selected_plot_numbers:
+        target_plot_num = ctx.deps.selected_plot_numbers[0]
+
+    target_plot = next((p for p in (proj.plots or []) if p.plot_number == target_plot_num), None)
+    try:
+        if target_plot is not None:
+            img_bytes = _prepare_cropped_plot_bytes(target_img_path, target_plot.coords)
+            scope_desc = f"小區 {_format_plot_label(target_plot)} 局部裁切影像（藍色細框內為該小區範圍）"
+        else:
+            img_bytes = _prepare_thumbnail_bytes(target_img_path)
+            scope_desc = "全田區縮圖"
+
+        vision_prompt = (
+            f"這是農業無人機田間試驗的 {scope_desc}，圖層為：{layer_desc}。\n"
+            f"判讀焦點：{focus}\n"
+            "請以專業農藝航拍評估視角，條列 3~4 點具體觀察：\n"
+            "1. 冠層覆蓋度與行株排列整齊度\n"
+            "2. 區域內是否存在缺株、禿斑、裸土或局部變色／黃化斑塊及其方位\n"
+            "3. 顏色分佈均勻性與邊界效應\n"
+            "請精簡客觀陳述。"
+        )
+        binary_content = BinaryContent(data=img_bytes, media_type="image/png")
+        vision_result = await vision_agent.run(
+            [vision_prompt, binary_content],
+            usage=ctx.usage,
+            usage_limits=UsageLimits(request_limit=6, output_tokens_limit=6000),
+        )
+        return f"【多模態視覺判讀 - {scope_desc} / {layer_desc}】\n{vision_result.output}"
+    except Exception as e:
+        return f"影像多模態視覺判讀時發生錯誤: {e}"
+
+
+spectral_agent.tool_plain(query_vegetation_index)

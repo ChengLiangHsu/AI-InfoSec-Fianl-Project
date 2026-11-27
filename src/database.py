@@ -26,7 +26,7 @@ def init_db() -> None:
 
 
 def _migrate_task_scenario() -> None:
-    """為舊資料庫增量加上情境特徵欄位；無縫相容既有任務。"""
+    """為舊資料庫增量加上情境特徵與光譜分析對話欄位；無縫相容既有任務。"""
     with engine.begin() as connection:
         inspector = inspect(connection)
         if not inspector.has_table("tasks"):
@@ -34,6 +34,8 @@ def _migrate_task_scenario() -> None:
         names = {column["name"] for column in inspector.get_columns("tasks")}
         if "scenario" not in names:
             connection.execute(text("ALTER TABLE tasks ADD COLUMN scenario TEXT DEFAULT ''"))
+        if "spectral_messages" not in names:
+            connection.execute(text("ALTER TABLE tasks ADD COLUMN spectral_messages TEXT DEFAULT ''"))
 
 
 def get_session() -> Generator[Session]:
