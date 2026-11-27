@@ -13,16 +13,34 @@ export interface MessageType {
   content?: string
 }
 
+export interface InterviewQuestionOption {
+  label: string
+  description?: string
+  recommended?: boolean
+}
+
+export interface InterviewQuestion {
+  id: string
+  question: string
+  options: InterviewQuestionOption[]
+  is_multi_select?: boolean
+  allow_custom?: boolean
+  step_label?: string
+  can_generate_now?: boolean
+}
+
 export type ChatMode = 'default' | 'scenario'
 
 export interface SendPromptOptions {
   mode?: ChatMode
   onScenarioUpdated?: (scenario: ScenarioData) => void
+  onQuestionReceived?: (question: InterviewQuestion) => void
 }
 
 // Global cache: project_id -> MessageType[]
 const conversations = ref<Record<string, MessageType[]>>({})
 const statusMap = ref<Record<string, 'submitted' | 'streaming' | 'ready' | 'error'>>({})
+const activeQuestions = ref<Record<string, InterviewQuestion | null>>({})
 
 export function useChatAgent(projectIdRef?: () => string | undefined) {
   const currentProjectId = computed(() => {
@@ -44,6 +62,18 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
     }
   })
 
+  const activeQuestion = computed<InterviewQuestion | null>({
+    get: () => activeQuestions.value[currentProjectId.value] ?? null,
+    set: (q) => {
+      activeQuestions.value[currentProjectId.value] = q
+    }
+  })
+
+  function setActiveQuestion(question: InterviewQuestion | null, pid?: string) {
+    const targetId = pid || currentProjectId.value
+    activeQuestions.value[targetId] = question
+  }
+
   async function loadInitialMessages(pid?: string) {
     const targetId = pid || currentProjectId.value
     if (conversations.value[targetId] && conversations.value[targetId].length > 0) {
@@ -60,7 +90,24 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
       if (res.ok) {
         const text = await res.text()
         const lines = text.split('\n').filter(l => l.trim().length > 0)
-        conversations.value[targetId] = lines.map(line => JSON.parse(line))
+        const loadedMessages: MessageType[] = []
+        let pendingQuestion: InterviewQuestion | null = null
+        for (const line of lines) {
+          try {
+            const parsed = JSON.parse(line)
+            if (parsed && parsed.type === 'interview_question' && parsed.question) {
+              pendingQuestion = parsed.question as InterviewQuestion
+            } else if (parsed && parsed.role) {
+              loadedMessages.push(parsed as MessageType)
+            }
+          } catch {
+            // ignore malformed history line
+          }
+        }
+        conversations.value[targetId] = loadedMessages
+        if (pendingQuestion) {
+          activeQuestions.value[targetId] = pendingQuestion
+        }
       }
     } catch (e) {
       console.error(`Failed to load chat history for ${targetId}`, e)
@@ -114,14 +161,22 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
   function handleStreamLine(
     line: string,
     targetId: string,
-    onScenarioUpdated?: (scenario: ScenarioData) => void
+    onScenarioUpdated?: (scenario: ScenarioData) => void,
+    onQuestionReceived?: (question: InterviewQuestion) => void
   ) {
     const trimmed = line.trim()
     if (!trimmed) return
     try {
       const parsed = JSON.parse(trimmed)
       if (parsed && parsed.type === 'scenario_updated' && parsed.scenario) {
+        activeQuestions.value[targetId] = null
         onScenarioUpdated?.(parsed.scenario as ScenarioData)
+        return
+      }
+      if (parsed && parsed.type === 'interview_question' && parsed.question) {
+        const q = parsed.question as InterviewQuestion
+        activeQuestions.value[targetId] = q
+        onQuestionReceived?.(q)
         return
       }
       updateStreamingContent(parsed as MessageType, targetId)
@@ -133,7 +188,8 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
   async function onFetchResponse(
     response: Response,
     targetId: string,
-    onScenarioUpdated?: (scenario: ScenarioData) => void
+    onScenarioUpdated?: (scenario: ScenarioData) => void,
+    onQuestionReceived?: (question: InterviewQuestion) => void
   ): Promise<void> {
     statusMap.value[targetId] = 'streaming'
     let buffer = ''
@@ -148,12 +204,12 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
         const lines = buffer.split('\n')
         buffer = lines.pop() ?? ''
         for (const line of lines) {
-          handleStreamLine(line, targetId, onScenarioUpdated)
+          handleStreamLine(line, targetId, onScenarioUpdated, onQuestionReceived)
         }
       }
       buffer += decoder.decode()
       if (buffer.trim()) {
-        handleStreamLine(buffer, targetId, onScenarioUpdated)
+        handleStreamLine(buffer, targetId, onScenarioUpdated, onQuestionReceived)
       }
       statusMap.value[targetId] = 'ready'
     } else {
@@ -170,6 +226,7 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
   ): Promise<void> {
     if (!promptText.trim()) return
     const targetId = pid || currentProjectId.value
+    activeQuestions.value[targetId] = null
     statusMap.value[targetId] = 'submitted'
     try {
       const body = JSON.stringify({
@@ -182,7 +239,7 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
         body,
         headers: { 'Content-Type': 'application/json' }
       })
-      await onFetchResponse(response, targetId, options?.onScenarioUpdated)
+      await onFetchResponse(response, targetId, options?.onScenarioUpdated, options?.onQuestionReceived)
     } catch (err) {
       statusMap.value[targetId] = 'error'
       console.error(`Failed to send prompt to ${targetId}:`, err)
@@ -192,6 +249,7 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
   async function clearChat(pid?: string): Promise<void> {
     const targetId = pid || currentProjectId.value
     conversations.value[targetId] = []
+    activeQuestions.value[targetId] = null
     statusMap.value[targetId] = 'ready'
     if (targetId === 'home') return
     try {
@@ -206,9 +264,11 @@ export function useChatAgent(projectIdRef?: () => string | undefined) {
   return {
     status,
     messages,
+    activeQuestion,
     loadInitialMessages,
     sendPrompt,
     injectAssistantMessage,
+    setActiveQuestion,
     hasMessages,
     clearChat,
   }

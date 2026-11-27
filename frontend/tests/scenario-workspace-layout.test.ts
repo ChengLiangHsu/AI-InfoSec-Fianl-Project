@@ -355,4 +355,136 @@ describe('Step 2 AI scenario workspace layout and HUD visibility', () => {
     expect(wrapper.find('[data-testid="scenario-chat-empty"]').exists()).toBe(true)
     expect((clearButton.element as HTMLButtonElement).disabled).toBe(true)
   })
+
+  it('proactively renders an interactive question card and advances through streamed follow-up questions', async () => {
+    const followUpQuestion = {
+      id: 'q-fields',
+      step_label: '引導規劃 · 第 3 步',
+      question: '還需要紀錄哪些輔助欄位？',
+      is_multi_select: true,
+      allow_custom: true,
+      can_generate_now: true,
+      options: [
+        { label: '施用日期', description: '記錄噴藥或施肥日期', recommended: true },
+        { label: '施用時期', description: '例如分蘗期、抽穗期', recommended: false },
+      ],
+    }
+
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/api/task/chat') && init?.method === 'POST') {
+        const sentPrompt = JSON.parse(String(init.body)).prompt
+        const userLine = JSON.stringify({
+          key: `u-${Date.now()}`,
+          role: 'user',
+          versions: [{ id: 'v-1', content: sentPrompt }],
+        })
+        const questionLine = JSON.stringify({
+          type: 'interview_question',
+          question: followUpQuestion,
+        })
+        const assistantLine = JSON.stringify({
+          key: `a-${Date.now()}`,
+          role: 'assistant',
+          versions: [{ id: 'v-1', content: '了解！再確認一下輔助欄位：' }],
+        })
+        return Promise.resolve(new Response(`${userLine}\n${questionLine}\n${assistantLine}\n`, { status: 200 }))
+      }
+      return Promise.resolve(new Response('', { status: 200 }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const wrapper = mount(ScenarioWorkspace, {
+      props: {
+        projectId: 'proj-guided-interview',
+        projectName: '互動訪談專案',
+        initialScenario: null,
+      },
+      global: {
+        stubs: {
+          ProjectScenarioCard: true,
+          Conversation: { template: '<div><slot /></div>' },
+          ConversationContent: { template: '<div><slot /></div>' },
+          ConversationScrollButton: true,
+          Message: { template: '<div><slot /></div>' },
+          MessageBranch: { template: '<div><slot /></div>' },
+          MessageBranchContent: { template: '<div><slot /></div>' },
+          MessageContent: { template: '<div><slot /></div>' },
+          MessageResponse: true,
+          PromptInputProvider: { template: '<div><slot /></div>' },
+          PromptInput: { template: '<div><slot /></div>' },
+          PromptInputBody: { template: '<div><slot /></div>' },
+          PromptInputFooter: { template: '<div><slot /></div>' },
+          PromptInputSubmit: true,
+          PromptInputTextarea: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    // Initial proactive question card is visible with recommended badge
+    expect(wrapper.find('[data-testid="scenario-question-card"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="scenario-question-title"]').text()).toContain('試驗主題')
+    expect(wrapper.find('[data-testid="scenario-question-recommended"]').exists()).toBe(true)
+
+    // Clicking first option sends answer and receives streamed multi-select follow-up question
+    const firstOption = wrapper.findAll('[data-testid="scenario-question-option"]')[0]
+    await firstOption.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="scenario-question-title"]').text()).toBe('還需要紀錄哪些輔助欄位？')
+    const multiOptions = wrapper.findAll('[data-testid="scenario-question-option"]')
+    await multiOptions[0].trigger('click')
+    await multiOptions[1].trigger('click')
+    await wrapper.get('[data-testid="scenario-question-multi-submit"]').trigger('click')
+    await flushPromises()
+
+    const postCalls = fetchMock.mock.calls.filter(
+      ([url, init]) => String(url).includes('/api/task/chat') && init?.method === 'POST'
+    )
+    expect(postCalls.length).toBe(2)
+    expect(JSON.parse(String(postCalls[1][1]?.body)).prompt).toBe('施用日期、施用時期')
+  })
+
+  it('also shows an interactive first question card when opening an already-configured project with empty chat', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response('', { status: 200 }))))
+
+    const wrapper = mount(ScenarioWorkspace, {
+      props: {
+        projectId: 'proj-configured-empty-chat',
+        projectName: '既有表單專案',
+        initialScenario: configuredScenario,
+      },
+      global: {
+        stubs: {
+          ProjectScenarioCard: true,
+          Conversation: { template: '<div><slot /></div>' },
+          ConversationContent: { template: '<div><slot /></div>' },
+          ConversationScrollButton: true,
+          Message: { template: '<div><slot /></div>' },
+          MessageBranch: { template: '<div><slot /></div>' },
+          MessageBranchContent: { template: '<div><slot /></div>' },
+          MessageContent: { template: '<div><slot /></div>' },
+          MessageResponse: true,
+          PromptInputProvider: { template: '<div><slot /></div>' },
+          PromptInput: { template: '<div><slot /></div>' },
+          PromptInputBody: { template: '<div><slot /></div>' },
+          PromptInputFooter: { template: '<div><slot /></div>' },
+          PromptInputSubmit: true,
+          PromptInputTextarea: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="scenario-question-card"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="scenario-question-title"]').text()).toContain('有什麼需要調整的嗎')
+
+    // Clicking "重新規劃試驗表單" immediately transitions to the trial-type question card
+    const options = wrapper.findAll('[data-testid="scenario-question-option"]')
+    const replanOption = options.find((opt) => opt.text().includes('重新規劃試驗表單'))
+    expect(replanOption).toBeDefined()
+    await replanOption!.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="scenario-question-title"]').text()).toContain('試驗主題')
+  })
 })

@@ -24,7 +24,8 @@ import {
   type PromptInputMessage,
 } from '@/components/ai-elements/prompt-input'
 import ProjectScenarioCard from '@/components/ProjectScenarioCard.vue'
-import { useChatAgent } from '@/lib/useChatAgent'
+import ScenarioQuestionCard from '@/components/ScenarioQuestionCard.vue'
+import { useChatAgent, type InterviewQuestion } from '@/lib/useChatAgent'
 import {
   createManualDefaultScenario,
   hasConfiguredScenario,
@@ -68,9 +69,78 @@ const emit = defineEmits<{
   (e: 'saved', scenario: ScenarioData): void
 }>()
 
-const { status, messages, loadInitialMessages, sendPrompt, injectAssistantMessage, clearChat } = useChatAgent(
-  () => props.projectId
-)
+const {
+  status,
+  messages,
+  activeQuestion,
+  loadInitialMessages,
+  sendPrompt,
+  injectAssistantMessage,
+  setActiveQuestion,
+  clearChat,
+} = useChatAgent(() => props.projectId)
+
+const INITIAL_INTERVIEW_QUESTION: InterviewQuestion = {
+  id: 'init-trial-type',
+  step_label: '試驗規劃 · 第 1 步',
+  question: '這次無人機空拍的田間試驗主題是什麼？',
+  is_multi_select: false,
+  allow_custom: true,
+  can_generate_now: false,
+  options: [
+    {
+      label: '農藥藥效試驗',
+      description: '比較不同藥劑或稀釋倍數（如 500x / 1000x / 2000x）的防治效果',
+      recommended: true,
+    },
+    {
+      label: '肥料肥力試驗',
+      description: '比較不同肥料品項或施用比例（如 50% / 100% / 200%）的肥效表現',
+      recommended: false,
+    },
+    {
+      label: '品種比較試驗',
+      description: '評估不同作物品種的長勢與外觀差異（無須劑量欄位）',
+      recommended: false,
+    },
+    {
+      label: '田間長勢與缺株監測',
+      description: '分區觀察生育期、栽培管理、覆膜或異常斑塊（非用藥情境）',
+      recommended: false,
+    },
+  ],
+}
+
+const INITIAL_REFINE_QUESTION: InterviewQuestion = {
+  id: 'init-refine-mode',
+  step_label: '表單調整確認',
+  question: '這份試驗表單目前有什麼需要調整的嗎？',
+  is_multi_select: false,
+  allow_custom: true,
+  can_generate_now: false,
+  options: [
+    {
+      label: '調整實驗處理組或參數',
+      description: '新增、修改或刪除處理組別與對應劑量／處理條件',
+      recommended: true,
+    },
+    {
+      label: '增減紀錄欄位',
+      description: '補充或調整共通資訊（如施用日期）與小區欄位（如施用時期、是否覆膜）',
+      recommended: false,
+    },
+    {
+      label: '檢視並補強表單完整度',
+      description: '依這場田間試驗目標，協助確認是否還有遺漏的關鍵紀錄項目',
+      recommended: false,
+    },
+    {
+      label: '重新規劃試驗表單',
+      description: '更換試驗類型或主題，從頭建立一份新的試驗表單',
+      recommended: false,
+    },
+  ],
+}
 
 const isBusy = computed(() => status.value === 'submitted' || status.value === 'streaming')
 const isThinking = computed(() => {
@@ -197,14 +267,23 @@ const activeSuggestions = computed<QuickSuggestion[]>(() => {
   return initialSuggestions
 })
 
+function startInitialGuidedQuestion(pid: string) {
+  const configured = hasConfiguredScenario(currentScenario.value)
+  const scenarioTitle = currentScenario.value?.title?.trim()
+  injectAssistantMessage(
+    configured
+      ? `目前的${scenarioTitle ? `「${scenarioTitle}」` : '試驗'}表單已就緒，若有需要微調的地方，可以從下方選擇或直接告訴我：`
+      : '歡迎來到試驗情境規劃。讓我先確認這次空拍的試驗主題，再逐步為您建立合適的小區紀錄表單：',
+    pid
+  )
+  setActiveQuestion(configured ? INITIAL_REFINE_QUESTION : INITIAL_INTERVIEW_QUESTION, pid)
+}
+
 async function initProjectChat(pid: string) {
   await loadInitialMessages(pid)
   if (messages.value.length === 0 && !greetedProjects.value[pid]) {
     greetedProjects.value[pid] = true
-    injectAssistantMessage(
-      '嗨！這次無人機空拍主要是做什麼田間試驗呢？跟我聊聊作物、試驗目的，以及需不需要紀錄藥劑劑量，我來幫你動態生成下一步框選小區要用的表單～',
-      pid
-    )
+    startInitialGuidedQuestion(pid)
   }
 }
 
@@ -249,6 +328,7 @@ function handleCardScenarioSaved(scenario: ScenarioData) {
 }
 
 async function handleManualStart() {
+  setActiveQuestion(null, props.projectId)
   const defaultScenario = createManualDefaultScenario()
   currentScenario.value = defaultScenario
   manualExpanded.value = true
@@ -283,6 +363,34 @@ async function onSubmit(payload: PromptInputMessage): Promise<void> {
 async function triggerQuickScenario(promptText: string): Promise<void> {
   if (isBusy.value) return
   await sendPrompt(promptText, props.projectId, {
+    mode: 'scenario',
+    onScenarioUpdated: handleScenarioFromAgent,
+  })
+}
+
+async function handleQuestionAnswer(answerText: string): Promise<void> {
+  if (isBusy.value || !answerText.trim()) return
+  const currentQId = activeQuestion.value?.id
+  if (currentQId === INITIAL_REFINE_QUESTION.id && answerText.trim() === '重新規劃試驗表單') {
+    setActiveQuestion(INITIAL_INTERVIEW_QUESTION, props.projectId)
+    return
+  }
+
+  let promptText = answerText.trim()
+  if (currentQId === INITIAL_INTERVIEW_QUESTION.id) {
+    promptText = `這次的試驗主題是「${promptText}」，請一步步引導我確認試驗細節與表單欄位。`
+  } else if (currentQId === INITIAL_REFINE_QUESTION.id) {
+    promptText = `針對目前的表單，我想「${promptText}」，請引導我確認需要調整的細節。`
+  }
+  await sendPrompt(promptText, props.projectId, {
+    mode: 'scenario',
+    onScenarioUpdated: handleScenarioFromAgent,
+  })
+}
+
+async function handleQuestionGenerateNow(): Promise<void> {
+  if (isBusy.value) return
+  await sendPrompt('先不用再問了，請直接依目前討論的資訊與你的建議模板幫我建立表單。', props.projectId, {
     mode: 'scenario',
     onScenarioUpdated: handleScenarioFromAgent,
   })
@@ -378,11 +486,22 @@ const placeholderText = computed(() => {
               <div
                 v-if="messages.length === 0 && !isThinking"
                 data-testid="scenario-chat-empty"
-                class="flex h-full min-h-[160px] flex-col items-center justify-center p-4 text-center text-muted-foreground my-auto select-none"
+                class="flex h-full min-h-[160px] flex-col items-center justify-center gap-2.5 p-4 text-center text-muted-foreground my-auto select-none"
               >
                 <p class="text-xs text-muted-foreground/75">
-                  對話紀錄已清空，請點選下方快捷建議或直接輸入開始新的討論
+                  對話紀錄已清空，請點選下方快捷建議、直接輸入，或重新啟動 AI 互動引導
                 </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  data-testid="restart-guided-interview-button"
+                  class="h-7 px-3 text-xs gap-1.5 cursor-pointer"
+                  @click="startInitialGuidedQuestion(projectId)"
+                >
+                  <Sparkles class="size-3.5 text-primary" />
+                  開始 AI 逐題引導
+                </Button>
               </div>
               <MessageBranch v-for="message in messages" :key="message.key" :default-branch="0">
                 <MessageBranchContent>
@@ -406,6 +525,14 @@ const placeholderText = computed(() => {
                 <Loader2 class="size-3.5 animate-spin text-primary" />
                 <span>AI 正在分析情境並建構表單...</span>
               </div>
+
+              <ScenarioQuestionCard
+                v-if="activeQuestion && !isBusy"
+                :question="activeQuestion"
+                :disabled="isBusy"
+                @answer="handleQuestionAnswer"
+                @generate-now="handleQuestionGenerateNow"
+              />
             </ConversationContent>
             <ConversationScrollButton />
           </Conversation>

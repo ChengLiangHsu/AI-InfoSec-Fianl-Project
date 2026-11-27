@@ -4,16 +4,19 @@ import asyncio
 import json
 from typing import Any
 
+from pydantic_ai import ModelRequest, ModelResponse, ToolCallPart, UserPromptPart
 from pydantic_ai.models.test import TestModel
 
 from src.agents.pydantic_agent import (
     ChatDeps,
     DynamicFieldInput,
+    InterviewQuestionOption,
     TrialGroupInput,
+    ask_clarifying_question,
     scenario_agent,
     upsert_trial_scenario_form,
 )
-from src.controllers.task import _stream_agent_dialogue
+from src.controllers.task import _extract_pending_interview_question, _stream_agent_dialogue
 from src.entities.task import Plot, Task
 from src.usecases.ports.task import TaskPort
 from src.usecases.task import SCENARIO_CONTROL_COLOR, _normalize_scenario_data
@@ -231,3 +234,104 @@ def test_stream_agent_dialogue_scenario_mode_emits_scenario_updated_event() -> N
         e.get("role") == "assistant" and "已幫你建好表單囉" in e["versions"][0]["content"]
         for e in events
     )
+
+
+def test_ask_clarifying_question_tool_normalizes_and_records_event() -> None:
+    task = Task(id="proj-q", name="玉米田區", images=8, progress=100)
+    port = _InMemoryTaskPort(task)
+    deps = ChatDeps(project_id="proj-q", task_port=port)
+
+    class _FakeCtx:
+        def __init__(self, d: ChatDeps) -> None:
+            self.deps = d
+
+    res = asyncio.run(
+        ask_clarifying_question(
+            _FakeCtx(deps),  # type: ignore[arg-type]
+            question="這次試驗的目標作物是什麼？",
+            options=[
+                InterviewQuestionOption(label="玉米", description="雜糧作物", recommended=False),
+                InterviewQuestionOption(label="水稻", description="常見水田試驗", recommended=True),
+                InterviewQuestionOption(label="甘藍", description="葉菜類", recommended=True),
+            ],
+            is_multi_select=False,
+            step_label="第 2 步 · 確認作物",
+            can_generate_now=False,
+        )
+    )
+
+    assert res["status"] == "question_rendered"
+    assert len(deps.question_events) == 1
+    q = deps.question_events[0]
+    assert q["question"] == "這次試驗的目標作物是什麼？"
+    assert q["step_label"] == "第 2 步 · 確認作物"
+    # Recommended option moved to index 0, and single-select enforces at most 1 recommended
+    assert q["options"][0]["label"] == "水稻"
+    assert q["options"][0]["recommended"] is True
+    assert sum(1 for o in q["options"] if o["recommended"]) == 1
+
+
+def test_stream_agent_dialogue_emits_interview_question_event() -> None:
+    task = Task(id="proj-q-stream", name="測試專案", images=5, progress=100)
+    port = _InMemoryTaskPort(task)
+    usecase = _DummyUseCase(port)
+
+    test_model = TestModel(
+        call_tools=["ask_clarifying_question"],
+        custom_output_text="好喔，我們先確認一下作物種類～",
+    )
+
+    async def _collect() -> list[dict[str, Any]]:
+        events: list[dict[str, Any]] = []
+        with scenario_agent.override(model=test_model):
+            async for chunk in _stream_agent_dialogue(
+                prompt="我想做農藥藥效試驗",
+                project_id="proj-q-stream",
+                usecase=usecase,  # type: ignore[arg-type]
+                task_port=port,
+                mode="scenario",
+            ):
+                for line in chunk.decode("utf-8").splitlines():
+                    if line.strip():
+                        events.append(json.loads(line))
+        return events
+
+    events = asyncio.run(_collect())
+    q_events = [e for e in events if e.get("type") == "interview_question"]
+    assert len(q_events) == 1
+    assert "question" in q_events[0]
+    assert isinstance(q_events[0]["question"]["options"], list)
+
+
+def test_extract_pending_interview_question_from_history() -> None:
+    q_call = ModelResponse(
+        parts=[
+            ToolCallPart(
+                tool_name="ask_clarifying_question",
+                args={
+                    "question": "請選擇作物",
+                    "options": [{"label": "水稻", "recommended": True}, {"label": "玉米"}],
+                    "is_multi_select": False,
+                },
+            )
+        ]
+    )
+    pending = _extract_pending_interview_question([q_call])
+    assert pending is not None
+    assert pending["question"] == "請選擇作物"
+    assert pending["options"][0]["label"] == "水稻"
+
+    # Once user answers, pending question is cleared
+    answered = _extract_pending_interview_question(
+        [q_call, ModelRequest(parts=[UserPromptPart(content="水稻")])]
+    )
+    assert answered is None
+
+    # Once form is upserted, pending question is cleared
+    form_saved = _extract_pending_interview_question(
+        [
+            q_call,
+            ModelResponse(parts=[ToolCallPart(tool_name="upsert_trial_scenario_form", args={})]),
+        ]
+    )
+    assert form_saved is None

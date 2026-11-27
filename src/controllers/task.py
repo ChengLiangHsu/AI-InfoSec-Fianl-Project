@@ -10,11 +10,12 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from pydantic_ai import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
+from pydantic_ai import ModelMessage, ModelRequest, ModelResponse, TextPart, ToolCallPart, UserPromptPart
 from pydantic_ai.usage import UsageLimits
 from sqlmodel import Session
 
 from src.agents import ChatDeps, agent, scenario_agent
+from src.agents.pydantic_agent import _normalize_interview_question
 from src.controllers.dependencies import (
     get_task_repo,
     get_task_usecase,
@@ -137,6 +138,40 @@ def _format_scenario_updated_event(scenario: dict[str, Any]) -> bytes:
     return json.dumps(payload, ensure_ascii=False).encode("utf-8") + b"\n"
 
 
+def _format_interview_question_event(question: dict[str, Any]) -> bytes:
+    """包裝並回傳即時同步給前端的結構化訪談問題卡片 JSON 事件。"""
+    payload = {"type": "interview_question", "question": question}
+    return json.dumps(payload, ensure_ascii=False).encode("utf-8") + b"\n"
+
+
+def _extract_pending_interview_question(messages: list[ModelMessage]) -> dict[str, Any] | None:
+    """從對話歷史末尾擷取尚未被使用者回覆的結構化訪談問題（若有表單更新或新提問則視為已結束）。"""
+    pending: dict[str, Any] | None = None
+    for m in messages:
+        if isinstance(m, ModelRequest):
+            if any(isinstance(p, UserPromptPart) for p in m.parts):
+                pending = None
+        elif isinstance(m, ModelResponse):
+            for part in m.parts:
+                if isinstance(part, ToolCallPart):
+                    if part.tool_name == "upsert_trial_scenario_form":
+                        pending = None
+                    elif part.tool_name == "ask_clarifying_question":
+                        try:
+                            args = part.args_as_dict()
+                            pending = _normalize_interview_question(
+                                question=str(args.get("question") or ""),
+                                options=args.get("options") if isinstance(args.get("options"), list) else [],
+                                is_multi_select=bool(args.get("is_multi_select", False)),
+                                allow_custom=bool(args.get("allow_custom", True)),
+                                step_label=str(args.get("step_label") or ""),
+                                can_generate_now=bool(args.get("can_generate_now", False)),
+                            )
+                        except Exception:
+                            pass
+    return pending
+
+
 async def _stream_agent_dialogue(
     prompt: str,
     project_id: str,
@@ -152,6 +187,7 @@ async def _stream_agent_dialogue(
     deps = ChatDeps(project_id=project_id, task_port=task_port)
     active_agent = scenario_agent if mode == "scenario" else agent
     emitted_scenario_count = 0
+    emitted_question_count = 0
 
     limits = UsageLimits(request_limit=6, tool_calls_limit=6, output_tokens_limit=6000)
     try:
@@ -159,11 +195,17 @@ async def _stream_agent_dialogue(
             while emitted_scenario_count < len(deps.scenario_events):
                 yield _format_scenario_updated_event(deps.scenario_events[emitted_scenario_count])
                 emitted_scenario_count += 1
+            while emitted_question_count < len(deps.question_events):
+                yield _format_interview_question_event(deps.question_events[emitted_question_count])
+                emitted_question_count += 1
 
             async for text in result.stream_output(debounce_by=0.01):
                 while emitted_scenario_count < len(deps.scenario_events):
                     yield _format_scenario_updated_event(deps.scenario_events[emitted_scenario_count])
                     emitted_scenario_count += 1
+                while emitted_question_count < len(deps.question_events):
+                    yield _format_interview_question_event(deps.question_events[emitted_question_count])
+                    emitted_question_count += 1
                 m = ModelResponse(parts=[TextPart(text)], timestamp=result.timestamp)
                 converted = _to_model_message_response(m)
                 if converted:
@@ -172,6 +214,9 @@ async def _stream_agent_dialogue(
         while emitted_scenario_count < len(deps.scenario_events):
             yield _format_scenario_updated_event(deps.scenario_events[emitted_scenario_count])
             emitted_scenario_count += 1
+        while emitted_question_count < len(deps.question_events):
+            yield _format_interview_question_event(deps.question_events[emitted_question_count])
+            emitted_question_count += 1
 
         if is_task_scoped:
             await usecase.append_messages(project_id, result.new_messages_json())
@@ -429,6 +474,11 @@ async def get_chat(
         converted = _to_model_message_response(m)
         if converted:
             serialized.append(json.dumps(asdict(converted), ensure_ascii=False).encode("utf-8"))
+    pending_question = _extract_pending_interview_question(msgs)
+    if pending_question:
+        serialized.append(
+            json.dumps({"type": "interview_question", "question": pending_question}, ensure_ascii=False).encode("utf-8")
+        )
     return Response(b"\n".join(serialized), media_type="text/plain")
 
 

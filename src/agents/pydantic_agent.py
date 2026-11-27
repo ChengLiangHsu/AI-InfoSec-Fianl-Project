@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any, Literal
+from uuid import uuid4
 
 from dotenv import load_dotenv
 
@@ -38,6 +39,7 @@ class ChatDeps:
     project_id: str
     task_port: TaskPort
     scenario_events: list[dict[str, Any]] = field(default_factory=list)
+    question_events: list[dict[str, Any]] = field(default_factory=list)
 
 
 model = os.getenv("PYDANTIC_AI_MODEL", "google:gemini-3.7-flash")
@@ -491,10 +493,77 @@ class TrialGroupInput(BaseModel):
     )
 
 
+class InterviewQuestionOption(BaseModel):
+    """互動訪談問題的單一選項。"""
+    label: str = Field(description="簡潔明確的繁體中文選項文字（建議 4~18 字）")
+    description: str = Field(default="", description="選填：一句話補充說明此選項的意義或對應欄位")
+    recommended: bool = Field(default=False, description="是否為最推薦的預設選項（每題最多 1 個 True）")
+
+
+def _normalize_interview_question(
+    question: str,
+    options: list[InterviewQuestionOption | dict[str, Any]],
+    is_multi_select: bool = False,
+    allow_custom: bool = True,
+    step_label: str = "",
+    can_generate_now: bool = False,
+) -> dict[str, Any]:
+    """正規化互動訪談問題卡片資料，確保推薦選項置頂且結構安全。"""
+    cleaned_options: list[dict[str, Any]] = []
+    seen_labels: set[str] = set()
+    has_recommended = False
+
+    for raw in options:
+        if isinstance(raw, InterviewQuestionOption):
+            label = raw.label.strip()
+            description = raw.description.strip()
+            recommended = bool(raw.recommended)
+        elif isinstance(raw, dict):
+            label = str(raw.get("label") or "").strip()
+            description = str(raw.get("description") or "").strip()
+            recommended = bool(raw.get("recommended", False))
+        else:
+            continue
+
+        if not label or label in seen_labels:
+            continue
+        seen_labels.add(label)
+
+        if recommended and not is_multi_select:
+            if has_recommended:
+                recommended = False
+            else:
+                has_recommended = True
+
+        cleaned_options.append(
+            {
+                "label": label,
+                "description": description,
+                "recommended": recommended,
+            }
+        )
+        if len(cleaned_options) >= 6:
+            break
+
+    # 將推薦選項移至最前面（保留其餘順序）
+    cleaned_options.sort(key=lambda item: not item["recommended"])
+
+    return {
+        "id": f"q-{uuid4().hex[:8]}",
+        "question": (question or "").strip() or "請選擇本次田間試驗的設定方向：",
+        "options": cleaned_options,
+        "is_multi_select": bool(is_multi_select),
+        "allow_custom": bool(allow_custom),
+        "step_label": (step_label or "").strip(),
+        "can_generate_now": bool(can_generate_now),
+    }
+
+
 @scenario_agent.system_prompt
 async def scenario_system_prompt(ctx: RunContext[ChatDeps]) -> str:
     base_prompt = (
-        "你是『田間試驗情境規劃助手』，專門在步驟 2 透過親切自然的繁體中文對話，協助使用者釐清這次無人機空拍的田間試驗情境，並動態生成下一步『框選實驗小區』要用的多型態紀錄表單。\n\n"
+        "你是專業的『田間試驗情境規劃引導人』，專門在步驟 2 以專業、簡潔、自然的繁體中文，引導使用者釐清無人機空拍的田間試驗設計，並動態建置或調整下一步『框選實驗小區』要用的多型態紀錄表單。\n"
+        "語氣保持專業顧問風格，直接聚焦在試驗本身（作物、處理組、紀錄欄位、施用條件），避免使用「透過問答協助你」「由 AI 主動提問」等生硬的系統後設用語。\n\n"
         "【核心設計原則】：\n"
         "1. **依情境決定欄位，絕不硬塞無關欄位**：\n"
         "   - 用藥／農藥藥效試驗：通常需要藥劑名稱 (`text`)、劑量或稀釋倍數 (`number` 搭配 `unit` 如 `倍` / `mL/ha` 或 `text`)、可搭配施用方式 (`select`) 或施藥日期 (`date`)。\n"
@@ -506,10 +575,16 @@ async def scenario_system_prompt(ctx: RunContext[ChatDeps]) -> str:
         "3. **對照組 (CK) 自動內建且鎖定**：\n"
         "   - 系統會自動在表單第 1 列建立且鎖定對照組 (CK)，不可刪除。\n"
         "   - **不要**問使用者需不需要對照組，也**不要**把對照組放進 `groups` 參數；只要透過 `control_label` 給它一個符合情境的名稱（如「未施藥對照 (CK)」「不施肥對照 (CK)」「標準對照 (CK)」）。\n"
-        "4. **訪談節奏與呼叫工具時機**：\n"
-        "   - 若使用者的描述還太簡略（例如只點了「農藥藥效試驗」或只說「我想做試驗」），先親切回應並提出 1~2 個最關鍵的釐清問題（例如作物是什麼、預計比較哪幾種藥劑／倍數或哪幾個品種），字數精簡好讀。\n"
-        "   - 一旦使用者提供了足夠建立表單草稿的資訊（例如已知道試驗類型與至少 1 個處理方向或組別，或使用者明確要求先建表單／套用建議模板），請**立即呼叫 `upsert_trial_scenario_form` 工具**產出並自動儲存表單，然後在回覆中簡要說明已生成哪些欄位與組別，並邀請使用者在右側微調或繼續用對話修改。\n"
-        "   - 若目前專案已經有表單，使用者要求新增／修改／刪除欄位或組別時，務必**保留既有未要求改動的共通資訊與組別（含既有 id 與 color）**，再呼叫 `upsert_trial_scenario_form` 更新。\n"
+        "4. **主動逐題訪談模式（Grill-me 風格）**：\n"
+        "   - 當使用者尚未提供足以建構完整表單的資訊（例如只選了「農藥藥效試驗」、或剛說想做某種試驗但未指定作物／處理組／額外欄位），請沿著設計決策樹**一次只問一個最關鍵的問題**，並**必須呼叫 `ask_clarifying_question` 工具**呈現互動選項卡片：\n"
+        "     - 第 1 層：試驗類型與目的（若未知）\n"
+        "     - 第 2 層：試驗作物（若未知）\n"
+        "     - 第 3 層：依試驗類型分支確認處理組設計（農藥→藥劑與稀釋倍數/劑量設計；肥料→肥料品項與施用比例；品種→比較品種；監測→分區或栽培因子，非用藥切勿問劑量）\n"
+        "     - 第 4 層：確認是否需要附加輔助欄位（如施用日期、施用時期、噴施方式、是否覆膜等），此時可用 `is_multi_select=True` 且設定 `can_generate_now=True`。\n"
+        "   - **每題務必提供 3~5 個具體好選的選項**，並將你最建議的 1 個選項標記 `recommended=True`（附簡短 `description` 說明推薦原因或對應效果）。\n"
+        "   - **每輪最多呼叫一次 `ask_clarifying_question`**。呼叫該工具後，你的文字回覆請保持在 1~2 句簡短親切的承接語（例如「了解，我們來確認這次試驗的作物～」），**絕對不要**在文字中把選項再條列一遍（前端會將工具參數直接渲染為可點選的互動卡片）。\n"
+        "   - 若使用者提供的資訊已足以決定表單草稿（例如已點選完整情境範例、或已回答完主要設計問題、或明確說「直接生成表單／套用建議模板」），請**立即呼叫 `upsert_trial_scenario_form` 工具**建立並儲存表單，簡要說明已產出的欄位與組別，無須再追問。\n"
+        "   - 若目前專案已經有表單，使用者要求新增／修改／刪除欄位或組別時，務必**保留既有未要求改動的共通資訊與組別（含既有 id 與 color）**，直接呼叫 `upsert_trial_scenario_form` 更新；僅在需求存在明顯歧義時才呼叫 `ask_clarifying_question` 確認。\n"
     )
 
     pid = ctx.deps.project_id
@@ -531,6 +606,35 @@ async def scenario_system_prompt(ctx: RunContext[ChatDeps]) -> str:
         except Exception:
             pass
     return base_prompt
+
+
+@scenario_agent.tool
+async def ask_clarifying_question(
+    ctx: RunContext[ChatDeps],
+    question: str,
+    options: list[InterviewQuestionOption],
+    is_multi_select: bool = False,
+    allow_custom: bool = True,
+    step_label: str = "",
+    can_generate_now: bool = False,
+) -> dict[str, Any]:
+    """向使用者提出單一結構化選擇題卡片（附推薦選項與自訂輸入），一次一題引導建置試驗表單。"""
+    payload = _normalize_interview_question(
+        question=question,
+        options=options,
+        is_multi_select=is_multi_select,
+        allow_custom=allow_custom,
+        step_label=step_label,
+        can_generate_now=can_generate_now,
+    )
+    ctx.deps.question_events.append(payload)
+    return {
+        "status": "question_rendered",
+        "question_id": payload["id"],
+        "question": payload["question"],
+        "option_count": len(payload["options"]),
+        "note": "前端已顯示互動選項卡片，請僅回覆 1 句簡短親切的引導語，切勿在純文字中重複條列選項。",
+    }
 
 
 @scenario_agent.tool
