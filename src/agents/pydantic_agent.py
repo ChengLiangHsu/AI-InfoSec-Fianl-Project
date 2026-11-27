@@ -21,7 +21,13 @@ from pydantic_ai.usage import UsageLimits
 
 from src.usecases.ports.task import TaskPort
 from src.config import ODM_DIR
-from src.utility.formulas import algos, get_algorithm_list, get_camera_filters_for, lookup_formula
+from src.utility.formulas import (
+    MULTISPECTRAL_REFERENCE_ALGOS,
+    RGB_ALGORITHMS,
+    get_algorithm_list,
+    lookup_formula,
+    normalize_rgb_formula,
+)
 from src.utility.spectral import generate_spectral_image
 
 @dataclass
@@ -49,7 +55,7 @@ async def system_prompt(ctx: RunContext[ChatDeps]) -> str:
         "- 使用者傳「支援植生指標」時，回覆：「我們支援 VARI、GLI、EXG 等 RGB 指標，看受害葉片變色、雜草跟長勢都很清楚喔！」\n"
         "- 使用者傳「殺蟲劑藥效評估」時，回覆：「殺蟲劑試驗推薦看 VARI 或 GLI，能清楚看出受害葉片變色！接下來請點上方『繪製小區』標註田區吧！」\n"
         "- 使用者傳「除草劑防除試驗」時，回覆：「除草劑試驗推薦看 VARI 或 EXG，能明顯分辨雜草覆蓋與枯死！接下來可以開始畫小區囉！」\n"
-        "- 使用者傳「長勢與缺株監測」時，回覆：「長勢監測推薦看 VARI 或 vNDVI，能清楚看出植株均勻度與空洞！接著點上方『繪製小區』標註吧！」\n\n"
+        "- 使用者傳「長勢與缺株監測」時，回覆：「長勢監測推薦看 VARI 或 GLI，能清楚看出植株均勻度與空洞！接著點上方『繪製小區』標註吧！」\n\n"
         "【核心工具能力】：\n"
         "當使用者傳送「視覺診斷光譜」、「光譜數值統計」或「正射全景檢查」，或詢問具體田區數據時，調用相應工具並用 1~2 句極簡口語短句告知重點：\n"
         "1. `get_current_project_info`：確認專案基本資訊、正射圖生成狀態與可用光譜指標。\n"
@@ -120,9 +126,7 @@ async def get_current_project_info(ctx: RunContext[ChatDeps]) -> dict:
     cached_spectrals = [
         f.stem.replace(f"{pid}_", "") for f in ODM_DIR.glob(f"{pid}_*.png")
     ]
-    all_rgb_algos = [
-        a["id"] for a in get_algorithm_list(max_bands=3) if "RGB" in a.get("filters", [])
-    ]
+    all_rgb_algos = [a["id"] for a in get_algorithm_list()]
 
     return {
         "status": "success",
@@ -208,7 +212,7 @@ def _evaluate_field_homogeneity(std_val: float) -> str:
 async def calculate_spectral_statistics(
     ctx: RunContext[ChatDeps], formula: str = "VARI"
 ) -> dict:
-    """計算並取得當前專案在指定光譜植生指標（如 VARI, GLI, EXG, vNDVI, MPRI 等）下的田間數值統計資料。"""
+    """計算並取得當前專案在指定光譜植生指標（如 VARI, GLI, EXG, MPRI, NDYI 等）下的田間數值統計資料。"""
     pid = ctx.deps.project_id
     if not pid or pid == "home":
         return {"status": "error", "message": "目前未選擇具體專案，無法計算田間光譜統計。"}
@@ -219,9 +223,9 @@ async def calculate_spectral_statistics(
     if not ortho_path.exists():
             return {"status": "error", "message": "尚未找到該專案的正射圖，航拍拼接可能尚未完成。"}
 
-    formula_upper = formula.strip().upper()
     try:
-        expr, hrange = lookup_formula(formula_upper, "RGB")
+        formula_id = normalize_rgb_formula(formula)
+        expr, hrange = lookup_formula(formula_id)
     except Exception as e:
         return {"status": "error", "message": f"找不到光譜指標 '{formula}': {e}"}
 
@@ -239,13 +243,13 @@ async def calculate_spectral_statistics(
         return {"status": "error", "message": "影像中無有效農田像素。"}
 
     stats = _calculate_pixel_statistics(valid_vals)
-    classification = _classify_vegetation(formula_upper, valid_vals, vmin, vmax)
+    classification = _classify_vegetation(formula_id, valid_vals, vmin, vmax)
     homogeneity = _evaluate_field_homogeneity(stats["std_deviation"])
 
     return {
         "status": "success",
-        "formula": formula_upper,
-        "formula_expression": expr,
+        "formula": formula_id,
+        "formula_expression": RGB_ALGORITHMS[formula_id]["expr"],
         "valid_pixel_count": int(len(valid_vals)),
         "statistics": stats,
         "vegetation_classification": classification,
@@ -282,16 +286,19 @@ async def inspect_field_imagery(
     if not ortho_path.exists():
             return "正射圖檔案不存在，請確認空拍拼接任務是否已完成。"
 
-    formula_upper = formula.strip().upper()
     if image_target == "spectral":
-        lookup_formula(formula_upper, "RGB")
-        target_img_path = ODM_DIR / f"{pid}_{formula_upper}.png"
+        try:
+            formula_id = normalize_rgb_formula(formula)
+            lookup_formula(formula_id)
+        except Exception as e:
+            return f"不支援的 RGB 光譜指標 '{formula}': {e}"
+        target_img_path = ODM_DIR / f"{pid}_{formula_id}.png"
         if not target_img_path.exists():
             try:
-                generate_spectral_image(ortho_path, target_img_path, formula_upper)
+                generate_spectral_image(ortho_path, target_img_path, formula_id)
             except Exception as e:
-                return f"生成光譜圖 {formula_upper} 失敗: {e}"
-        image_desc = f"專案 {pid} 的 {formula_upper} 植生指標光譜圖（綠色為高活力植被、黃色為中度活力、紅/黑色為低活力或土壤）"
+                return f"生成光譜圖 {formula_id} 失敗: {e}"
+        image_desc = f"專案 {pid} 的 {formula_id} 植生指標光譜圖（綠色為高活力植被、黃色為中度活力、紅/黑色為低活力或土壤）"
     else:
         target_img_path = ortho_path
         image_desc = f"專案 {pid} 的高解析度無人機原始正射拼接影像 (RGB Orthophoto)"
@@ -320,43 +327,68 @@ async def inspect_field_imagery(
 
 @agent.tool_plain
 def query_vegetation_index(name_or_keyword: str = "") -> dict:
-    """查詢農業無人機植生指標（Vegetation Indices）的數學公式、說明、支援波段與適用情境。"""
+    """查詢農業無人機植生指標（Vegetation Indices）的數學公式、說明、適用限制與波段需求。"""
     query = (name_or_keyword or "").strip()
 
-    # 1. 精確或大小寫比對
-    for k, item in algos.items():
+    # 1. 精確或大小寫比對（優先查純 RGB 可執行指標，再查多光譜參考清單）
+    for k, item in RGB_ALGORITHMS.items():
         if k.lower() == query.lower():
-            filters = get_camera_filters_for(item["expr"], max_bands=4)
-            is_rgb = "RGB" in filters
+            return {
+                "status": "success",
+                "name": k,
+                "label": item.get("label", k),
+                "formula_expr": item.get("expr"),
+                "description": str(item.get("help", "")),
+                "limitation": str(item.get("limitation", "")),
+                "range": item.get("range", (-1, 1)),
+                "supported_bands": ["RGB"],
+                "is_rgb_compatible": True,
+                "note": "本系統可直接以純 RGB 三通道計算；請留意該指標的適用限制。",
+            }
+
+    for k, item in MULTISPECTRAL_REFERENCE_ALGOS.items():
+        if k.lower() == query.lower():
             return {
                 "status": "success",
                 "name": k,
                 "formula_expr": item.get("expr"),
-                "description": str(item.get("help", "無特別描述")),
-                "range": item.get("range", [-1, 1]),
-                "supported_bands": filters,
-                "is_rgb_compatible": is_rgb,
-                "note": "適用於一般無人機 RGB 空拍鏡頭" if is_rgb else "需要近紅外光 (NIR) 或多光譜鏡頭",
+                "description": str(item.get("help", "")),
+                "required_bands": item.get("required_bands", []),
+                "range": item.get("range", (-1, 1)),
+                "supported_bands": [],
+                "is_rgb_compatible": False,
+                "note": "此指標需要近紅外光（NIR）、窄波段或熱紅外感測器，本系統純 RGB 影像無法計算。",
             }
 
     # 2. 關鍵字搜尋或清單查詢
     if query.lower() in ["rgb", "list", "all", ""]:
         rgb_list = [
-            {"name": a["id"], "expr": a["expr"], "description": str(a.get("help", ""))}
-            for a in get_algorithm_list(max_bands=3)
-            if "RGB" in a.get("filters", [])
+            {
+                "name": a["id"],
+                "label": a.get("label", a["id"]),
+                "expr": a["expr"],
+                "description": str(a.get("help", "")),
+                "limitation": str(a.get("limitation", "")),
+            }
+            for a in get_algorithm_list()
         ]
         return {
             "status": "list",
             "total_rgb_indices": len(rgb_list),
-            "recommended_rgb_indices": rgb_list[:8],
-            "message": "已列出無人機常見 RGB 植生指標。如需查詢特定指標細節，可指定指標名稱（例如 VARI、GLI）。",
+            "recommended_rgb_indices": rgb_list,
+            "message": "已列出本系統支援的 5 項純 RGB 植生／色彩指標（MPRI 為 RGB 替代公式）。",
         }
 
-    # 3. 模糊搜尋
+    # 3. 模糊搜尋（涵蓋純 RGB 與多光譜參考清單）
+    all_reference = {**RGB_ALGORITHMS, **MULTISPECTRAL_REFERENCE_ALGOS}
     matches = [
-        {"name": k, "expr": v["expr"], "description": str(v.get("help", ""))}
-        for k, v in algos.items()
+        {
+            "name": k,
+            "expr": v["expr"],
+            "description": str(v.get("help", "")),
+            "is_rgb_compatible": k in RGB_ALGORITHMS,
+        }
+        for k, v in all_reference.items()
         if query.lower() in k.lower() or query.lower() in str(v.get("help", "")).lower()
     ]
     if matches:
@@ -367,7 +399,7 @@ def query_vegetation_index(name_or_keyword: str = "") -> dict:
 
     return {
         "status": "not_found",
-        "message": f"未找到名稱為「{query}」的植生指標。常見 RGB 指標包括：VARI, GLI, EXG, vNDVI, MPRI；NIR 多光譜指標包括：NDVI, GNDVI, SAVI, NDRE。",
+        "message": f"未找到名稱為「{query}」的植生指標。本系統支援的純 RGB 指標為：NDYI、VARI、MPRI、EXG、GLI；多光譜參考指標包括：NDVI、NDRE、PRI、SAVI。",
     }
 
 

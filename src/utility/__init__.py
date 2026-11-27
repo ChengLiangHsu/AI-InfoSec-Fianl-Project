@@ -1,4 +1,11 @@
-from src.utility.formulas import algos, get_algorithm_list, get_camera_filters_for, lookup_formula
+from src.utility.formulas import (
+    MULTISPECTRAL_REFERENCE_ALGOS,
+    RGB_ALGORITHMS,
+    algos,
+    get_algorithm_list,
+    lookup_formula,
+    normalize_rgb_formula,
+)
 from src.utility.imagery import extract_orthophoto_from_zip
 from src.utility.marker_detection import (
     bilinear_subdivide_quad,
@@ -7,10 +14,12 @@ from src.utility.marker_detection import (
 from src.utility.spectral import generate_spectral_image
 
 __all__ = [
+    "RGB_ALGORITHMS",
+    "MULTISPECTRAL_REFERENCE_ALGOS",
     "lookup_formula",
+    "normalize_rgb_formula",
     "get_algorithm_list",
     "algos",
-    "get_camera_filters_for",
     "generate_spectral_image",
     "extract_orthophoto_from_zip",
     "detect_white_marker_corners",

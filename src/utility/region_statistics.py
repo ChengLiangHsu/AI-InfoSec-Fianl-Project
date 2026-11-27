@@ -53,8 +53,8 @@ def _pixel_batches(image: Image.Image, polygon: np.ndarray):
 
 
 def _accumulate_algorithm(pixels: np.ndarray, algorithm: dict, lut: np.ndarray, totals: dict) -> None:
-    """Accumulate unclipped index values and the corresponding rendered RGB channels."""
-    expr, hrange = lookup_formula(algorithm["id"], "RGB")
+    """累計未截斷的純 RGB 指數值，以及套用紅→黃→綠假色階（LUT，B 固定為 0）後的輸出 RGB 總和。"""
+    expr, hrange = lookup_formula(algorithm["id"])
     values = evaluate_formula_values(pixels, expr)
     finite = np.isfinite(values)
     totals["sum"] += float(values[finite].sum(dtype=np.float64))
@@ -68,7 +68,7 @@ def _mean_rgb(total: np.ndarray, count: int) -> list[float] | None:
 
 
 def _collect_statistics(image: Image.Image, polygon: np.ndarray) -> dict:
-    algorithms = [a for a in get_algorithm_list() if "RGB" in a["filters"]]
+    algorithms = get_algorithm_list()
     totals = {a["id"]: {"sum": 0.0, "count": 0, "rgb": np.zeros(3)} for a in algorithms}
     rgb_sum, count = np.zeros(3), 0
     lut = create_spectral_color_lut()
@@ -84,7 +84,7 @@ def _collect_statistics(image: Image.Image, polygon: np.ndarray) -> dict:
 
 
 def _format_statistics(count: int, rgb_sum: np.ndarray, totals: dict) -> dict:
-    """Serialize channel means and finite index means, using null for empty samples."""
+    """輸出統計結果：頂層 rgb_mean 為原始輸入影像 RGB 平均；各演算法 rgb_mean 為紅→黃→綠著色輸出 RGB 平均（B 恆為 0.00）。"""
     return {
         "pixel_count": count,
         "rgb_mean": _mean_rgb(rgb_sum, count),

@@ -8,7 +8,14 @@ import {
 import { Button } from '@/components/ui/button'
 import { downloadImage, type ImageExportFormat } from '@/lib/imageDownload'
 
-interface FormulaOption { id: string; help?: string }
+interface FormulaOption {
+  id: string
+  label?: string
+  badge?: string
+  expr?: string
+  help?: string
+  limitation?: string
+}
 const props = defineProps<{
   projectId: string
   projectName: string
@@ -29,6 +36,7 @@ const formulaError = ref('')
 let controller: AbortController | undefined
 
 const ready = computed(() => props.progress === 100)
+const selectedOption = computed(() => options.value.find(item => item.id === formula.value))
 const layerName = computed(() => formula.value === 'rgb' ? '原始正射圖（RGB）' : `${formula.value} 光譜圖`)
 const formats: { id: ImageExportFormat; label: string; hint: string }[] = [
   { id: 'tiff', label: 'TIFF', hint: '保留影像細節' },
@@ -138,10 +146,16 @@ onUnmounted(() => controller?.abort())
               class="h-10 w-full rounded-lg border border-white/20 bg-zinc-900 px-3 text-sm outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400 disabled:opacity-50"
             >
               <option value="rgb">原始正射圖（RGB）</option>
-              <optgroup v-if="options.length" label="光譜演算法">
-                <option v-for="item in options" :key="item.id" :value="item.id">{{ item.id }} 光譜圖</option>
+              <optgroup v-if="options.length" label="純 RGB 光譜演算法">
+                <option v-for="item in options" :key="item.id" :value="item.id">
+                  {{ item.id }} 光譜圖{{ item.badge && item.badge !== 'RGB 可見光' ? `（${item.badge}）` : '' }}
+                </option>
               </optgroup>
             </select>
+            <div v-if="selectedOption" class="rounded-lg border border-white/10 bg-white/5 p-2.5 text-[11px] leading-relaxed text-zinc-300 space-y-1">
+              <p v-if="selectedOption.expr" class="font-mono text-[10px] text-zinc-400">純 RGB 公式：{{ selectedOption.expr }}</p>
+              <p v-if="selectedOption.limitation" class="text-amber-200/90">限制：{{ selectedOption.limitation }}</p>
+            </div>
             <p v-if="loadingFormulas" class="text-xs text-zinc-400">載入演算法清單中…</p>
             <p v-if="formulaError" role="alert" class="text-xs text-amber-200">
               {{ formulaError }}

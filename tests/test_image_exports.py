@@ -125,7 +125,7 @@ def test_legacy_png_cache_recovers_original_tiff_and_handles_case(export_context
     client, _, task, _, odm, cache, original = export_context
     with Image.open(io.BytesIO(original)) as image:
         image.save(cache / f'{task.id}.png')
-    assert client.get(f'/api/task/odm-task-export/{task.id}?formula=vndvi&format=jpg').status_code == 200
+    assert client.get(f'/api/task/odm-task-export/{task.id}?formula=mpri&format=jpg').status_code == 200
     odm.download_task_assets.assert_not_called()
     response = client.get(f'/api/task/odm-task-export/{task.id}?format=tiff')
     assert response.content == original

@@ -5,7 +5,10 @@ import PlotStatisticsPanel from '@/components/PlotStatisticsPanel.vue'
 const plot = { plot_number: 31, coords: '[[0,0],[1,0],[1,1],[0,1]]', is_control: true, treatment: '', dose: '' }
 const data = {
   pixel_count: 20, rgb_mean: [20, 100, 40],
-  algorithms: [{ id: 'VARI', index_mean: 1, valid_pixel_count: 20, rgb_mean: [1, 255, 0] }],
+  algorithms: [
+    { id: 'VARI', index_mean: 1, valid_pixel_count: 20, rgb_mean: [1, 255, 0] },
+    { id: 'MPRI', index_mean: 0.25, valid_pixel_count: 20, rgb_mean: [191, 255, 0] },
+  ],
 }
 const response = (payload = data) => new Response(JSON.stringify({ result: true, data: payload }))
 
@@ -23,6 +26,8 @@ it('shows original and algorithm RGB, and lets the user switch the displayed lay
   expect(wrapper.text()).toContain('20.00 / 100.00 / 40.00')
   expect(wrapper.text()).toContain('1.00 / 255.00 / 0.00')
   expect(wrapper.text()).toContain('1.0000')
+  expect(wrapper.text()).toContain('RGB 替代')
+  expect(wrapper.text()).toContain('B 固定為 0.00')
   expect(JSON.parse(fetcher.mock.calls[0][1].body).points).toEqual(JSON.parse(plot.coords))
   await wrapper.findAll('button').find(button => button.text() === 'VARI')!.trigger('click')
   expect(wrapper.emitted('select-formula')).toEqual([['VARI']])

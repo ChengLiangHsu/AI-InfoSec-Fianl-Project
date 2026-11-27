@@ -503,8 +503,11 @@ async function handleGoHome() {
 
 interface Formula {
   id: string
+  label?: string
+  badge?: string
   expr: string
   help?: string
+  limitation?: string
   range?: [number, number]
 }
 
@@ -908,6 +911,7 @@ watch(selectedProject, async (newProj) => {
             :task-id="selectedProject.id"
             :plots="plots.filter(plot => selectedPlotNumbers.includes(plot.plot_number))"
             :current-formula="selectedFormula"
+            :formulas="formulas"
             @select-formula="selectedFormula = $event"
           />
 
@@ -990,21 +994,35 @@ watch(selectedProject, async (newProj) => {
                     <Button
                       size="sm"
                       :variant="selectedFormula === f.id ? 'default' : 'outline'"
-                      class="h-8 justify-between gap-3 px-3 text-xs font-medium border-white/15 cursor-pointer"
+                      class="h-8 justify-between gap-2 px-3 text-xs font-medium border-white/15 cursor-pointer"
                       @click="selectedFormula = f.id"
                     >
-                      <span class="font-semibold">{{ f.id }}</span>
+                      <span class="flex items-center gap-1.5">
+                        <span class="font-semibold">{{ f.id }}</span>
+                        <span
+                          v-if="f.badge && f.badge !== 'RGB 可見光'"
+                          class="rounded bg-amber-500/20 px-1 py-0.5 text-[9px] font-medium text-amber-200"
+                        >
+                          {{ f.badge }}
+                        </span>
+                      </span>
                       <span
                         v-if="selectedFormula === f.id"
                         class="size-1.5 rounded-full bg-primary-foreground animate-pulse"
                       />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="left" class="max-w-xs space-y-1 p-2 text-xs">
-                    <p class="font-bold text-foreground">{{ f.id }}</p>
+                  <TooltipContent side="left" class="max-w-xs space-y-1.5 p-2.5 text-xs">
+                    <div class="flex items-center justify-between gap-2">
+                      <p class="font-bold text-foreground">{{ f.label || f.id }}</p>
+                      <span v-if="f.badge" class="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{{ f.badge }}</span>
+                    </div>
                     <p v-if="f.help" class="text-muted-foreground leading-relaxed">{{ f.help }}</p>
-                    <p v-if="f.expr" class="font-mono text-[10px] text-muted-foreground/80 bg-muted/60 px-1.5 py-0.5 rounded">
-                      公式: {{ f.expr }}
+                    <p v-if="f.expr" class="font-mono text-[10px] text-muted-foreground/90 bg-muted/60 px-1.5 py-1 rounded">
+                      純 RGB 公式：{{ f.expr }}
+                    </p>
+                    <p v-if="f.limitation" class="text-[11px] text-amber-600 dark:text-amber-300 leading-relaxed">
+                      限制：{{ f.limitation }}
                     </p>
                   </TooltipContent>
                 </Tooltip>

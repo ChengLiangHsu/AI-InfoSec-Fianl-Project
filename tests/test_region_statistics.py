@@ -11,8 +11,9 @@ from src.controllers.task import router
 from src.entities.task import Task
 from src.presenter.error_handlers import register_error_handlers
 from src.usecases.task import TaskUseCase
+from src.utility.formulas import get_algorithm_list, lookup_formula, normalize_rgb_formula
 from src.utility.region_statistics import calculate_region_statistics
-from src.utility.spectral import generate_spectral_image
+from src.utility.spectral import create_spectral_color_lut, generate_spectral_image
 
 FULL = [(0, 0), (1, 0), (1, 1), (0, 1)]
 
@@ -41,7 +42,7 @@ def test_every_algorithm_rgb_matches_actual_render_and_indices_are_pixel_means(t
     result = calculate_region_statistics(path, FULL)
     assert result['pixel_count'] == 2
     assert result['rgb_mean'] == [60, 80, 30]
-    assert {a['id'] for a in result['algorithms']} == {'NDYI', 'vNDVI', 'VARI', 'MPRI', 'EXG', 'GLI'}
+    assert {a['id'] for a in result['algorithms']} == {'NDYI', 'VARI', 'MPRI', 'EXG', 'GLI'}
     for row in result['algorithms']:
         output = tmp_path / f"{row['id']}.png"
         generate_spectral_image(path, output, row['id'])
@@ -91,3 +92,40 @@ def test_api_uses_unsaved_geometry_and_validates_input(tmp_path, monkeypatch):
         assert client.post('/region-statistics/field', json={'points': [[0, 0], [.5, .5], [1, 1]]}).status_code == 400
         repo.get_task.side_effect = KeyError('找不到專案')
         assert client.post('/region-statistics/missing', json={'points': FULL}).status_code == 404
+
+
+def test_only_pure_rgb_formulas_are_executable_and_lut_blue_channel_is_zero():
+    algos = get_algorithm_list()
+    ids = [a['id'] for a in algos]
+    assert ids == ['NDYI', 'VARI', 'MPRI', 'EXG', 'GLI']
+    for item in algos:
+        assert item['filters'] == ['RGB']
+        assert item['limitation']
+        expr, hrange = lookup_formula(item['id'])
+        assert expr and hrange == (-1, 1)
+        assert 'N' not in expr and 'Re' not in expr and 'L' not in expr
+
+    assert normalize_rgb_formula('mpri') == 'MPRI'
+    for unsupported in ['vNDVI', 'NDVI', 'NDRE', 'PRI', 'SAVI', 'Celsius']:
+        with pytest.raises(ValueError):
+            lookup_formula(unsupported)
+    with pytest.raises(ValueError):
+        lookup_formula('VARI', 'RGBN')
+
+    lut = create_spectral_color_lut()
+    assert lut.shape == (256, 3)
+    assert np.all(lut[:, 2] == 0)
+
+
+def test_formulas_endpoint_exposes_rgb_metadata():
+    app = FastAPI()
+    app.include_router(router)
+    with TestClient(app) as client:
+        response = client.get('/odm-task-formulas')
+        assert response.status_code == 200
+        items = response.json()['data']
+        assert [item['id'] for item in items] == ['NDYI', 'VARI', 'MPRI', 'EXG', 'GLI']
+        by_id = {item['id']: item for item in items}
+        assert 'vNDVI' not in by_id
+        assert '替代' in by_id['MPRI']['badge']
+        assert '531nm' in by_id['MPRI']['limitation']

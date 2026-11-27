@@ -255,17 +255,18 @@ async def get_odm_task_orthophoto(
 
 @router.get("/odm-task-formulas")
 async def get_odm_task_formulas() -> JSONResponse:
-    """主流程：查詢系統目前支援之 RGB 植生指標算式清單。"""
-    all_algos = get_algorithm_list(max_bands=3)
+    """主流程：查詢系統目前支援之純 RGB 植生／色彩指標清單。"""
     rgb_algos = [
         {
             "id": a["id"],
+            "label": a.get("label", a["id"]),
+            "badge": a.get("badge", "RGB 可見光"),
             "expr": a["expr"],
             "help": str(a.get("help", "")),
+            "limitation": str(a.get("limitation", "")),
             "range": a.get("range", (-1, 1)),
         }
-        for a in all_algos
-        if "RGB" in a.get("filters", [])
+        for a in get_algorithm_list()
     ]
     return success_response(data=rgb_algos)
 

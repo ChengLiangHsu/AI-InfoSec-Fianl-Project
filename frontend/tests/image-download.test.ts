@@ -5,7 +5,7 @@ import { downloadImage, imageExportUrl } from '@/lib/imageDownload'
 
 const props = {
   projectId: 'field-1', projectName: '試驗田', progress: 100,
-  formulas: [{ id: 'VARI' }, { id: 'vNDVI' }], currentFormula: 'rgb',
+  formulas: [{ id: 'VARI' }, { id: 'MPRI' }], currentFormula: 'rgb',
 }
 let click: ReturnType<typeof vi.spyOn>
 beforeEach(() => {
@@ -46,7 +46,7 @@ describe('image downloads', () => {
     const wrapper = await openPanel({ currentFormula: 'VARI' })
     const select = document.querySelector('select')!
     expect(select.value).toBe('VARI')
-    select.value = 'vNDVI'
+    select.value = 'MPRI'
     select.dispatchEvent(new Event('change', { bubbles: true }))
     await flushPromises()
     expect(wrapper.props('currentFormula')).toBe('VARI')

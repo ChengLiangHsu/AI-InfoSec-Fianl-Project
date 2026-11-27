@@ -9,7 +9,11 @@ from src.utility.image_export import atomic_output
 
 
 def create_spectral_color_lut() -> np.ndarray:
-    """建立紅 (低) -> 黃 (中) -> 綠 (高) 的 256 階色彩對照表 (LUT)。"""
+    """建立紅 (低) -> 黃 (中) -> 綠 (高) 的 256 階假色對照表 (LUT)。
+
+    注意：此色階僅由紅 [255, 0, 0] 漸變至黃 [255, 255, 0] 再至綠 [0, 255, 0]，
+    藍色通道 (B) 在所有階度皆固定為 0；因此統計熱圖著色後之平均 RGB 時，B 通道必然為 0.00。
+    """
     lut = np.zeros((256, 3), dtype=np.uint8)
     for i in range(256):
         if i < 128:
@@ -20,7 +24,7 @@ def create_spectral_color_lut() -> np.ndarray:
 
 
 def evaluate_formula_values(arr: np.ndarray, expr: str) -> np.ndarray:
-    """Evaluate each pixel before display clipping; undefined values remain non-finite."""
+    """以純 RGB 三通道（0~1 歸一化之 b1=R, b2=G, b3=B）逐像素計算指數值；無定義處保留為非有限值。"""
     b1, b2, b3 = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
     with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
         return eval(expr, {"sqrt": np.sqrt}, {"b1": b1, "b2": b2, "b3": b3})
