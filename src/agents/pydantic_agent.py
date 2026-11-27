@@ -45,7 +45,7 @@ class ChatDeps:
     current_formula: str = "rgb"
 
 
-model = os.getenv("PYDANTIC_AI_MODEL", "google:gemini-3.7-flash")
+model = os.getenv("PYDANTIC_AI_MODEL", "google:models/gemini-4-hydrogen")
 agent = Agent(model, deps_type=ChatDeps, defer_model_check=True)
 scenario_agent = Agent(model, deps_type=ChatDeps, defer_model_check=True)
 spectral_agent = Agent(model, deps_type=ChatDeps, defer_model_check=True)
