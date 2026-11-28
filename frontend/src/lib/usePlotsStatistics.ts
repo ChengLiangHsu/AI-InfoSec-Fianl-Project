@@ -4,8 +4,55 @@ import type { MeanRgb } from './useRegionStatistics'
 export interface AlgorithmStatRow {
   id: string
   index_mean: number | null
+  index_std?: number | null
+  index_cv_pct?: number | null
+  index_min?: number | null
+  index_q1?: number | null
+  index_median?: number | null
+  index_q3?: number | null
+  index_max?: number | null
+  replicate_count?: number
+  tukey_group?: string | null
+  outlier_plot_numbers?: number[]
   valid_pixel_count: number
   rgb_mean: MeanRgb
+}
+
+export interface PairwiseComparison {
+  group_a: string
+  group_b: string
+  label_a: string
+  label_b: string
+  mean_diff: number
+  p_value: number
+  significant: boolean
+}
+
+export interface StatisticalTestResult {
+  formula_id: string
+  status: 'ok' | 'insufficient_groups' | 'insufficient_replicates' | 'zero_variance'
+  message: string
+  alpha: number
+  anova_f: number | null
+  anova_p: number | null
+  significant: boolean
+  group_letters: Record<string, string>
+  pairwise: PairwiseComparison[]
+}
+
+export interface OutlierAlert {
+  plot_number: number
+  group_key: string
+  group_label: string
+  is_control: boolean
+  formula_id: string
+  value: number
+  group_mean: number
+  group_median: number
+  group_cv_pct: number | null
+  method: 'iqr_1.5' | 'cv_15_n3'
+  direction: 'high' | 'low'
+  reason: string
 }
 
 export interface PlotStatisticsEntry {
@@ -37,6 +84,8 @@ export interface PlotsStatisticsBatch {
   control_baseline: AggregatedStatisticsEntry | null
   treatment_groups: TreatmentGroupStatistics[]
   field_summary: AggregatedStatisticsEntry
+  statistical_tests?: Record<string, StatisticalTestResult>
+  outliers?: Record<string, OutlierAlert[]>
 }
 
 export function usePlotsStatistics(

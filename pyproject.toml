@@ -9,6 +9,7 @@ dependencies = [
     "opencv-python>=5.0.0.93",
     "pillow>=12.3.0",
     "pydantic-ai[examples,openai-realtime]>=2.54.0",
+    "scipy>=1.18.1",
     "sqlmodel>=0.0.48",
 ]
 

@@ -788,7 +788,8 @@ async def spectral_system_prompt(ctx: RunContext[ChatDeps]) -> str:
         "2. **嚴格唯讀原則**：你僅負責數據與影像分析，**不會也不可宣稱**幫使用者切換右側地圖的光譜演算法或更改小區選取狀態；若建議參考其他已啟用指標，請提醒使用者可於右側地圖自行切換檢視。\n"
         "3. **嚴謹對照實驗設計**：所有解讀皆應對照本專案的試驗情境、處理組與對照組 (CK) 基準，並遵守純 RGB 光譜的物理限制（不可將純 RGB 指標誤稱為需近紅外光的 NDVI／NDRE）。\n"
         "4. **善用工具取得真實數據**：\n"
-        "   - 回答數值分析或處理組比較前，務必呼叫 `get_selected_plots_spectral_stats` 取得精確的小區與 CK 統計數據。\n"
+        "   - 回答數值分析、處理組比較、顯著性檢定或異常小區排查前，務必呼叫 `get_selected_plots_spectral_stats` 取得精確的小區統計、組內 SD/CV%、單因子 ANOVA／Tukey HSD 顯著性字母（a/b/ab）與離群小區警示。\n"
+        "   - 面對離群／異常小區時，嚴格遵守雙軌解讀原則：只提醒使用者排查局部積水、雜草或噴藥邊界效應，絕不建議擅自刪除小區資料。\n"
         "   - 回答視覺長勢、缺株、變色斑塊或邊界效應問題時，務必呼叫 `inspect_plot_imagery` 檢視裁切後的目標小區影像（或全田區影像）。\n"
         "   - 回答指標學理或公式限制時，可呼叫 `query_vegetation_index`。\n"
     )
@@ -883,16 +884,41 @@ async def get_selected_plots_spectral_stats(
                 if delta is not None and ck_val is not None and abs(ck_val) > 1e-6
                 else None
             )
-            enriched.append(
-                {
-                    "id": aid,
-                    "index_mean": round(mean_val, 4) if mean_val is not None else None,
-                    "delta_vs_ck": delta,
-                    "pct_vs_ck": pct,
-                    "valid_pixel_count": row.get("valid_pixel_count", 0),
-                }
-            )
+            item: dict[str, Any] = {
+                "id": aid,
+                "index_mean": round(mean_val, 4) if mean_val is not None else None,
+                "delta_vs_ck": delta,
+                "pct_vs_ck": pct,
+                "valid_pixel_count": row.get("valid_pixel_count", 0),
+            }
+            if "index_std" in row:
+                std_val = row.get("index_std")
+                item["index_std"] = round(std_val, 4) if std_val is not None else None
+                item["index_cv_pct"] = row.get("index_cv_pct")
+                item["tukey_group"] = row.get("tukey_group")
+                item["outlier_plot_numbers"] = row.get("outlier_plot_numbers", [])
+            enriched.append(item)
         return enriched
+
+    raw_tests = batch.get("statistical_tests") or {}
+    filtered_tests = {
+        aid: {
+            "status": test.get("status"),
+            "message": test.get("message"),
+            "anova_f": test.get("anova_f"),
+            "anova_p": test.get("anova_p"),
+            "significant": test.get("significant"),
+            "group_letters": test.get("group_letters", {}),
+        }
+        for aid, test in raw_tests.items()
+        if allowed_set is None or aid in allowed_set
+    }
+    raw_outliers = batch.get("outliers") or {}
+    filtered_outliers = {
+        aid: items
+        for aid, items in raw_outliers.items()
+        if (allowed_set is None or aid in allowed_set) and items
+    }
 
     target_nums = plot_numbers if plot_numbers is not None else list(ctx.deps.selected_plot_numbers)
     if target_nums:
@@ -923,6 +949,8 @@ async def get_selected_plots_spectral_stats(
                 if ck_baseline
                 else None
             ),
+            "statistical_tests": filtered_tests,
+            "outliers": filtered_outliers,
         }
 
     groups = [
@@ -948,6 +976,8 @@ async def get_selected_plots_spectral_stats(
             "rgb_mean": batch["field_summary"]["rgb_mean"],
             "algorithms": _enrich_algos(batch["field_summary"]["algorithms"]),
         },
+        "statistical_tests": filtered_tests,
+        "outliers": filtered_outliers,
     }
 
 

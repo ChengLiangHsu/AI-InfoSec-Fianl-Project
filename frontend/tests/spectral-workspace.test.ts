@@ -248,4 +248,145 @@ describe('Step 4 SpectralWorkspace three-column layout & linkage', () => {
     )
     expect(postChatCalls.length).toBe(0)
   })
+
+  it('renders ANOVA banner, Tukey letters, box/bar chart toggle, and syncs map selection on outlier click', async () => {
+    const richStats = {
+      result: true,
+      data: {
+        ...mockBatchStats.data,
+        treatment_groups: [
+          {
+            ...mockBatchStats.data.treatment_groups[0],
+            algorithms: [
+              {
+                id: 'VARI',
+                index_mean: 0.05,
+                index_std: 0.01,
+                index_cv_pct: 20.0,
+                index_min: 0.04,
+                index_q1: 0.045,
+                index_median: 0.05,
+                index_q3: 0.055,
+                index_max: 0.06,
+                replicate_count: 3,
+                tukey_group: 'b',
+                outlier_plot_numbers: [1],
+                valid_pixel_count: 1000,
+                rgb_mean: [200, 180, 0],
+              },
+            ],
+          },
+          {
+            ...mockBatchStats.data.treatment_groups[1],
+            algorithms: [
+              {
+                id: 'VARI',
+                index_mean: 0.25,
+                index_std: 0.02,
+                index_cv_pct: 8.0,
+                index_min: 0.23,
+                index_q1: 0.24,
+                index_median: 0.25,
+                index_q3: 0.26,
+                index_max: 0.27,
+                replicate_count: 3,
+                tukey_group: 'a',
+                outlier_plot_numbers: [],
+                valid_pixel_count: 1200,
+                rgb_mean: [40, 230, 0],
+              },
+            ],
+          },
+        ],
+        statistical_tests: {
+          VARI: {
+            formula_id: 'VARI',
+            status: 'ok',
+            message: '單因子 ANOVA 達顯著差異 (F=42.5, p < 0.001)，已依 Tukey HSD 標記分群字母',
+            alpha: 0.05,
+            anova_f: 42.5,
+            anova_p: 0.0002,
+            significant: true,
+            group_letters: { '快得寧::500x': 'a', CK: 'b' },
+            pairwise: [
+              {
+                group_a: '快得寧::500x',
+                group_b: 'CK',
+                label_a: '快得寧 500x',
+                label_b: '對照組 (CK)',
+                mean_diff: 0.2,
+                p_value: 0.0002,
+                significant: true,
+              },
+            ],
+          },
+        },
+        outliers: {
+          VARI: [
+            {
+              plot_number: 1,
+              group_key: 'CK',
+              group_label: '對照組 (CK)',
+              is_control: true,
+              formula_id: 'VARI',
+              value: 0.05,
+              group_mean: 0.05,
+              group_median: 0.05,
+              group_cv_pct: 20.0,
+              method: 'cv_15_n3',
+              direction: 'low',
+              reason: '3 重複組內變異係數 CV=20.0% (>15%)，建議複查影像',
+            },
+          ],
+        },
+      },
+    }
+
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).includes('/api/task/plots-statistics/')) {
+        return { ok: true, json: async () => richStats }
+      }
+      return { ok: true, text: async () => '' }
+    })
+
+    const wrapper = mount(SpectralWorkspace, {
+      props: {
+        projectId: 'proj-4c',
+        projectName: '測試田區',
+        projectProgress: 100,
+        scenario: {
+          version: 2,
+          type: 'pesticide',
+          title: '水稻殺蟲試驗',
+          recommended_formulas: ['VARI'],
+          categories: [{ name: 'CK', color: '#94a3b8', is_control: true }],
+        },
+        plots: samplePlots,
+        formulas: allFormulas,
+        selectedFormula: 'VARI',
+        selectedPlotNumbers: [],
+        getPlotColor: () => '#10b981',
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="spectral-group-chart"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="spectral-anova-banner"]').text()).toContain('ANOVA 顯著')
+    expect(wrapper.find('[data-testid="tukey-letter-快得寧::500x"]').text()).toBe('a')
+    expect(wrapper.find('[data-testid="tukey-letter-CK"]').text()).toBe('b')
+
+    // 切換箱型圖模式
+    await wrapper.find('[data-testid="chart-mode-box"]').trigger('click')
+    expect(wrapper.find('[data-testid="spectral-group-chart"] svg').exists()).toBe(true)
+
+    // 點擊離群小區警示 -> 應立即發送 select-plots([1]) 定位右側地圖
+    expect(wrapper.find('[data-testid="spectral-outlier-alerts"]').exists()).toBe(true)
+    await wrapper.find('[data-testid="outlier-alert-plot-1"]').trigger('click')
+    expect(wrapper.emitted('select-plots')?.[0]).toEqual([[1]])
+
+    // 點擊圖上散點 #2 -> 應發送 select-plots([2])
+    await wrapper.find('[data-testid="chart-point-plot-2"]').trigger('click')
+    expect(wrapper.emitted('select-plots')?.[1]).toEqual([[2]])
+  })
 })

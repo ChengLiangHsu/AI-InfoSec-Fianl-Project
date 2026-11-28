@@ -282,3 +282,149 @@ def test_spectral_agent_stats_tool_and_stream_isolation(tmp_path: Path, monkeypa
     )
     assert len(port.channel_messages["spectral"]) > 0
     assert len(port.channel_messages["default"]) == 0
+
+
+def _create_multi_strip_ortho(path: Path, colors: list[tuple[int, int, int, int]]) -> None:
+    """建立多色帶合成正射圖，每條垂直色帶寬度 10 px、高度 20 px，供不同重複小區測試。"""
+    width = 10 * len(colors)
+    img = Image.new("RGBA", (width, 20), (0, 0, 0, 255))
+    for idx, rgba in enumerate(colors):
+        for y in range(20):
+            for x in range(idx * 10, (idx + 1) * 10):
+                img.putpixel((x, y), rgba)
+    img.save(path, format="PNG")
+
+
+def _strip_plot(
+    plot_number: int,
+    strip_idx: int,
+    total_strips: int,
+    *,
+    is_control: bool = False,
+    treatment: str = "",
+    dose: str = "",
+) -> dict[str, Any]:
+    """回傳對應垂直色帶範圍的小區定義。"""
+    x0 = (strip_idx + 0.1) / total_strips
+    x1 = (strip_idx + 0.9) / total_strips
+    return {
+        "plot_number": plot_number,
+        "coords": json.dumps([[x0, 0.1], [x1, 0.1], [x1, 0.9], [x0, 0.9]]),
+        "is_control": is_control,
+        "treatment": treatment,
+        "dose": dose,
+    }
+
+
+def test_anova_tukey_cld_and_descriptive_stats(tmp_path: Path) -> None:
+    """驗證單因子 ANOVA、Tukey HSD 顯著性字母（a/b）與描述統計（SD/CV%/四分位數）。"""
+    # 3 組 × 3 重複：CK（偏紅褐低活力）、藥劑 A（高綠度）、藥劑 B（中綠度）
+    colors = [
+        # CK 3 重複
+        (165, 95, 60, 255),
+        (160, 100, 60, 255),
+        (155, 102, 60, 255),
+        # 藥劑 A 3 重複（明顯高活力）
+        (40, 215, 55, 255),
+        (45, 210, 58, 255),
+        (42, 220, 52, 255),
+        # 藥劑 B 3 重複（中等活力）
+        (95, 155, 65, 255),
+        (98, 150, 62, 255),
+        (92, 158, 66, 255),
+    ]
+    ortho = tmp_path / "anova.png"
+    _create_multi_strip_ortho(ortho, colors)
+    n = len(colors)
+    plots = [
+        _strip_plot(1, 0, n, is_control=True),
+        _strip_plot(2, 1, n, is_control=True),
+        _strip_plot(3, 2, n, is_control=True),
+        _strip_plot(4, 3, n, treatment="藥劑A", dose="500x"),
+        _strip_plot(5, 4, n, treatment="藥劑A", dose="500x"),
+        _strip_plot(6, 5, n, treatment="藥劑A", dose="500x"),
+        _strip_plot(7, 6, n, treatment="藥劑B", dose="1000x"),
+        _strip_plot(8, 7, n, treatment="藥劑B", dose="1000x"),
+        _strip_plot(9, 8, n, treatment="藥劑B", dose="1000x"),
+    ]
+
+    result = calculate_plots_statistics(ortho, plots)
+    vari_test = result["statistical_tests"]["VARI"]
+    assert vari_test["status"] == "ok"
+    assert vari_test["significant"] is True
+    assert vari_test["anova_p"] is not None and vari_test["anova_p"] < 0.05
+    assert vari_test["group_letters"]["藥劑A::500x"] == "a"
+    assert vari_test["group_letters"]["藥劑B::1000x"] == "b"
+    assert vari_test["group_letters"]["CK"] == "c"
+
+    group_a = next(g for g in result["treatment_groups"] if g["key"] == "藥劑A::500x")
+    vari_row = next(a for a in group_a["algorithms"] if a["id"] == "VARI")
+    assert vari_row["tukey_group"] == "a"
+    assert vari_row["index_std"] is not None and vari_row["index_std"] > 0
+    assert vari_row["index_cv_pct"] is not None
+    assert vari_row["index_q1"] is not None and vari_row["index_median"] is not None
+    assert vari_row["replicate_count"] == 3
+
+
+def test_anova_graceful_degradation_when_replicates_insufficient(tmp_path: Path) -> None:
+    """驗證每組僅 1 重複時優雅降級略過顯著性檢定，不拋出例外。"""
+    ortho = tmp_path / "ortho.png"
+    _create_synthetic_ortho(ortho)
+    plots = [
+        {
+            "plot_number": 1,
+            "coords": json.dumps([[0.05, 0.1], [0.45, 0.1], [0.45, 0.9], [0.05, 0.9]]),
+            "is_control": True,
+            "treatment": "",
+            "dose": "",
+        },
+        {
+            "plot_number": 2,
+            "coords": json.dumps([[0.55, 0.1], [0.95, 0.1], [0.95, 0.9], [0.55, 0.9]]),
+            "is_control": False,
+            "treatment": "快得寧",
+            "dose": "500x",
+        },
+    ]
+    result = calculate_plots_statistics(ortho, plots)
+    assert result["statistical_tests"]["VARI"]["status"] == "insufficient_replicates"
+    assert result["statistical_tests"]["VARI"]["significant"] is False
+    assert result["outliers"]["VARI"] == []
+
+
+def test_adaptive_outlier_detection_n3_cv_and_n4_iqr(tmp_path: Path) -> None:
+    """驗證 n=3 採 CV>15% 標記與 n>=4 採 1.5xIQR 標記，且絕不自動刪除小區。"""
+    # 組 1（n=3）：兩區高綠、一區嚴重異常偏紅褐 -> 觸發 cv_15_n3 標記小區 #3
+    # 組 2（n=4）：三區接近高綠、一區極端異常 -> 觸發 iqr_1.5 標記小區 #7
+    colors = [
+        (45, 210, 55, 255),
+        (48, 205, 58, 255),
+        (170, 90, 55, 255),  # plot #3 離群（n=3）
+        (50, 200, 60, 255),
+        (52, 198, 60, 255),
+        (49, 202, 59, 255),
+        (175, 85, 55, 255),  # plot #7 離群（n=4）
+    ]
+    ortho = tmp_path / "outliers.png"
+    _create_multi_strip_ortho(ortho, colors)
+    n = len(colors)
+    plots = [
+        _strip_plot(1, 0, n, is_control=True),
+        _strip_plot(2, 1, n, is_control=True),
+        _strip_plot(3, 2, n, is_control=True),
+        _strip_plot(4, 3, n, treatment="處理組", dose="500x"),
+        _strip_plot(5, 4, n, treatment="處理組", dose="500x"),
+        _strip_plot(6, 5, n, treatment="處理組", dose="500x"),
+        _strip_plot(7, 6, n, treatment="處理組", dose="500x"),
+    ]
+
+    result = calculate_plots_statistics(ortho, plots)
+    # 嚴守雙軌解讀原則：7 個小區必須全數保留，不可自動刪除
+    assert len(result["plots"]) == 7
+
+    vari_outliers = result["outliers"]["VARI"]
+    by_plot = {o["plot_number"]: o for o in vari_outliers}
+    assert 3 in by_plot
+    assert by_plot[3]["method"] == "cv_15_n3"
+    assert 7 in by_plot
+    assert by_plot[7]["method"] == "iqr_1.5"
