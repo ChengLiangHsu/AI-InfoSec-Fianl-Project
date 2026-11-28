@@ -32,6 +32,7 @@ from src.utility.formulas import (
     lookup_formula,
     normalize_rgb_formula,
 )
+from src.utility.prompt_guard import SECURITY_GUARDRAIL_PROMPT, ensure_within_directory
 from src.utility.region_statistics import calculate_plots_statistics
 from src.utility.spectral import generate_spectral_image
 
@@ -107,7 +108,7 @@ async def system_prompt(ctx: RunContext[ChatDeps]) -> str:
             "\n\n【首頁導引模式】：\n"
             "使用者目前位於首頁。以 1~2 句朋友口吻親切招呼並引導拖曳相片上傳。"
         )
-    return base_prompt
+    return base_prompt + SECURITY_GUARDRAIL_PROMPT
 
 
 @agent.tool
@@ -616,7 +617,7 @@ async def scenario_system_prompt(ctx: RunContext[ChatDeps]) -> str:
             )
         except Exception:
             pass
-    return base_prompt
+    return base_prompt + SECURITY_GUARDRAIL_PROMPT
 
 
 @scenario_agent.tool
@@ -824,7 +825,7 @@ async def spectral_system_prompt(ctx: RunContext[ChatDeps]) -> str:
             )
         except Exception:
             pass
-    return base_prompt
+    return base_prompt + SECURITY_GUARDRAIL_PROMPT
 
 
 @spectral_agent.tool
@@ -838,7 +839,10 @@ async def get_selected_plots_spectral_stats(
         return {"status": "error", "message": "目前未選定專案，無法計算小區統計。"}
 
     proj = await ctx.deps.task_port.get_task(pid)
-    ortho_path = ODM_DIR / f"{pid}.png"
+    try:
+        ortho_path = ensure_within_directory(ODM_DIR, ODM_DIR / f"{pid}.png")
+    except ValueError as e:
+        return {"status": "error", "message": str(e)}
     if not ortho_path.exists():
         return {"status": "error", "message": "尚未找到正射圖檔案，請確認航拍拼接是否已完成。"}
     if not proj.plots:
@@ -995,7 +999,10 @@ async def inspect_plot_imagery(
         return "目前未選定專案，無法進行視覺判讀。"
 
     proj = await ctx.deps.task_port.get_task(pid)
-    ortho_path = ODM_DIR / f"{pid}.png"
+    try:
+        ortho_path = ensure_within_directory(ODM_DIR, ODM_DIR / f"{pid}.png")
+    except ValueError as e:
+        return str(e)
     if not ortho_path.exists():
         return "正射圖檔案不存在，無法進行視覺判讀。"
 

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { computed } from 'vue'
 import { computed, ref } from 'vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,7 +10,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Spinner } from '@/components/ui/spinner'
-import { BarChart3, RefreshCw, X } from '@lucide/vue'
 import { AlertTriangle, BarChart3, RefreshCw, X } from '@lucide/vue'
 import SpectralGroupChart from '@/components/SpectralGroupChart.vue'
 import type { PlotItem } from '@/lib/usePlots'
@@ -321,51 +319,40 @@ function formatStdCv(row: AlgorithmStatRow | undefined): string {
                   <div v-for="fid in allowedIds" :key="fid"
                     class="flex items-center justify-between text-[11px] rounded px-1.5 py-0.5"
                     :class="{ 'bg-primary/10': currentFormula === fid }">
-                    <span class="font-mono font-medium text-muted-foreground">{{ fid }}</span>
-                    <div class="flex items-center gap-2 font-mono">
-                      <span class="text-foreground font-semibold">
-                        {{ formatIndex(getAlgoRow(group.algorithms, fid)?.index_mean) }}
-                      </span>
-                      <span class="font-mono font-medium text-muted-foreground inline-flex items-center gap-1">
-                        <span>{{ fid }}</span>
-                        <Badge v-if="getAlgoRow(group.algorithms, fid)?.tukey_group" variant="secondary"
-                          class="text-[9px] px-1 py-0 font-mono" title="Tukey HSD 顯著性分群字母（相同字母表示組間無顯著差異）">
-                          {{ getAlgoRow(group.algorithms, fid)?.tukey_group }}
-                        </Badge>
-                        <AlertTriangle v-if="(getAlgoRow(group.algorithms, fid)?.outlier_plot_numbers?.length ?? 0) > 0"
-                          class="size-3 text-amber-500"
-                          :title="`組內發現離群小區：#${getAlgoRow(group.algorithms, fid)?.outlier_plot_numbers?.join(', #')}`" />
-                      </span>
-                      <div class="flex flex-col items-end font-mono">
-                        <div class="flex items-center gap-2">
-                          <span class="text-foreground font-semibold">
-                            {{ formatIndex(getAlgoRow(group.algorithms, fid)?.index_mean) }}
-                          </span>
-                          <span class="text-[10px]" :class="{
-                            'text-emerald-600 dark:text-emerald-400': formatDeltaVsCk(getAlgoRow(group.algorithms, fid)?.index_mean, fid, group.is_control).tone === 'positive',
-                            'text-rose-600 dark:text-rose-400': formatDeltaVsCk(getAlgoRow(group.algorithms, fid)?.index_mean, fid, group.is_control).tone === 'negative',
-                            'text-muted-foreground': formatDeltaVsCk(getAlgoRow(group.algorithms, fid)?.index_mean, fid, group.is_control).tone === 'neutral',
-                          }">
-                            {{ formatDeltaVsCk(getAlgoRow(group.algorithms, fid)?.index_mean, fid,
-                            group.is_control).text }}
-                          </span>
-                        </div>
+                    <span class="font-mono font-medium text-muted-foreground inline-flex items-center gap-1">
+                      <span>{{ fid }}</span>
+                      <Badge v-if="getAlgoRow(group.algorithms, fid)?.tukey_group" variant="secondary"
+                        class="text-[9px] px-1 py-0 font-mono" title="Tukey HSD 顯著性分群字母（相同字母表示組間無顯著差異）">
+                        {{ getAlgoRow(group.algorithms, fid)?.tukey_group }}
+                      </Badge>
+                      <AlertTriangle v-if="(getAlgoRow(group.algorithms, fid)?.outlier_plot_numbers?.length ?? 0) > 0"
+                        class="size-3 text-amber-500"
+                        :title="`組內發現離群小區：#${getAlgoRow(group.algorithms, fid)?.outlier_plot_numbers?.join(', #')}`" />
+                    </span>
+                    <div class="flex flex-col items-end font-mono">
+                      <div class="flex items-center gap-2">
+                        <span class="text-foreground font-semibold">
+                          {{ formatIndex(getAlgoRow(group.algorithms, fid)?.index_mean) }}
+                        </span>
                         <span class="text-[10px]" :class="{
                           'text-emerald-600 dark:text-emerald-400': formatDeltaVsCk(getAlgoRow(group.algorithms, fid)?.index_mean, fid, group.is_control).tone === 'positive',
                           'text-rose-600 dark:text-rose-400': formatDeltaVsCk(getAlgoRow(group.algorithms, fid)?.index_mean, fid, group.is_control).tone === 'negative',
                           'text-muted-foreground': formatDeltaVsCk(getAlgoRow(group.algorithms, fid)?.index_mean, fid, group.is_control).tone === 'neutral',
-                        }" v-if="formatStdCv(getAlgoRow(group.algorithms, fid))"
-                          class="text-[9px] text-muted-foreground/85">
-                          {{ formatDeltaVsCk(getAlgoRow(group.algorithms, fid)?.index_mean, fid, group.is_control).text
-                          }}
-                          {{ formatStdCv(getAlgoRow(group.algorithms, fid)) }}
+                        }">
+                          {{ formatDeltaVsCk(getAlgoRow(group.algorithms, fid)?.index_mean, fid,
+                          group.is_control).text }}
                         </span>
                       </div>
+                      <span v-if="formatStdCv(getAlgoRow(group.algorithms, fid))"
+                        class="text-[9px] text-muted-foreground/85">
+                        {{ formatStdCv(getAlgoRow(group.algorithms, fid)) }}
+                      </span>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
+          </div>
         </template>
 
         <!-- 模式 2：單選 1 個小區 -> 詳情 + 相對 CK 差異 -->

@@ -82,7 +82,7 @@ import FloatingPersona from './components/FloatingPersona.vue'
 import DroneHomeUpload from './components/DroneHomeUpload.vue'
 import ScenarioWorkspace from './components/ScenarioWorkspace.vue'
 import SpectralWorkspace from './components/SpectralWorkspace.vue'
-import type { ScenarioData } from './lib/scenarioSchema'
+import { hasConfiguredScenario, type ScenarioData } from './lib/scenarioSchema'
 import PlotToolbar from './components/PlotToolbar.vue'
 import PlotCanvasOverlay from './components/PlotCanvasOverlay.vue'
 import PlotTreatmentDialog, { type TreatmentData } from './components/PlotTreatmentDialog.vue'
@@ -463,10 +463,13 @@ const currentStepTitle = computed(() => {
   }
 })
 
+// 檢查指定步驟是否已達解鎖條件（步驟 3 與 4 需完成正射影像拼接且已建置步驟 2 試驗情境表單）
 function isStepUnlocked(stepId: 1 | 2 | 3 | 4): boolean {
   if (stepId === 1 || stepId === 2) return true
-  if (stepId === 3) return (selectedProject.value?.progress ?? 0) === 100
-  if (stepId === 4) return (selectedProject.value?.progress ?? 0) === 100 && plots.value.length > 0
+  const isOrthoReady = (selectedProject.value?.progress ?? 0) === 100
+  const isScenarioReady = hasConfiguredScenario(selectedProject.value?.scenario)
+  if (stepId === 3) return isOrthoReady && isScenarioReady
+  if (stepId === 4) return isOrthoReady && isScenarioReady && plots.value.length > 0
   return false
 }
 
@@ -488,11 +491,14 @@ function resetStepFormula(targetStep: 1 | 2 | 3 | 4) {
   }
 }
 
+// 處理步驟切換，若目標步驟尚未解鎖則顯示對應提示訊息
 async function handleStepChange(targetStep: 1 | 2 | 3 | 4) {
   if (targetStep === currentStep.value) return
   if (!isStepUnlocked(targetStep)) {
     if ((selectedProject.value?.progress ?? 0) < 100) {
       alert(`需待正射影像拼接完成（目前進度 ${selectedProject.value?.progress ?? 0}%）方可進入該步驟`)
+    } else if ((targetStep === 3 || targetStep === 4) && !hasConfiguredScenario(selectedProject.value?.scenario)) {
+      alert('需先於步驟 2 完成試驗情境表單建置方可進入該步驟')
     } else if (targetStep === 4 && plots.value.length === 0) {
       alert('需先於步驟 3 完成小區網格標註方可進入各小區光譜分析')
     }
@@ -1215,6 +1221,7 @@ watch(selectedProject, async (newProj, oldProj) => {
           <StepNavigationHUD
             :current-step="currentStep"
             :project-progress="selectedProject.progress"
+            :has-scenario="hasConfiguredScenario(selectedProject.scenario)"
             :has-plots="plots.length > 0"
             @change-step="handleStepChange"
           />

@@ -320,9 +320,9 @@ function removeGroupField(fieldIdx: number) {
 </script>
 
 <template>
-  <Card class="border border-border/70 shadow-xs transition-all duration-200">
+  <Card class="border border-white/15 bg-zinc-950/90 shadow-2xl backdrop-blur-md transition-all duration-200">
     <!-- 表單標頭：標題 + 自動存檔狀態 + 操作 -->
-    <CardHeader class="py-3 px-4 border-b border-border/40 space-y-2">
+    <CardHeader class="py-3 px-4 border-b border-white/10 space-y-2">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <div class="flex items-center gap-2 min-w-0 flex-1">
           <Input
@@ -342,7 +342,7 @@ function removeGroupField(fieldIdx: number) {
           <Badge
             v-if="saveState === 'saving'"
             variant="outline"
-            class="text-amber-600 border-amber-500/30 bg-amber-50/50 text-[11px] py-0.5 gap-1"
+            class="text-amber-300 border-amber-400/40 bg-amber-950/40 text-[11px] py-0.5 gap-1"
           >
             <Spinner class="size-3 animate-spin" />
             自動儲存中...
@@ -350,7 +350,7 @@ function removeGroupField(fieldIdx: number) {
           <Badge
             v-else-if="saveState === 'saved'"
             variant="outline"
-            class="text-emerald-600 border-emerald-500/30 bg-emerald-50/50 text-[11px] py-0.5 gap-1"
+            class="text-emerald-300 border-emerald-400/40 bg-emerald-950/40 text-[11px] py-0.5 gap-1"
           >
             <CheckCircle2 class="size-3" />
             已自動儲存
@@ -403,7 +403,7 @@ function removeGroupField(fieldIdx: number) {
               <SelectTrigger :id="`meta-${field.key}`" class="h-8 text-xs w-full bg-background">
                 <SelectValue :placeholder="field.placeholder || `選擇${field.label}`" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent class="dark">
                 <SelectItem
                   v-for="opt in field.options || []"
                   :key="opt"
@@ -528,7 +528,7 @@ function removeGroupField(fieldIdx: number) {
               <SelectTrigger class="h-7 text-xs bg-background">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent class="dark">
                 <SelectItem value="text" class="text-xs">文字</SelectItem>
                 <SelectItem value="number" class="text-xs">數字</SelectItem>
                 <SelectItem value="select" class="text-xs">下拉選單</SelectItem>
@@ -644,7 +644,7 @@ function removeGroupField(fieldIdx: number) {
                       <SelectTrigger class="h-7 text-xs w-full bg-background">
                         <SelectValue :placeholder="field.placeholder || '請選擇'" />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent class="dark">
                         <SelectItem
                           v-for="opt in field.options || []"
                           :key="opt"

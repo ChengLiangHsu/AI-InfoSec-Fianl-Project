@@ -4,6 +4,7 @@ import App from '@/App.vue'
 import AppSidebar from '@/components/AppSidebar.vue'
 import PlotCanvasOverlay from '@/components/PlotCanvasOverlay.vue'
 import StepNavigationHUD from '@/components/StepNavigationHUD.vue'
+import { createManualDefaultScenario } from '@/lib/scenarioSchema'
 import { usePlots } from '@/lib/usePlots'
 
 const TRIANGLE = [
@@ -98,7 +99,13 @@ describe('plot annotation auto-save', () => {
   })
 
   it('flushes pending plot changes automatically when leaving Step 3 without confirm dialog', async () => {
-    const project = { id: 'field-auto', name: '自動儲存測試田區', progress: 100, images: 8 }
+    const project = {
+      id: 'field-auto',
+      name: '自動儲存測試田區',
+      progress: 100,
+      images: 8,
+      scenario: createManualDefaultScenario(),
+    }
     const putCalls: string[] = []
     vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
       if (init?.method === 'PUT' && url === `/api/task/plots/${project.id}`) {
@@ -151,8 +158,20 @@ describe('plot annotation auto-save', () => {
 
   it('shows retry state on failure and flushes old project plots before switching projects', async () => {
     vi.useFakeTimers()
-    const projectA = { id: 'proj-a', name: '田區 A', progress: 100, images: 5 }
-    const projectB = { id: 'proj-b', name: '田區 B', progress: 100, images: 6 }
+    const projectA = {
+      id: 'proj-a',
+      name: '田區 A',
+      progress: 100,
+      images: 5,
+      scenario: createManualDefaultScenario(),
+    }
+    const projectB = {
+      id: 'proj-b',
+      name: '田區 B',
+      progress: 100,
+      images: 6,
+      scenario: createManualDefaultScenario(),
+    }
     let shouldFailPut = true
     const savedByProject: Record<string, any[]> = {}
 

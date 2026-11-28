@@ -6,9 +6,16 @@ import ImageDownloadPanel from '@/components/ImageDownloadPanel.vue'
 import StepNavigationHUD from '@/components/StepNavigationHUD.vue'
 import PlotToolbar from '@/components/PlotToolbar.vue'
 import PlotCanvasOverlay from '@/components/PlotCanvasOverlay.vue'
+import { createManualDefaultScenario } from '@/lib/scenarioSchema'
 
 it('preserves the actual App step, image, and unsaved plots during a download', async () => {
-  const project = { id: 'field-1', name: '測試田區', progress: 100, images: 10 }
+  const project = {
+    id: 'field-1',
+    name: '測試田區',
+    progress: 100,
+    images: 10,
+    scenario: createManualDefaultScenario(),
+  }
   let resolveDownload!: (response: Response) => void
   vi.stubGlobal('fetch', vi.fn((url: string) => {
     if (url.includes('/odm-task-export/')) return new Promise<Response>(resolve => { resolveDownload = resolve })

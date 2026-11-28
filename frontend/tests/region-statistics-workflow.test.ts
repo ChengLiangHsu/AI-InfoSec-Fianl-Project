@@ -5,9 +5,16 @@ import AppSidebar from '@/components/AppSidebar.vue'
 import StepNavigationHUD from '@/components/StepNavigationHUD.vue'
 import PlotCanvasOverlay from '@/components/PlotCanvasOverlay.vue'
 import SpectralWorkspace from '@/components/SpectralWorkspace.vue'
+import { createManualDefaultScenario } from '@/lib/scenarioSchema'
 
 it('connects plot selection, edited geometry, multi-selection, and spectral switching in App', async () => {
-  const project = { id: 'field-1', name: '測試田區', progress: 100, images: 10 }
+  const project = {
+    id: 'field-1',
+    name: '測試田區',
+    progress: 100,
+    images: 10,
+    scenario: createManualDefaultScenario(),
+  }
   const plots = [31, 32].map(plot_number => ({ plot_number, coords: '[[0,0],[1,0],[0,1]]', is_control: true, treatment: '', dose: '' }))
   vi.stubGlobal('confirm', vi.fn(() => true))
   vi.stubGlobal('fetch', vi.fn((url: string) => {

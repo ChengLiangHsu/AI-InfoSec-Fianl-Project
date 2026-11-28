@@ -1,0 +1,117 @@
+{
+  "dataset": {
+    "raw_image_count": 65,
+    "raw_total_size_mb": 540.35,
+    "raw_sample_resolution": [
+      5280,
+      3956
+    ],
+    "orthophoto_file": "d55b4d1b-9cb3-42d1-bdba-3f5b505b411b.png",
+    "orthophoto_size_mb": 4.56,
+    "orthophoto_resolution": [
+      1385,
+      1647
+    ],
+    "orthophoto_mode": "RGBA",
+    "valid_non_transparent_pct": 73.57
+  },
+  "png_compression_benchmark": {
+    "baseline_level_6_sec": 0.197,
+    "baseline_level_6_mb": 4.56,
+    "optimized_level_1_sec": 0.095,
+    "optimized_level_1_mb": 5.93,
+    "speedup_factor": 2.07,
+    "time_reduction_pct": 51.6
+  },
+  "spectral_benchmark": {
+    "plot_source": "standard_3x4_grid_benchmark",
+    "plot_count": 12,
+    "run1_sec": 0.425,
+    "run2_sec": 0.377,
+    "deterministic_exact_match": true,
+    "vari_anova": {
+      "status": "ok",
+      "anova_f": 3.8806,
+      "anova_p": 0.055539,
+      "significant": false,
+      "message": "單因子 ANOVA 未達顯著差異 (F=3.8806, p = 0.0555)，各組皆標記為 a"
+    },
+    "vari_outlier_count": 4,
+    "group_summaries": [
+      {
+        "label": "對照組 (CK)",
+        "plot_count": 3,
+        "vari_mean": 0.0716,
+        "vari_std": 0.082,
+        "vari_cv_pct": 114.52,
+        "vari_tukey": "a",
+        "exg_mean": 0.1574
+      },
+      {
+        "label": "處理組A 500x",
+        "plot_count": 3,
+        "vari_mean": -0.0306,
+        "vari_std": 0.0197,
+        "vari_cv_pct": 64.27,
+        "vari_tukey": "a",
+        "exg_mean": 0.0736
+      },
+      {
+        "label": "處理組B 1000x",
+        "plot_count": 3,
+        "vari_mean": -0.0274,
+        "vari_std": 0.0173,
+        "vari_cv_pct": 63.09,
+        "vari_tukey": "a",
+        "exg_mean": 0.0853
+      },
+      {
+        "label": "處理組C 2000x",
+        "plot_count": 3,
+        "vari_mean": 0.0295,
+        "vari_std": 0.0062,
+        "vari_cv_pct": 21.09,
+        "vari_tukey": "a",
+        "exg_mean": 0.15
+      }
+    ]
+  },
+  "security_benchmark": {
+    "malicious_total": 10,
+    "malicious_blocked": 10,
+    "attack_block_rate_pct": 100.0,
+    "benign_total": 10,
+    "benign_false_positives": 0,
+    "false_positive_rate_pct": 0.0,
+    "upload_defense_cases": [
+      {
+        "case": "HTML 偽裝為 JPG",
+        "expected_reject": true,
+        "actual_reject": true,
+        "passed": true,
+        "sanitized_name": null
+      },
+      {
+        "case": "偽造 JPEG 檔頭之 Polyglot",
+        "expected_reject": true,
+        "actual_reject": true,
+        "passed": true,
+        "sanitized_name": null
+      },
+      {
+        "case": "跨平台路徑穿越檔名（合法圖）",
+        "expected_reject": false,
+        "actual_reject": false,
+        "passed": true,
+        "sanitized_name": "passwd.jpg"
+      },
+      {
+        "case": "正常空拍 JPEG 影像",
+        "expected_reject": false,
+        "actual_reject": false,
+        "passed": true,
+        "sanitized_name": "DJI_0001.jpg"
+      }
+    ]
+  }
+}

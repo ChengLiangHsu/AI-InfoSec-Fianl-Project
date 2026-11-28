@@ -29,6 +29,7 @@ from src.usecases.ports.task import TaskPort
 from src.usecases.task import TaskUseCase
 from src.utility.formulas import get_algorithm_list, normalize_rgb_formula
 from src.utility.image_export import EXPORT_MEDIA_TYPES, export_filename
+from src.utility.prompt_guard import check_prompt_injection
 
 router = APIRouter(tags=["task"])
 
@@ -185,6 +186,15 @@ async def _stream_agent_dialogue(
 ) -> AsyncGenerator[bytes, None]:
     """調度 Pydantic AI 串流對話，依據任務生命週期與對話頻道決定持久化位置。"""
     yield _format_initial_user_event(prompt)
+
+    guard = check_prompt_injection(prompt)
+    if guard.blocked:
+        refusal = f"{guard.reason} 請聚焦於本專案的田間試驗與光譜影像分析。"
+        m = ModelResponse(parts=[TextPart(refusal)], timestamp=datetime.now(timezone.utc))
+        converted = _to_model_message_response(m)
+        if converted:
+            yield json.dumps(asdict(converted), ensure_ascii=False).encode("utf-8") + b"\n"
+        return
 
     is_task_scoped = bool(project_id and project_id != "home")
     channel: Literal["default", "spectral"] = "spectral" if mode == "spectral" else "default"

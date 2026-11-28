@@ -414,7 +414,8 @@ const placeholderText = computed(() => {
 </script>
 
 <template>
-  <div class="flex-1 h-full max-h-full min-h-0 flex flex-col px-4 sm:px-6 pt-4 pb-20 bg-muted/10 overflow-hidden">
+  <!-- 步驟 2 採用與步驟 1、3 一致的暗色系工作區樣式 -->
+  <div class="dark flex-1 h-full max-h-full min-h-0 flex flex-col px-4 sm:px-6 pt-4 pb-20 bg-black text-foreground [color-scheme:dark] overflow-hidden">
     <div
       data-testid="scenario-workspace-layout"
       class="mx-auto w-full flex-1 h-full max-h-full min-h-0 flex flex-col lg:flex-row gap-4 overflow-hidden transition-all duration-300 ease-out"
@@ -423,20 +424,20 @@ const placeholderText = computed(() => {
       <!-- 左側（初始置中單欄）：AI 情境訪談對話面板 -->
       <section
         data-testid="scenario-chat-panel"
-        class="flex flex-col min-h-0 max-h-full rounded-2xl border border-border/70 bg-card shadow-xs overflow-hidden transition-all duration-300 ease-out"
+        class="flex flex-col min-h-0 max-h-full rounded-2xl border border-white/15 bg-zinc-950/90 shadow-2xl backdrop-blur-md overflow-hidden transition-all duration-300 ease-out"
         :class="isSplitMode ? 'w-full flex-1 basis-0 min-w-0 min-h-0 lg:h-full' : 'w-full flex-1 h-full'"
       >
         <!-- 對話面板頂部 -->
-        <header class="flex items-center justify-between gap-2 px-4 py-3 border-b border-border/50 bg-muted/20 shrink-0">
+        <header class="flex items-center justify-between gap-2 px-4 py-3 border-b border-white/10 bg-zinc-900/60 shrink-0">
           <div class="flex items-center gap-2 min-w-0">
-            <div class="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary shrink-0">
+            <div class="flex size-7 items-center justify-center rounded-lg border border-purple-400/30 bg-purple-500/15 text-purple-300 shrink-0">
               <Sparkles class="size-4" />
             </div>
             <div class="min-w-0">
-              <h2 class="text-sm font-semibold text-foreground truncate">
+              <h2 class="text-sm font-semibold text-zinc-100 truncate">
                 AI 試驗情境規劃助手
               </h2>
-              <p class="text-[11px] text-muted-foreground truncate">
+              <p class="text-[11px] text-zinc-400 truncate">
                 {{ isSplitMode ? '隨時透過對話新增欄位或調整組別，並自動存檔' : '聊完情境後將自動為你展開右側多型態實驗表單' }}
               </p>
             </div>
@@ -448,7 +449,7 @@ const placeholderText = computed(() => {
               type="button"
               variant="outline"
               size="sm"
-              class="h-7 px-2.5 text-xs gap-1.5 shrink-0 cursor-pointer"
+              class="h-7 px-2.5 text-xs gap-1.5 shrink-0 cursor-pointer border-white/15 bg-zinc-900/80 text-zinc-200 hover:bg-zinc-800 hover:text-white"
               @click="handleManualStart"
             >
               <SlidersHorizontal class="size-3.5" />
@@ -457,7 +458,7 @@ const placeholderText = computed(() => {
             <Badge
               v-else
               variant="outline"
-              class="text-[10px] text-primary border-primary/30 bg-primary/5 shrink-0"
+              class="text-[10px] text-purple-300 border-purple-400/40 bg-purple-950/40 shrink-0"
             >
               雙向同步中
             </Badge>
@@ -538,11 +539,11 @@ const placeholderText = computed(() => {
           </Conversation>
 
           <!-- 快捷情境標籤 + 輸入框 -->
-          <div class="w-full px-3.5 pb-3.5 pt-2 space-y-2 border-t border-border/40 bg-background shrink-0">
+          <div class="w-full px-3.5 pb-3.5 pt-2 space-y-2 border-t border-white/10 bg-zinc-950/95 shrink-0">
             <div data-testid="scenario-quick-suggestions" class="space-y-1.5">
               <p
                 id="scenario-suggestions-heading"
-                class="text-[11px] font-medium text-muted-foreground"
+                class="text-[11px] font-medium text-zinc-400"
               >
                 {{ suggestionGroupLabel }}
               </p>
@@ -556,7 +557,7 @@ const placeholderText = computed(() => {
                     type="button"
                     data-testid="scenario-suggestion-chip"
                     :disabled="isBusy"
-                    class="inline-flex min-h-7 items-center gap-1.5 rounded-full border border-border/80 bg-muted/40 px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    class="inline-flex min-h-7 items-center gap-1.5 rounded-full border border-white/15 bg-zinc-900/80 px-2.5 py-1 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-800 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     @click="triggerQuickScenario(item.prompt)"
                   >
                     <component

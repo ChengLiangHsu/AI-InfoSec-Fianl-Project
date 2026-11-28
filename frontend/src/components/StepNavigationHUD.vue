@@ -12,10 +12,12 @@ const props = withDefaults(
   defineProps<{
     currentStep: 1 | 2 | 3 | 4
     projectProgress?: number
+    hasScenario?: boolean
     hasPlots?: boolean
   }>(),
   {
     projectProgress: 0,
+    hasScenario: false,
     hasPlots: false,
   }
 )
@@ -24,7 +26,8 @@ const emit = defineEmits<{
   (e: 'changeStep', step: 1 | 2 | 3 | 4): void
 }>()
 
-const isStep3Unlocked = computed(() => (props.projectProgress ?? 0) === 100)
+// 步驟 3 需同時完成正射影像拼接（100%）與步驟 2 試驗情境表單建置
+const isStep3Unlocked = computed(() => (props.projectProgress ?? 0) === 100 && Boolean(props.hasScenario))
 const isStep4Unlocked = computed(() => isStep3Unlocked.value && Boolean(props.hasPlots))
 
 function isStepUnlocked(stepId: 1 | 2 | 3 | 4): boolean {
@@ -34,13 +37,23 @@ function isStepUnlocked(stepId: 1 | 2 | 3 | 4): boolean {
   return false
 }
 
+// 依各步驟前置條件回傳鎖定提示文字
 function getStepLockedReason(stepId: 1 | 2 | 3 | 4): string {
+  const isOrthoReady = (props.projectProgress ?? 0) === 100
   if (stepId === 3) {
-    return '需待步驟 1 航拍正射影像拼接完成（100%）方可解鎖小區標註'
+    if (!isOrthoReady) {
+      return '需待步驟 1 航拍正射影像拼接完成（100%）方可解鎖小區標註'
+    }
+    if (!props.hasScenario) {
+      return '需先於步驟 2 完成試驗情境表單建置方可解鎖小區標註'
+    }
   }
   if (stepId === 4) {
-    if (!isStep3Unlocked.value) {
+    if (!isOrthoReady) {
       return '需待步驟 1 航拍正射影像拼接完成（100%）方可解鎖'
+    }
+    if (!props.hasScenario) {
+      return '需先於步驟 2 完成試驗情境表單建置方可解鎖'
     }
     if (!props.hasPlots) {
       return '需先於步驟 3 完成小區網格標註與儲存方可解鎖光譜分析'

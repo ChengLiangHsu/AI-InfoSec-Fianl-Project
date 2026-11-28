@@ -22,22 +22,42 @@ def _is_cross_origin_write(request: Request) -> bool:
     return urlsplit(origin)[:2] != urlsplit(expected)[:2]
 
 
+SECURITY_HEADERS: tuple[tuple[bytes, bytes], ...] = (
+    (b"x-content-type-options", b"nosniff"),
+    (b"x-frame-options", b"DENY"),
+    (b"referrer-policy", b"strict-origin-when-cross-origin"),
+    (b"permissions-policy", b"camera=(), microphone=(), geolocation=()"),
+)
+
+
 class SecurityMiddleware:
-    """跨站偽造防護 (CSRF / Origin 檢驗) 中介層：無狀態、不簽發 Cookie。"""
+    """跨站偽造防護 (CSRF / Origin 檢驗) 與標準安全回應標頭中介層：無狀態、不簽發 Cookie。"""
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or not scope["path"].startswith("/api/"):
+        if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        request = Request(scope)
-        if _is_cross_origin_write(request):
-            response = JSONResponse(
-                {"result": False, "message": "不允許跨網站修改資料"}, status_code=403,
-            )
-            await response(scope, receive, send)
-            return
 
-        await self.app(scope, receive, send)
+        async def _send_with_security_headers(message: dict) -> None:
+            if message.get("type") == "http.response.start":
+                headers = list(message.get("headers", []))
+                existing = {k.lower() for k, _ in headers}
+                for key, value in SECURITY_HEADERS:
+                    if key not in existing:
+                        headers.append((key, value))
+                message = {**message, "headers": headers}
+            await send(message)
+
+        if scope["path"].startswith("/api/"):
+            request = Request(scope)
+            if _is_cross_origin_write(request):
+                response = JSONResponse(
+                    {"result": False, "message": "不允許跨網站修改資料"}, status_code=403,
+                )
+                await response(scope, receive, _send_with_security_headers)
+                return
+
+        await self.app(scope, receive, _send_with_security_headers)

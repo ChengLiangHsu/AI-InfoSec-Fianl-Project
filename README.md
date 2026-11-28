@@ -1,10 +1,52 @@
 # 田間無人機影像智慧決策
 
-> 🌐 **線上系統體驗入口**：[https://5114050012.duckdns.org](https://5114050012.duckdns.org)
+> 🌐 **線上系統體驗入口**：[https://5114050012.duckdns.org](https://5114050012.duckdns.org)  
+> 📐 **完整系統設計規格書**：[DESIGN.md](DESIGN.md) ｜ 🧪 **可重現量化實驗報告**：[docs/experiments/README.md](docs/experiments/README.md)
 
 ![DEMO 主畫面](docs/assets/demo.png)
 
 ![專題總覽圖表](docs/assets/project-overview.png)
+
+## 快速安裝與執行 (Installation & How to Run)
+
+### 系統需求
+- Python 3.13+ 與 [uv](https://docs.astral.sh/uv/)
+- Node.js 20+ 與 npm
+- Docker & Docker Compose（用於啟動本地 NodeODM 拼接服務）
+
+### 本機啟動
+```bash
+# 1. 設定環境變數（填入 GEMINI_API_KEY）
+cp .env.example .env
+
+# 2. 安裝後端套件並啟動 FastAPI (Port 8000)
+uv sync
+uv run uvicorn src.main:app --reload --port 8000
+
+# 3. 另開終端機啟動 Vue 3 前端 (Vite 自動代理 /api 至 8000)
+cd frontend
+npm install
+npm run dev
+```
+
+### 測試與實驗重現
+```bash
+# 執行後端 68 項單元與資安攻防測試
+uv run pytest
+
+# 執行前端單元測試與正式建置
+npm --prefix frontend test
+npm --prefix frontend run build
+
+# 重現真實空拍資料集量化實驗（輸出 docs/experiments/results.json 與 README.md）
+uv run python scripts/run_experiments.py
+```
+
+## 核心功能亮點
+
+- **四步驟田間試驗工作流**：① 航拍正射拼接（NodeODM + SSE 即時進度）→ ② AI 逐題訪談情境規劃與純 RGB 指標推薦 → ③ 白牌自動偵測、最高 50×50 雙線性網格與多選批次標註 → ④ 三欄可調整光譜分析（唯讀 AI 顧問＋農業統計圖表＋正射／光譜疊加圖）。
+- **完整農業試驗統計與異常小區偵測**：步驟 4 內建處理組均值、標準差（SD）、變異係數（CV%）、單因子 **ANOVA**、**Tukey HSD 顯著性字母（`a / b / ab`）**，提供長條圖（±SD＋散點）與箱型圖切換及放大彈窗；依重複數自適應偵測離群小區（$n \ge 4$ 採 $1.5 \times \text{IQR}$；$n = 3$ 採 $\text{CV}\% > 15\%$），點擊即可一鍵定位右側地圖排查，絕不自動刪除數據。
+- **AI + InfoSec 縱深防護**：整合無狀態 CSRF / Origin 驗證、標準 HTTP 安全標頭、圖片 Magic Bytes＋Pillow 結構防偽與 150MP 解壓炸彈上限、跨平台路徑穿越清理、目錄防逃逸，以及前置 **Prompt Injection 攔截護欄**（實測攻擊攔截率 100%、合法農藝提問誤判率 0%）。
 
 ## 影像下載
 
